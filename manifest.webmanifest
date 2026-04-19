@@ -1,0 +1,17 @@
+{
+  "name": "UpNextBudgeting",
+  "short_name": "UpNext",
+  "description": "A calm bill map and due-date planner.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f8faf8",
+  "theme_color": "#f8faf8",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
