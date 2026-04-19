@@ -24,7 +24,7 @@ export async function sendWebPush(subscription: unknown, payload: PushPayload) {
       icon: "/assets/icon.svg",
       badge: "/assets/icon.svg",
       tag: "upnextbudgeting-due-summary",
-      data: { url: "/" },
+      data: { url: "./" },
       ...payload,
     })
   );
