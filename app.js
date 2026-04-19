@@ -13,7 +13,7 @@ async function loadApp() {
     if (!response.ok) throw new Error(`Could not load ${path}`);
     return response.text();
   }));
-  const source = `${parts.join("\n")}\n//# sourceURL=upnextbudgeting-app.js`;
+  const source = `${parts.join("")}\n//# sourceURL=upnextbudgeting-app.js`;
   new Function(source)();
 }
 
