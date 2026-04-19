@@ -1,9 +1,15 @@
-const CACHE_NAME = "upnextbudgeting-v7";
+const CACHE_NAME = "upnextbudgeting-v8";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./assets/app-chunks/app.01.js",
+  "./assets/app-chunks/app.02.js",
+  "./assets/app-chunks/app.03.js",
+  "./assets/app-chunks/app.04.js",
+  "./assets/app-chunks/app.05.js",
+  "./assets/app-chunks/app.06.js",
   "./manifest.webmanifest",
   "./assets/icon.svg"
 ];
