@@ -90,7 +90,7 @@ Deno.serve(async (request) => {
       const copy = notificationCopy(bills, today);
       await sendWebPush(subscription.subscription, {
         ...copy,
-        data: { url: "/" },
+        data: { url: "./" },
       });
 
       const { error: logError } = await supabase.from("notification_send_log").insert({
