@@ -62,10 +62,11 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || "./", self.location.origin).href;
+  const payloadUrl = event.notification.data?.url === "/" ? "./" : event.notification.data?.url || "./";
+  const targetUrl = new URL(payloadUrl, self.registration.scope).href;
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      const client = clientList.find((item) => item.url.startsWith(self.location.origin));
+      const client = clientList.find((item) => item.url.startsWith(self.registration.scope));
       if (client) return client.focus();
       return clients.openWindow(targetUrl);
     })
