@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#f2f3f1">
+    <meta name="theme-color" content="#080b12">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="UpNextBudgeting">
     <title>UpNextBudgeting</title>
@@ -102,6 +102,19 @@
         </button>
       </div>
       <div id="settingsContent"></div>
+    </section>
+    <section class="quick-sheet day-picker-sheet" id="dayPickerSheet" aria-labelledby="dayPickerTitle" aria-modal="true" role="dialog" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-top">
+        <div>
+          <p class="eyebrow">Calendar bills</p>
+          <h2 id="dayPickerTitle">Choose a bill</h2>
+        </div>
+        <button class="icon-button light" id="closeDayPickerSheet" type="button" aria-label="Close day bills">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div id="dayPickerContent" class="day-picker-list"></div>
     </section>
     <section id="printExport" class="print-export" aria-hidden="true"></section>
 
