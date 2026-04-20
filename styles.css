@@ -1606,120 +1606,6 @@ select {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171915;
-    --surface: #20231f;
-    --surface-strong: #262a25;
-    --surface-soft: #1c1f1b;
-    --ink: #f4f0e8;
-    --muted: #a6aaa2;
-    --soft-muted: #858a81;
-    --line: rgba(244, 240, 232, 0.1);
-    --line-strong: rgba(244, 240, 232, 0.18);
-    --teal: #7dc4b8;
-    --coral: #d17a70;
-    --amber: #d0a34b;
-    --safe: #8fc9a1;
-    --mint: rgba(125, 196, 184, 0.16);
-    --rose: rgba(209, 122, 112, 0.16);
-    --honey: rgba(208, 163, 75, 0.16);
-    --sky: rgba(125, 196, 184, 0.12);
-    --shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
-    --shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.18);
-    --shadow-lift: 0 20px 42px rgba(0, 0, 0, 0.32);
-    color-scheme: dark;
-  }
-
-  .icon-button.light,
-  .summary-metric,
-  .guidance-panel,
-  .disclosure-button,
-  input,
-  select,
-  .calendar-controls,
-  .calendar-day,
-  .budget-total,
-  .history-summary article,
-  .history-item,
-  .notification-status,
-  .file-action,
-  .secondary-action,
-  .check-row,
-  .preset-card,
-  .budget-card,
-  .agenda-card,
-  .settings-section,
-  .quick-sheet,
-  .tabbar {
-    background-color: rgba(32, 35, 31, 0.86);
-  }
-
-  .primary-cta,
-  .mark-button,
-  .primary-action,
-  .tab.is-active {
-    color: #10211e;
-  }
-
-  .bill-card {
-    background: color-mix(in srgb, var(--surface) 92%, var(--accent, var(--teal)) 8%);
-  }
-
-  .bill-card.is-overdue {
-    background: color-mix(in srgb, var(--surface) 88%, var(--rose) 12%);
-  }
-
-  .summary-metric {
-    box-shadow: none;
-  }
-
-  .calendar-day.has-bill,
-  .budget-card,
-  .agenda-card {
-    background: color-mix(in srgb, var(--surface) 92%, var(--accent, var(--teal)) 8%);
-  }
-
-  .calendar-day.has-overdue,
-  .agenda-card.is-overdue {
-    background: color-mix(in srgb, var(--surface) 88%, var(--rose) 12%);
-  }
-
-  .calendar-day.has-due-soon,
-  .agenda-card.is-tomorrow,
-  .agenda-card.is-soon {
-    background: color-mix(in srgb, var(--surface) 88%, var(--honey) 12%);
-  }
-
-  .calendar-day.has-paid-only,
-  .agenda-card.is-paid {
-    background: color-mix(in srgb, var(--surface) 88%, var(--mint) 12%);
-  }
-
-  .budget-total,
-  .notification-status {
-    background: color-mix(in srgb, var(--surface) 90%, var(--teal) 10%);
-  }
-
-  .meter {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .disclosure-button:hover {
-    background: rgba(38, 42, 37, 0.96);
-  }
-
-}
-
-@media (prefers-color-scheme: dark) and (hover: hover) {
-  .icon-button.light:hover,
-  .secondary-action:hover,
-  .file-action:hover,
-  .preset-pill:hover {
-    background: rgba(38, 42, 37, 0.96);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2210,6 +2096,248 @@ input::placeholder {
     border-color: var(--line-strong);
     background: rgba(255, 255, 255, 0.145);
   }
+}
+
+.starter-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.toast-region {
+  position: fixed;
+  z-index: 70;
+  right: max(14px, calc((100vw - 520px) / 2 + 14px));
+  bottom: calc(92px + max(14px, env(safe-area-inset-bottom)));
+  left: max(14px, calc((100vw - 520px) / 2 + 14px));
+  display: grid;
+  gap: 9px;
+  max-width: 492px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.toast {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.09)),
+    rgba(8, 11, 18, 0.84);
+  color: var(--ink);
+  box-shadow: var(--inner-highlight), 0 22px 70px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  font-size: 0.88rem;
+  font-weight: 760;
+  line-height: 1.25;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(16px) scale(0.97);
+  transition:
+    opacity 260ms var(--ease-premium),
+    transform 320ms cubic-bezier(0.18, 1.22, 0.28, 1);
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.toast.is-leaving {
+  opacity: 0;
+  transform: translateY(8px) scale(0.985);
+}
+
+.toast button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(143, 213, 198, 0.28);
+  border-radius: var(--pill);
+  background: rgba(143, 213, 198, 0.16);
+  color: var(--ink);
+  font-weight: 850;
+}
+
+[data-theme="light"] {
+  --bg: #edf0eb;
+  --surface: rgba(255, 255, 255, 0.68);
+  --surface-strong: rgba(255, 255, 255, 0.82);
+  --surface-soft: rgba(255, 255, 255, 0.48);
+  --ink: #16201d;
+  --muted: rgba(22, 32, 29, 0.66);
+  --soft-muted: rgba(22, 32, 29, 0.44);
+  --line: rgba(22, 32, 29, 0.1);
+  --line-strong: rgba(22, 32, 29, 0.18);
+  --teal: #176c62;
+  --coral: #a94f47;
+  --amber: #956b1f;
+  --safe: #3d7a55;
+  --mint: rgba(23, 108, 98, 0.12);
+  --rose: rgba(169, 79, 71, 0.12);
+  --honey: rgba(149, 107, 31, 0.13);
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.76);
+  --glass-soft: rgba(255, 255, 255, 0.42);
+  --shadow: 0 24px 70px rgba(25, 34, 31, 0.14);
+  --shadow-soft: 0 14px 34px rgba(25, 34, 31, 0.1);
+  --shadow-lift: 0 28px 82px rgba(25, 34, 31, 0.18);
+  --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  color-scheme: light;
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(88, 142, 130, 0.22), transparent 28rem),
+    radial-gradient(circle at 92% 0%, rgba(215, 177, 108, 0.14), transparent 24rem),
+    radial-gradient(circle at 12% 78%, rgba(169, 79, 71, 0.12), transparent 26rem),
+    linear-gradient(155deg, #eef1ec 0%, #f7f7f2 48%, #e8ece8 100%);
+  color: var(--ink);
+}
+
+[data-theme="light"] body::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 18rem),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.72), transparent 22rem);
+}
+
+[data-theme="light"] body::after {
+  background-image:
+    linear-gradient(rgba(22, 32, 29, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 32, 29, 0.026) 1px, transparent 1px);
+}
+
+[data-theme="light"] .brandmark,
+[data-theme="light"] .summary-metric,
+[data-theme="light"] .notice-panel,
+[data-theme="light"] .reminder-strip,
+[data-theme="light"] .recurring-prompt,
+[data-theme="light"] .disclosure-button,
+[data-theme="light"] .preset-card,
+[data-theme="light"] .budget-card,
+[data-theme="light"] .agenda-card,
+[data-theme="light"] .calendar-controls,
+[data-theme="light"] .calendar-day,
+[data-theme="light"] .budget-total,
+[data-theme="light"] .settings-section,
+[data-theme="light"] .notification-status,
+[data-theme="light"] .history-summary article,
+[data-theme="light"] .history-item,
+[data-theme="light"] .check-row,
+[data-theme="light"] .quick-sheet,
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] .toast {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.48)),
+    rgba(255, 255, 255, 0.58);
+  color: var(--ink);
+  box-shadow: var(--inner-highlight), var(--shadow-soft);
+}
+
+[data-theme="light"] .bill-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent, var(--teal)) 13%, transparent), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.5));
+  box-shadow: var(--inner-highlight), var(--shadow);
+}
+
+[data-theme="light"] .bill-card.is-overdue,
+[data-theme="light"] .calendar-day.has-overdue,
+[data-theme="light"] .agenda-card.is-overdue {
+  background:
+    linear-gradient(145deg, rgba(169, 79, 71, 0.17), transparent 52%),
+    rgba(255, 255, 255, 0.62);
+}
+
+[data-theme="light"] .calendar-day.has-due-soon,
+[data-theme="light"] .agenda-card.is-tomorrow,
+[data-theme="light"] .agenda-card.is-soon {
+  background:
+    linear-gradient(145deg, rgba(149, 107, 31, 0.16), transparent 52%),
+    rgba(255, 255, 255, 0.62);
+}
+
+[data-theme="light"] .calendar-day.has-paid-only,
+[data-theme="light"] .agenda-card.is-paid {
+  background:
+    linear-gradient(145deg, rgba(23, 108, 98, 0.14), transparent 52%),
+    rgba(255, 255, 255, 0.62);
+}
+
+[data-theme="light"] .tabbar {
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: var(--inner-highlight), 0 24px 70px rgba(25, 34, 31, 0.16);
+}
+
+[data-theme="light"] .primary-cta,
+[data-theme="light"] .primary-action,
+[data-theme="light"] .mark-button,
+[data-theme="light"] .tab.is-active {
+  background: linear-gradient(180deg, rgba(23, 108, 98, 0.92), rgba(23, 108, 98, 0.78));
+  border-color: rgba(23, 108, 98, 0.28);
+  color: #fff;
+}
+
+[data-theme="light"] .icon-button,
+[data-theme="light"] .icon-button.light,
+[data-theme="light"] .secondary-action,
+[data-theme="light"] .file-action,
+[data-theme="light"] .preset-pill {
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
+}
+
+[data-theme="light"] .urgency-badge,
+[data-theme="light"] .status {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+[data-theme="light"] .urgency-badge.is-overdue,
+[data-theme="light"] .status.overdue,
+[data-theme="light"] .day-picker-item.is-overdue {
+  background: rgba(169, 79, 71, 0.13);
+  color: var(--coral);
+}
+
+[data-theme="light"] .urgency-badge.is-tomorrow,
+[data-theme="light"] .urgency-badge.is-soon,
+[data-theme="light"] .day-picker-item.is-tomorrow,
+[data-theme="light"] .day-picker-item.is-soon {
+  background: rgba(149, 107, 31, 0.14);
+  color: var(--amber);
+}
+
+[data-theme="light"] .urgency-badge.is-paid,
+[data-theme="light"] .day-picker-item.is-paid {
+  background: rgba(23, 108, 98, 0.12);
+  color: var(--teal);
+}
+
+[data-theme="light"] .sheet-backdrop {
+  background: rgba(34, 42, 38, 0.28);
+}
+
+[data-theme="light"] .quick-sheet {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62)),
+    rgba(237, 240, 235, 0.88);
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select {
+  color-scheme: light;
+}
+
+[data-theme="light"] input::placeholder {
+  color: rgba(22, 32, 29, 0.38);
 }
 
 @media print {
