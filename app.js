@@ -43,7 +43,7 @@ function icon(name) {
   return icons[name] || icons.category;
 }
 
-let categories = [
+const starterCategories = Object.freeze([
   { name: "Home", color: "#5cae9f", planned: 160000, assigned: 141500 },
   { name: "Utilities", color: "#e38a7f", planned: 36000, assigned: 25370 },
   { name: "Phone & internet", color: "#6c98c6", planned: 22000, assigned: 15000 },
@@ -58,7 +58,9 @@ let categories = [
   { name: "Groceries", color: "#a7b86f", planned: 46000, assigned: 42000 },
   { name: "Savings", color: "#5d9fb0", planned: 45000, assigned: 45000 },
   { name: "Tax planning", color: "#9ba566", planned: 24000, assigned: 18000 }
-];
+]);
+
+let categories = starterCategories.map(cloneCategory);
 
 const categoryColors = ["#5cae9f", "#e38a7f", "#6c98c6", "#8f87cf", "#b17ca0", "#86a95f", "#d890ba", "#7bbf9c", "#c7a64d", "#70a0a8", "#e39a70", "#a7b86f", "#5d9fb0", "#9ba566"];
 
@@ -87,7 +89,7 @@ const presets = [
   { name: "GCT / tax planning", category: "Tax planning", amount: 15000, note: "For business-related reminders; standard GCT is currently 15% for many taxable items." }
 ];
 
-let bills = [
+const starterBills = Object.freeze([
   { id: 101, name: "Rent", category: "Home", amount: 95000, due: "2026-01-05", paid: true },
   { id: 102, name: "JPS electricity", category: "Utilities", amount: 17200, due: "2026-01-22", paid: true },
   { id: 103, name: "NWC water", category: "Utilities", amount: 6400, due: "2026-01-25", paid: true },
@@ -127,9 +129,14 @@ let bills = [
   { id: 10, name: "Vehicle registration", category: "Vehicle", amount: 12600, due: "2026-05-14", paid: false },
   { id: 11, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-04-29", paid: false },
   { id: 12, name: "Rent", category: "Home", amount: 95000, due: "2026-04-05", paid: true }
-];
+]);
+
+let bills = starterBills.map(cloneBill);
+const starterBillIds = new Set(starterBills.map((bill) => bill.id));
+const starterCategoryNames = new Set(starterCategories.map((category) => category.name));
 
 let selectedBudgetCategory = categories[0].name;
+const themeColorMeta = document.querySelector("meta[name='theme-color']");
 const app = document.querySelector("#app");
 const tabs = document.querySelectorAll(".tab");
 const sheet = document.querySelector("#quickSheet");
@@ -138,6 +145,9 @@ const dayPickerSheet = document.querySelector("#dayPickerSheet");
 const settingsContent = document.querySelector("#settingsContent");
 const dayPickerContent = document.querySelector("#dayPickerContent");
 const printExport = document.querySelector("#printExport");
+const toastRegion = document.querySelector("#toastRegion");
+const MAX_TOASTS = 3;
+const toastTimers = new WeakMap();
 const backdrop = document.querySelector("#sheetBackdrop");
 const billForm = document.querySelector("#billForm");
 const presetRail = document.querySelector("#presetRail");
@@ -163,7 +173,8 @@ let settings = {
   pushEnabled: false,
   pushEndpoint: "",
   pushStatus: "Ready",
-  lastPushSync: ""
+  lastPushSync: "",
+  theme: "system"
 };
 
 const money = new Intl.NumberFormat("en-JM", {
@@ -207,6 +218,19 @@ function monthLabel(key) {
   return monthFormat.format(new Date(`${key}-01T12:00:00`));
 }
 
+function cloneCategory(category) {
+  return {
+    name: category.name,
+    color: category.color,
+    planned: category.planned,
+    assigned: category.assigned
+  };
+}
+
+function cloneBill(bill) {
+  return { ...bill };
+}
+
 function shiftMonth(key, offset) {
   const date = new Date(`${key}-01T12:00:00`);
   date.setMonth(date.getMonth() + offset);
@@ -245,6 +269,65 @@ function getPushReminderItems() {
     const days = daysUntil(bill.due);
     return days >= 0 && days <= PUSH_REMINDER_DAYS;
   }));
+}
+
+function validTheme(value) {
+  return ["system", "dark", "light"].includes(value) ? value : "system";
+}
+
+function resolvedTheme() {
+  const theme = validTheme(settings.theme);
+  if (theme !== "system") return theme;
+  const media = window.matchMedia?.("(prefers-color-scheme: light)");
+  return media?.matches ? "light" : "dark";
+}
+
+function applyTheme() {
+  settings.theme = validTheme(settings.theme);
+  const theme = resolvedTheme();
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.themePreference = settings.theme;
+  themeColorMeta?.setAttribute("content", theme === "light" ? "#edf0eb" : "#080b12");
+}
+
+function showToast(message, options = {}) {
+  Array.from(toastRegion.children)
+    .slice(0, Math.max(0, toastRegion.children.length - MAX_TOASTS + 1))
+    .forEach((item) => dismissToast(item));
+
+  const toast = document.createElement("section");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  const body = document.createElement("span");
+  body.textContent = message;
+  toast.append(body);
+  if (typeof options.undo === "function") {
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.textContent = options.undoLabel || "Undo";
+    undoButton.addEventListener("click", () => {
+      options.undo();
+      dismissToast(toast);
+    });
+    toast.append(undoButton);
+  }
+  toastRegion.append(toast);
+  const revealTimer = window.setTimeout(() => toast.classList.add("is-visible"), 20);
+  const dismissTimer = window.setTimeout(() => dismissToast(toast), options.duration || 5200);
+  toastTimers.set(toast, { revealTimer, dismissTimer });
+}
+
+function dismissToast(toast) {
+  if (!toast || toast.classList.contains("is-leaving")) return;
+  const timers = toastTimers.get(toast);
+  if (timers) {
+    window.clearTimeout(timers.revealTimer);
+    window.clearTimeout(timers.dismissTimer);
+    toastTimers.delete(toast);
+  }
+  toast.classList.remove("is-visible");
+  toast.classList.add("is-leaving");
+  window.setTimeout(() => toast.remove(), 220);
 }
 
 function pushSnapshot() {
@@ -406,6 +489,7 @@ function loadState() {
     if (!raw) {
       bills = bills.map(normalizeBill);
       saveState();
+      applyTheme();
       return;
     }
     const state = JSON.parse(raw);
@@ -418,14 +502,18 @@ function loadState() {
     }));
     bills = state.bills.map(normalizeBill);
     settings = { ...settings, ...(state.settings || {}) };
+    settings.theme = validTheme(settings.theme);
     selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
+    ensureCategorySafety();
     selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
     visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
   } catch (error) {
     console.warn("Could not load saved UpNextBudgeting state", error);
     bills = bills.map(normalizeBill);
+    ensureCategorySafety();
     saveState();
   }
+  applyTheme();
 }
 
 function daysUntil(value) {
@@ -435,6 +523,22 @@ function daysUntil(value) {
 
 function getCategory(name) {
   return categories.find((category) => category.name === name) || categories[0];
+}
+
+function defaultCategory() {
+  return categories.find((category) => category.name === "Home") || categories[0] || {
+    name: "General",
+    color: "#8fd5c6",
+    planned: 0,
+    assigned: 0
+  };
+}
+
+function ensureCategorySafety() {
+  if (!categories.length) categories = [{ name: "General", color: "#8fd5c6", planned: 0, assigned: 0 }];
+  const fallback = defaultCategory().name;
+  bills = bills.map((bill) => categories.some((category) => category.name === bill.category) ? bill : { ...bill, category: fallback });
+  selectedBudgetCategory = categories.some((category) => category.name === selectedBudgetCategory) ? selectedBudgetCategory : fallback;
 }
 
 function categoryIconName(name) {
@@ -585,20 +689,43 @@ function renderUpcoming() {
     pendingRecurringBillId = null;
     saveState();
     render();
+    if (nextBill) {
+      showToast(`Next ${nextBill.name} created.`, {
+        undo: () => {
+          bills = bills.filter((item) => item.id !== nextBill.id);
+          saveState();
+          render();
+          showToast("Next bill removed.");
+        }
+      });
+    }
   });
   document.querySelector("#dismissRecurring")?.addEventListener("click", () => {
     pendingRecurringBillId = null;
     saveState();
     render();
+    showToast("Recurring prompt skipped.");
   });
   document.querySelectorAll("[data-paid]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       const bill = bills.find((item) => item.id === Number(button.dataset.paid));
       if (bill) {
+        const previousPending = pendingRecurringBillId;
         bill.paid = true;
         pendingRecurringBillId = bill.repeat && bill.repeat !== "none" ? bill.id : null;
         saveState();
+        showToast(`${bill.name} marked paid.`, {
+          undo: () => {
+            const current = bills.find((item) => item.id === bill.id);
+            if (!current) return;
+            current.paid = false;
+            pendingRecurringBillId = previousPending;
+            saveState();
+            render();
+            showToast(`${bill.name} marked unpaid.`);
+          }
+        });
       }
       render();
     });
@@ -976,6 +1103,21 @@ function renderSettingsContent() {
   settingsContent.innerHTML = `
     <section class="settings-section">
       <div class="section-heading compact">
+        <h3>Appearance</h3>
+        <span class="mini-label">theme</span>
+      </div>
+      <p class="settings-copy">Choose the glass theme, or let the app follow your device.</p>
+      <label>
+        <span>Theme</span>
+        <select id="themePreference">
+          <option value="system" ${settings.theme === "system" ? "selected" : ""}>System</option>
+          <option value="dark" ${settings.theme === "dark" ? "selected" : ""}>Dark</option>
+          <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
+        </select>
+      </label>
+    </section>
+    <section class="settings-section">
+      <div class="section-heading compact">
         <h3>Monthly history</h3>
         <span class="mini-label">export</span>
       </div>
@@ -1057,6 +1199,11 @@ function renderSettingsContent() {
           <span>Restore backup</span>
         </label>
       </div>
+      <div class="starter-actions">
+        <button class="secondary-action" id="clearStarterBills" type="button">Clear starter bills</button>
+        <button class="secondary-action" id="clearStarterCategories" type="button">Clear starter categories</button>
+        <button class="danger-action" id="clearStarterAll" type="button">Clear starter bills & categories</button>
+      </div>
     </section>
     <section class="settings-section">
       <div class="section-heading compact">
@@ -1095,10 +1242,12 @@ function renderSettingsContent() {
       <p class="settings-copy">More app settings can live here later.</p>
     </section>
   `;
+  setupAppearanceControls();
   setupMonthlyHistory();
   setupReminderSettings();
   setupPushControls();
   setupBackupControls();
+  setupStarterClearControls();
   setupBudgetControls();
 }
 
@@ -1133,6 +1282,7 @@ function setupForm() {
 
   billForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    const wasEditing = Boolean(editingBillId);
     const payload = {
       name: billName.value.trim(),
       category: billCategory.value,
@@ -1151,17 +1301,29 @@ function setupForm() {
     closeSheet();
     activeTab = "upcoming";
     render();
+    showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
   });
 
   deleteBillButton.addEventListener("click", () => {
     if (!editingBillId) return;
     const bill = bills.find((item) => item.id === editingBillId);
     if (!bill || !confirm(`Delete ${bill.name}?`)) return;
+    const deletedBill = cloneBill(bill);
+    const previousPending = pendingRecurringBillId;
     bills = bills.filter((item) => item.id !== editingBillId);
     pendingRecurringBillId = pendingRecurringBillId === editingBillId ? null : pendingRecurringBillId;
     saveState();
     closeSheet();
     render();
+    showToast(`${deletedBill.name} deleted.`, {
+      undo: () => {
+        if (!bills.some((item) => item.id === deletedBill.id)) bills.push(cloneBill(deletedBill));
+        pendingRecurringBillId = previousPending;
+        saveState();
+        render();
+        showToast(`${deletedBill.name} restored.`);
+      }
+    });
   });
 
   document.querySelector("#closeSheet").addEventListener("click", closeSheet);
@@ -1224,6 +1386,7 @@ function exportCsv(key) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+  showToast(`${monthLabel(key)} CSV exported.`);
 }
 
 function renderPrintExport(key) {
@@ -1291,6 +1454,7 @@ function renderPrintExport(key) {
 function exportPdf(key) {
   renderPrintExport(key);
   window.print();
+  showToast("PDF print view opened.");
 }
 
 function exportBackup() {
@@ -1303,6 +1467,7 @@ function exportBackup() {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+  showToast("Backup exported.");
 }
 
 function applyImportedState(state) {
@@ -1315,14 +1480,79 @@ function applyImportedState(state) {
   }));
   bills = state.bills.map(normalizeBill);
   settings = { initialized: true, reminderDays: 3, ...(state.settings || {}) };
+  settings.theme = validTheme(settings.theme);
   selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
   selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
   visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
   pendingRecurringBillId = null;
+  ensureCategorySafety();
+  applyTheme();
   syncBillCategoryOptions(selectedBudgetCategory);
   saveState();
   render();
   renderSettingsContent();
+  showToast("Backup restored.");
+}
+
+function setupAppearanceControls() {
+  const themePreference = document.querySelector("#themePreference");
+  themePreference.addEventListener("change", () => {
+    settings.theme = validTheme(themePreference.value);
+    applyTheme();
+    saveState(false);
+    showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
+  });
+}
+
+function snapshotForUndo() {
+  return {
+    bills: bills.map(cloneBill),
+    categories: categories.map(cloneCategory),
+    selectedBudgetCategory,
+    selectedHistoryMonth,
+    visibleCalendarMonth,
+    pendingRecurringBillId
+  };
+}
+
+function restoreSnapshot(snapshot, message = "Restored.") {
+  bills = snapshot.bills.map(cloneBill);
+  categories = snapshot.categories.map(cloneCategory);
+  selectedBudgetCategory = snapshot.selectedBudgetCategory;
+  selectedHistoryMonth = snapshot.selectedHistoryMonth;
+  visibleCalendarMonth = snapshot.visibleCalendarMonth;
+  pendingRecurringBillId = snapshot.pendingRecurringBillId;
+  ensureCategorySafety();
+  syncBillCategoryOptions(selectedBudgetCategory);
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  showToast(message);
+}
+
+function clearStarterData(mode) {
+  const copy = {
+    bills: "starter bills",
+    categories: "starter categories",
+    both: "starter bills and categories"
+  };
+  if (!confirm(`Clear ${copy[mode]}? Your user-created items will stay.`)) return;
+  const snapshot = snapshotForUndo();
+  if (mode === "bills" || mode === "both") {
+    bills = bills.filter((bill) => !starterBillIds.has(bill.id));
+    pendingRecurringBillId = pendingRecurringBillId && starterBillIds.has(pendingRecurringBillId) ? null : pendingRecurringBillId;
+  }
+  if (mode === "categories" || mode === "both") {
+    categories = categories.filter((category) => !starterCategoryNames.has(category.name));
+  }
+  ensureCategorySafety();
+  syncBillCategoryOptions(selectedBudgetCategory);
+  saveState();
+  render();
+  renderSettingsContent();
+  showToast(`Cleared ${copy[mode]}.`, {
+    undo: () => restoreSnapshot(snapshot, "Starter data restored.")
+  });
 }
 
 function setupMonthlyHistory() {
@@ -1349,6 +1579,7 @@ function setupReminderSettings() {
     saveState();
     render();
     renderSettingsContent();
+    showToast(`Reminder window set to ${settings.reminderDays} days.`);
   });
 }
 
@@ -1427,9 +1658,11 @@ function setupPushControls() {
     renderSettingsContent();
     try {
       await enablePushNotifications(tokenInput.value.trim());
+      showToast("Notifications enabled.");
     } catch (error) {
       settings.pushStatus = error.message || "Notification setup failed";
       saveState(false);
+      showToast(settings.pushStatus);
     }
     renderSettingsContent();
   });
@@ -1440,9 +1673,11 @@ function setupPushControls() {
     renderSettingsContent();
     try {
       await syncPushSnapshot();
+      showToast("Notification data synced.");
     } catch (error) {
       settings.pushStatus = error.message || "Notification sync failed";
       saveState(false);
+      showToast(settings.pushStatus);
     }
     renderSettingsContent();
   });
@@ -1450,6 +1685,7 @@ function setupPushControls() {
   disablePushButton.addEventListener("click", async () => {
     await disablePushNotifications();
     renderSettingsContent();
+    showToast("Notifications disabled.");
   });
 }
 
@@ -1465,13 +1701,19 @@ function setupBackupControls() {
         if (!confirm("Restore this backup? Current local data will be replaced.")) return;
         applyImportedState(state);
       } catch (error) {
-        alert(error.message || "Could not restore backup.");
+        showToast(error.message || "Could not restore backup.");
       } finally {
         event.target.value = "";
       }
     });
     reader.readAsText(file);
   });
+}
+
+function setupStarterClearControls() {
+  document.querySelector("#clearStarterBills").addEventListener("click", () => clearStarterData("bills"));
+  document.querySelector("#clearStarterCategories").addEventListener("click", () => clearStarterData("categories"));
+  document.querySelector("#clearStarterAll").addEventListener("click", () => clearStarterData("both"));
 }
 
 function activeSheet() {
@@ -1532,24 +1774,35 @@ function setupBudgetControls() {
     saveState();
     render();
     renderSettingsContent();
+    showToast(`${selected.name} plan updated.`);
   });
 
   removeCategory.addEventListener("click", () => {
     if (categories.length <= 1) return;
+    const snapshot = snapshotForUndo();
     const index = categories.findIndex((category) => category.name === editCategory.value);
     if (index < 0) return;
+    const removedName = categories[index].name;
     categories.splice(index, 1);
     selectedBudgetCategory = categories[Math.max(0, index - 1)].name;
+    ensureCategorySafety();
     syncBillCategoryOptions(selectedBudgetCategory);
     saveState();
     render();
     renderSettingsContent();
+    showToast(`${removedName} removed.`, {
+      undo: () => restoreSnapshot(snapshot, `${removedName} restored.`)
+    });
   });
 
   addCategoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const name = newCategoryName.value.trim();
-    if (!name || categories.some((category) => category.name.toLowerCase() === name.toLowerCase())) return;
+    if (!name) return;
+    if (categories.some((category) => category.name.toLowerCase() === name.toLowerCase())) {
+      showToast(`${name} already exists.`);
+      return;
+    }
     categories.push({
       name,
       color: categoryColors[categories.length % categoryColors.length],
@@ -1561,6 +1814,7 @@ function setupBudgetControls() {
     saveState();
     render();
     renderSettingsContent();
+    showToast(`${name} category added.`);
   });
 }
 
@@ -1571,9 +1825,21 @@ tabs.forEach((tab) => {
   });
 });
 
+const themePreferenceMedia = window.matchMedia?.("(prefers-color-scheme: light)");
+const handleThemePreferenceChange = () => {
+  if (settings.theme === "system") applyTheme();
+};
+if (themePreferenceMedia?.addEventListener) {
+  themePreferenceMedia.addEventListener("change", handleThemePreferenceChange);
+} else if (themePreferenceMedia?.addListener) {
+  themePreferenceMedia.addListener(handleThemePreferenceChange);
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js");
+    navigator.serviceWorker.register("sw.js").catch((error) => {
+      console.warn("Service worker registration skipped", error);
+    });
   });
 }
 
