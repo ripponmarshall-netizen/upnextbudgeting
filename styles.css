@@ -1,29 +1,33 @@
 :root {
-  --bg: #f2f3f1;
-  --surface: #ffffff;
-  --surface-strong: #fbfaf7;
-  --surface-soft: #f0eee8;
-  --ink: #20211f;
-  --muted: #6f716d;
-  --soft-muted: #92958f;
-  --line: rgba(33, 35, 32, 0.1);
-  --line-strong: rgba(33, 35, 32, 0.16);
-  --teal: #176c62;
-  --coral: #b75b50;
-  --amber: #a97922;
-  --safe: #3d7a55;
-  --violet: #8f87cf;
-  --gold: #c7a64d;
-  --blue: #5d9fb0;
-  --olive: #9ba566;
-  --mint: #e7f1ec;
-  --rose: #f4e4e1;
-  --lavender: #eeecfb;
-  --honey: #f4ecd8;
-  --sky: #e5f2f6;
-  --shadow: 0 18px 44px rgba(32, 33, 31, 0.08);
-  --shadow-soft: 0 10px 24px rgba(32, 33, 31, 0.055);
-  --shadow-lift: 0 18px 34px rgba(32, 33, 31, 0.11);
+  --bg: #080b12;
+  --surface: rgba(255, 255, 255, 0.105);
+  --surface-strong: rgba(255, 255, 255, 0.16);
+  --surface-soft: rgba(255, 255, 255, 0.07);
+  --ink: #f7f2e9;
+  --muted: rgba(247, 242, 233, 0.68);
+  --soft-muted: rgba(247, 242, 233, 0.46);
+  --line: rgba(255, 255, 255, 0.13);
+  --line-strong: rgba(255, 255, 255, 0.24);
+  --teal: #8fd5c6;
+  --coral: #d77970;
+  --amber: #d7ad67;
+  --safe: #9bd7ad;
+  --violet: #b8b1f2;
+  --gold: #dbc47a;
+  --blue: #86c4d3;
+  --olive: #beca82;
+  --mint: rgba(143, 213, 198, 0.17);
+  --rose: rgba(215, 121, 112, 0.18);
+  --lavender: rgba(184, 177, 242, 0.16);
+  --honey: rgba(215, 173, 103, 0.18);
+  --sky: rgba(134, 196, 211, 0.16);
+  --glass: rgba(255, 255, 255, 0.095);
+  --glass-strong: rgba(255, 255, 255, 0.15);
+  --glass-soft: rgba(255, 255, 255, 0.06);
+  --shadow: 0 26px 70px rgba(0, 0, 0, 0.38);
+  --shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.24);
+  --shadow-lift: 0 30px 86px rgba(0, 0, 0, 0.48);
+  --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -31,7 +35,8 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-7: 32px;
-  --radius: 8px;
+  --radius: 18px;
+  --pill: 999px;
   --font-size-caption: 0.7rem;
   --font-size-small: 0.82rem;
   --font-size-body: 0.92rem;
@@ -39,8 +44,8 @@
   --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 160ms;
   --motion-medium: 240ms;
-  color-scheme: light;
-  font-family: "Avenir Next", "SF Pro Display", "SF Pro Text", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: dark;
+  font-family: "Satoshi", Inter, "Avenir Next", "SF Pro Display", "SF Pro Text", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * {
@@ -55,7 +60,11 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 18% -10%, rgba(91, 135, 150, 0.26), transparent 34rem),
+    radial-gradient(circle at 92% 4%, rgba(143, 213, 198, 0.14), transparent 28rem),
+    radial-gradient(circle at 18% 74%, rgba(99, 37, 50, 0.26), transparent 26rem),
+    linear-gradient(155deg, #080b12 0%, #0d111b 42%, #111421 100%);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -1727,6 +1736,479 @@ select {
   .settings-section,
   .quick-sheet {
     animation: none !important;
+  }
+}
+
+/* Dark luxury glass system */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #080b12;
+    --surface: rgba(255, 255, 255, 0.105);
+    --surface-strong: rgba(255, 255, 255, 0.16);
+    --surface-soft: rgba(255, 255, 255, 0.07);
+    --ink: #f7f2e9;
+    --muted: rgba(247, 242, 233, 0.68);
+    --soft-muted: rgba(247, 242, 233, 0.46);
+    --line: rgba(255, 255, 255, 0.13);
+    --line-strong: rgba(255, 255, 255, 0.24);
+    --teal: #8fd5c6;
+    --coral: #d77970;
+    --amber: #d7ad67;
+    --safe: #9bd7ad;
+    --mint: rgba(143, 213, 198, 0.17);
+    --rose: rgba(215, 121, 112, 0.18);
+    --honey: rgba(215, 173, 103, 0.18);
+    --shadow: 0 26px 70px rgba(0, 0, 0, 0.38);
+    --shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.24);
+    --shadow-lift: 0 30px 86px rgba(0, 0, 0, 0.48);
+    color-scheme: dark;
+  }
+}
+
+html {
+  background: var(--bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18rem),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08), transparent 22rem);
+  pointer-events: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 72%);
+  pointer-events: none;
+}
+
+.brandmark {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--inner-highlight), 0 18px 40px rgba(0, 0, 0, 0.34);
+}
+
+.kicker,
+.eyebrow,
+.microcopy,
+.mini-label {
+  color: var(--soft-muted);
+}
+
+.welcome-line,
+.hero-subtitle,
+.small-note,
+.settings-copy {
+  color: var(--muted);
+}
+
+.icon-button,
+.icon-button.light,
+.primary-cta,
+.mark-button,
+.primary-action,
+.secondary-action,
+.danger-action,
+.preset-pill,
+.file-action,
+.tab,
+.status,
+.urgency-badge,
+.disclosure-count {
+  border-radius: var(--pill);
+}
+
+.primary-cta,
+.primary-action,
+.mark-button,
+.tab.is-active {
+  background: linear-gradient(180deg, rgba(143, 213, 198, 0.28), rgba(143, 213, 198, 0.15));
+  color: #f7fffc;
+  border: 1px solid rgba(143, 213, 198, 0.28);
+  box-shadow: var(--inner-highlight), 0 16px 36px rgba(15, 91, 82, 0.24);
+}
+
+.icon-button,
+.icon-button.light,
+.secondary-action,
+.file-action,
+.preset-pill,
+.tabbar,
+.summary-metric,
+.notice-panel,
+.reminder-strip,
+.recurring-prompt,
+.disclosure-button,
+.preset-card,
+.budget-card,
+.agenda-card,
+.calendar-controls,
+.calendar-day,
+.budget-total,
+.settings-section,
+.notification-status,
+.history-summary article,
+.history-item,
+.check-row,
+.quick-sheet,
+input,
+select {
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--ink);
+  box-shadow: var(--inner-highlight), var(--shadow-soft);
+  backdrop-filter: blur(22px) saturate(142%);
+  -webkit-backdrop-filter: blur(22px) saturate(142%);
+}
+
+.icon-button,
+.icon-button.light {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.topbar.home-hero {
+  margin-bottom: var(--space-5);
+}
+
+.attention-summary {
+  gap: 9px;
+}
+
+.summary-metric {
+  min-height: 64px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.065));
+}
+
+.summary-metric span,
+.history-summary span,
+.history-item span {
+  color: var(--soft-muted);
+}
+
+.summary-metric strong,
+.history-summary strong,
+.history-item strong,
+.budget-total strong,
+.amount {
+  color: var(--ink);
+}
+
+.bill-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent, var(--teal)) 18%, transparent), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.145), rgba(255, 255, 255, 0.07));
+  box-shadow: var(--inner-highlight), var(--shadow);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+.bill-card.is-overdue {
+  border-color: rgba(215, 121, 112, 0.28);
+  background:
+    linear-gradient(145deg, rgba(96, 27, 38, 0.34), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.065));
+}
+
+.bill-card-top h3,
+.budget-name,
+.agenda-title,
+.preset-card strong,
+.day-picker-item strong {
+  color: var(--ink);
+  font-weight: 760;
+}
+
+.bill-meta,
+.bill-meta span + span::before {
+  color: var(--muted);
+}
+
+.bill-meta span + span::before {
+  background: rgba(247, 242, 233, 0.34);
+}
+
+.urgency-badge,
+.status {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: rgba(255, 255, 255, 0.13);
+  color: var(--muted);
+}
+
+.urgency-badge.is-overdue,
+.status.overdue,
+.agenda-card.is-overdue .urgency-badge,
+.day-picker-item.is-overdue {
+  background: rgba(94, 30, 42, 0.42);
+  border-color: rgba(215, 121, 112, 0.28);
+  color: #f0b1aa;
+}
+
+.urgency-badge.is-tomorrow,
+.urgency-badge.is-soon,
+.agenda-card.is-tomorrow .urgency-badge,
+.agenda-card.is-soon .urgency-badge,
+.day-picker-item.is-tomorrow,
+.day-picker-item.is-soon {
+  background: rgba(121, 82, 32, 0.42);
+  border-color: rgba(215, 173, 103, 0.3);
+  color: #edd09a;
+}
+
+.urgency-badge.is-paid,
+.day-picker-item.is-paid {
+  background: rgba(45, 105, 81, 0.34);
+  border-color: rgba(155, 215, 173, 0.26);
+  color: #bde8c8;
+}
+
+.notice-mark,
+.category-glyph {
+  border-radius: var(--pill);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--teal)) 34%, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--accent, var(--teal)) 18%, rgba(255, 255, 255, 0.075));
+  color: color-mix(in srgb, var(--accent, var(--teal)) 72%, #fff);
+  box-shadow: var(--inner-highlight);
+}
+
+.guidance-panel,
+.settings-section.quiet {
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: var(--inner-highlight);
+}
+
+.reminder-strip {
+  background: rgba(121, 82, 32, 0.18);
+  border-color: rgba(215, 173, 103, 0.18);
+}
+
+.recurring-prompt {
+  background: rgba(143, 213, 198, 0.105);
+  border-color: rgba(143, 213, 198, 0.18);
+}
+
+.disclosure-button {
+  border-radius: var(--radius);
+}
+
+.disclosure-count {
+  background: rgba(143, 213, 198, 0.16);
+  color: #c6fff2;
+}
+
+.tabbar {
+  background: rgba(10, 14, 24, 0.72);
+  box-shadow: var(--inner-highlight), 0 24px 80px rgba(0, 0, 0, 0.42);
+}
+
+.tab {
+  color: var(--muted);
+}
+
+.calendar-controls,
+.budget-total {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.065));
+}
+
+.calendar-day {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.calendar-day.has-bill {
+  cursor: pointer;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent, var(--teal)) 18%, transparent), transparent 58%),
+    rgba(255, 255, 255, 0.08);
+}
+
+.calendar-day.has-overdue {
+  background: rgba(94, 30, 42, 0.36);
+  color: #f0b1aa;
+}
+
+.calendar-day.has-due-soon {
+  background: rgba(121, 82, 32, 0.32);
+  color: #edd09a;
+}
+
+.calendar-day.has-paid-only {
+  background: rgba(45, 105, 81, 0.26);
+  color: #bde8c8;
+}
+
+.calendar-day.is-today::before {
+  border-color: rgba(143, 213, 198, 0.6);
+}
+
+.dot {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.075);
+}
+
+.agenda-card,
+.budget-card {
+  border-left: 1px solid var(--line);
+  cursor: default;
+}
+
+.agenda-card {
+  cursor: pointer;
+}
+
+.agenda-card,
+.budget-card,
+.preset-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent, var(--teal)) 13%, transparent), transparent 50%),
+    rgba(255, 255, 255, 0.085);
+}
+
+.agenda-card.is-overdue {
+  background: rgba(94, 30, 42, 0.28);
+}
+
+.agenda-card.is-tomorrow,
+.agenda-card.is-soon {
+  background: rgba(121, 82, 32, 0.24);
+}
+
+.agenda-card.is-paid {
+  background: rgba(45, 105, 81, 0.2);
+}
+
+.budget-total p,
+.notification-status span {
+  color: var(--muted);
+}
+
+.meter {
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.meter span {
+  border-radius: var(--pill);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent, var(--teal)) 72%, #fff), var(--teal));
+}
+
+.sheet-backdrop {
+  background: rgba(3, 5, 10, 0.58);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.quick-sheet {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08)),
+    rgba(8, 11, 18, 0.84);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: var(--inner-highlight), 0 -32px 92px rgba(0, 0, 0, 0.52);
+}
+
+.sheet-handle {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+input,
+select {
+  color-scheme: dark;
+}
+
+input::placeholder {
+  color: rgba(247, 242, 233, 0.38);
+}
+
+.danger-action {
+  background: rgba(94, 30, 42, 0.42);
+  border-color: rgba(215, 121, 112, 0.32);
+  color: #f0b1aa;
+}
+
+.day-picker-sheet {
+  max-height: 68dvh;
+}
+
+.day-picker-list {
+  display: grid;
+  gap: 10px;
+}
+
+.day-picker-item {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent, var(--teal)) 14%, transparent), transparent 50%),
+    rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: var(--inner-highlight), var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    transform var(--motion-fast) var(--ease-premium),
+    border-color var(--motion-fast) var(--ease-premium),
+    background-color var(--motion-fast) var(--ease-premium);
+}
+
+.day-picker-item span {
+  min-width: 0;
+}
+
+.day-picker-item span:last-child {
+  flex: 0 0 auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.day-picker-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.day-picker-item:focus-visible {
+  outline: 3px solid rgba(143, 213, 198, 0.32);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .primary-cta:hover,
+  .mark-button:hover,
+  .primary-action:hover {
+    background: linear-gradient(180deg, rgba(143, 213, 198, 0.36), rgba(143, 213, 198, 0.2));
+  }
+
+  .icon-button.light:hover,
+  .secondary-action:hover,
+  .file-action:hover,
+  .preset-pill:hover,
+  .disclosure-button:hover,
+  .day-picker-item:hover {
+    border-color: var(--line-strong);
+    background: rgba(255, 255, 255, 0.145);
   }
 }
 

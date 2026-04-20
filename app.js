@@ -134,7 +134,9 @@ const app = document.querySelector("#app");
 const tabs = document.querySelectorAll(".tab");
 const sheet = document.querySelector("#quickSheet");
 const settingsSheet = document.querySelector("#settingsSheet");
+const dayPickerSheet = document.querySelector("#dayPickerSheet");
 const settingsContent = document.querySelector("#settingsContent");
+const dayPickerContent = document.querySelector("#dayPickerContent");
 const printExport = document.querySelector("#printExport");
 const backdrop = document.querySelector("#sheetBackdrop");
 const billForm = document.querySelector("#billForm");
@@ -601,16 +603,7 @@ function renderUpcoming() {
       render();
     });
   });
-  document.querySelectorAll("[data-edit-bill]").forEach((card) => {
-    const edit = () => openSheet(Number(card.dataset.editBill));
-    card.addEventListener("click", edit);
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        edit();
-      }
-    });
-  });
+  bindEditableBillCards();
 }
 
 function renderReminderStrip() {
@@ -739,6 +732,8 @@ function renderCalendar() {
     saveState();
     render();
   });
+  bindCalendarDayEditing(monthBills);
+  bindEditableBillCards();
 }
 
 function renderCalendarDay(day, monthBills, index = 0) {
@@ -750,7 +745,7 @@ function renderCalendarDay(day, monthBills, index = 0) {
   const isToday = toDateInputValue(today) === `${visibleCalendarMonth}-${String(day).padStart(2, "0")}`;
   const category = matches[0] ? getCategory(matches[0].category) : null;
   return `
-    <div class="calendar-day ${matches.length ? "has-bill" : ""} ${hasOverdue ? "has-overdue" : ""} ${hasDueSoon ? "has-due-soon" : ""} ${hasPaidOnly ? "has-paid-only" : ""} ${isToday ? "is-today" : ""}" style="--accent:${category?.color || "var(--teal)"}; --delay:${Math.min(index * 8, 220)}ms">
+    <div class="calendar-day ${matches.length ? "has-bill" : ""} ${hasOverdue ? "has-overdue" : ""} ${hasDueSoon ? "has-due-soon" : ""} ${hasPaidOnly ? "has-paid-only" : ""} ${isToday ? "is-today" : ""}" style="--accent:${category?.color || "var(--teal)"}; --delay:${Math.min(index * 8, 220)}ms" ${matches.length ? `data-calendar-day="${day}" tabindex="0" role="button" aria-label="Edit bills due ${dateFormat.format(parseDate(`${visibleCalendarMonth}-${String(day).padStart(2, "0")}`))}"` : ""}>
       ${day}
       ${matches.length ? `<span class="dot" style="--accent:${category.color}"></span>` : ""}
     </div>
@@ -761,7 +756,7 @@ function renderAgendaCard(bill, index = 0) {
   const category = getCategory(bill.category);
   const state = statusClass(bill);
   return `
-    <article class="agenda-card home-reveal ${state}" style="--accent:${category.color}; --delay:${185 + index * 42}ms">
+    <article class="agenda-card home-reveal ${state}" style="--accent:${category.color}; --delay:${185 + index * 42}ms" data-edit-bill="${bill.id}" tabindex="0" role="button" aria-label="Edit ${bill.name}">
       <div class="budget-line">
         <div>
           <p class="eyebrow">${longDateFormat.format(parseDate(bill.due))}</p>
@@ -867,7 +862,7 @@ function openSheet(billId = null) {
 
 function closeSheet() {
   sheet.hidden = true;
-  if (settingsSheet.hidden) backdrop.hidden = true;
+  if (settingsSheet.hidden && dayPickerSheet.hidden) backdrop.hidden = true;
   billForm.reset();
   editingBillId = null;
   deleteBillButton.hidden = true;
@@ -886,13 +881,85 @@ function openSettingsSheet() {
 
 function closeSettingsSheet() {
   settingsSheet.hidden = true;
-  if (sheet.hidden) backdrop.hidden = true;
+  if (sheet.hidden && dayPickerSheet.hidden) backdrop.hidden = true;
   lastTrigger?.focus?.();
 }
 
+function openDayPicker(day, monthBills) {
+  const dayBills = sortBills(monthBills.filter((bill) => parseDate(bill.due).getDate() === day));
+  if (!dayBills.length) return;
+  if (dayBills.length === 1) {
+    openSheet(dayBills[0].id);
+    return;
+  }
+  lastTrigger = document.activeElement;
+  const date = parseDate(`${visibleCalendarMonth}-${String(day).padStart(2, "0")}`);
+  document.querySelector("#dayPickerTitle").textContent = longDateFormat.format(date);
+  dayPickerContent.innerHTML = dayBills.map(renderDayPickerBill).join("");
+  dayPickerSheet.hidden = false;
+  backdrop.hidden = false;
+  dayPickerSheet.querySelector("[data-day-picker-bill]")?.focus();
+  dayPickerSheet.querySelectorAll("[data-day-picker-bill]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const billId = Number(button.dataset.dayPickerBill);
+      closeDayPicker(false);
+      openSheet(billId);
+    });
+  });
+}
+
+function renderDayPickerBill(bill) {
+  const category = getCategory(bill.category);
+  const state = statusClass(bill);
+  return `
+    <button class="day-picker-item ${state}" type="button" data-day-picker-bill="${bill.id}" style="--accent:${category.color}">
+      <span>
+        <strong>${bill.name}</strong>
+        <small>${bill.category} · ${statusText(bill)}</small>
+      </span>
+      <span>${money.format(bill.amount)}</span>
+    </button>
+  `;
+}
+
+function closeDayPicker(restoreFocus = true) {
+  dayPickerSheet.hidden = true;
+  dayPickerContent.innerHTML = "";
+  if (sheet.hidden && settingsSheet.hidden) backdrop.hidden = true;
+  if (restoreFocus) lastTrigger?.focus?.();
+}
+
+function bindEditableBillCards() {
+  document.querySelectorAll("[data-edit-bill]").forEach((card) => {
+    const edit = () => openSheet(Number(card.dataset.editBill));
+    card.addEventListener("click", edit);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        edit();
+      }
+    });
+  });
+}
+
+function bindCalendarDayEditing(monthBills) {
+  document.querySelectorAll("[data-calendar-day]").forEach((dayCell) => {
+    const open = () => openDayPicker(Number(dayCell.dataset.calendarDay), monthBills);
+    dayCell.addEventListener("click", open);
+    dayCell.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+}
+
 function closeAllSheets() {
-  closeSheet();
-  closeSettingsSheet();
+  if (!sheet.hidden) closeSheet();
+  if (!settingsSheet.hidden) closeSettingsSheet();
+  if (!dayPickerSheet.hidden) closeDayPicker(false);
+  backdrop.hidden = true;
 }
 
 function syncBillCategoryOptions(preferred = billCategory.value) {
@@ -1099,6 +1166,7 @@ function setupForm() {
 
   document.querySelector("#closeSheet").addEventListener("click", closeSheet);
   document.querySelector("#closeSettingsSheet").addEventListener("click", closeSettingsSheet);
+  document.querySelector("#closeDayPickerSheet").addEventListener("click", closeDayPicker);
   backdrop.addEventListener("click", closeAllSheets);
 }
 
@@ -1407,6 +1475,7 @@ function setupBackupControls() {
 }
 
 function activeSheet() {
+  if (!dayPickerSheet.hidden) return dayPickerSheet;
   if (!settingsSheet.hidden) return settingsSheet;
   if (!sheet.hidden) return sheet;
   return null;
@@ -1418,6 +1487,7 @@ function setupAccessibility() {
     if (!currentSheet) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      if (currentSheet === dayPickerSheet) closeDayPicker();
       if (currentSheet === settingsSheet) closeSettingsSheet();
       if (currentSheet === sheet) closeSheet();
       return;
