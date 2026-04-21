@@ -21,6 +21,12 @@ const icons = {
   gear: `<svg viewBox="0 0 24 24"><path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z"/><path d="M19.3 13.8a7.9 7.9 0 0 0 .05-1.8l2-1.55-2-3.45-2.5 1a8.35 8.35 0 0 0-1.55-.9L14.9 4h-4l-.4 3.1c-.55.24-1.07.54-1.55.9l-2.5-1-2 3.45 2 1.55a7.9 7.9 0 0 0 .05 1.8l-2 1.55 2 3.45 2.5-1c.48.36 1 .66 1.55.9l.4 3.1h4l.4-3.1c.55-.24 1.07-.54 1.55-.9l2.5 1 2-3.45-2.1-1.55Z"/></svg>`,
   alert: `<svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.4 4.8 3.2 17.3A2 2 0 0 0 4.9 20h14.2a2 2 0 0 0 1.7-2.7L13.6 4.8a1.85 1.85 0 0 0-3.2 0Z"/></svg>`,
   chevron: `<svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>`,
+  back: `<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24"><path d="m4 20 4.5-1 9-9a2.12 2.12 0 0 0-3-3l-9 9L4 20Z"/><path d="m13 7 4 4"/></svg>`,
+  archive: `<svg viewBox="0 0 24 24"><path d="M4 7.5h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M3 7.5h18V4.75a1.25 1.25 0 0 0-1.25-1.25H4.25A1.25 1.25 0 0 0 3 4.75V7.5Z"/><path d="M10 12h4"/></svg>`,
+  restore: `<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.35-5.65"/><path d="M4 4v4h4"/></svg>`,
+  bell: `<svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2 7.5 2 7.5H4S6 15 6 9"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>`,
+  repeat: `<svg viewBox="0 0 24 24"><path d="M17 17H7a3 3 0 0 1 0-6h10"/><path d="m14 8 3-3 3 3"/><path d="M7 7h10a3 3 0 1 1 0 6H7"/><path d="m10 16-3 3-3-3"/></svg>`,
   home: `<svg viewBox="0 0 24 24"><path d="m4 10 8-6 8 6"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-6h4v6"/></svg>`,
   utilities: `<svg viewBox="0 0 24 24"><path d="M13 2 6 13h5l-1 9 8-13h-5l1-7Z"/></svg>`,
   vehicle: `<svg viewBox="0 0 24 24"><path d="M5 16h14l-1.5-5.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5L5 16Z"/><path d="M7 16v2.5M17 16v2.5M7.5 13h.01M16.5 13h.01"/></svg>`,
@@ -44,25 +50,63 @@ function icon(name) {
 }
 
 const starterCategories = Object.freeze([
-  { name: "Home", color: "#5cae9f", planned: 160000, assigned: 141500 },
-  { name: "Utilities", color: "#e38a7f", planned: 36000, assigned: 25370 },
-  { name: "Phone & internet", color: "#6c98c6", planned: 22000, assigned: 15000 },
-  { name: "Vehicle", color: "#8f87cf", planned: 28000, assigned: 17100 },
-  { name: "Insurance", color: "#b17ca0", planned: 50000, assigned: 42000 },
-  { name: "Transport", color: "#86a95f", planned: 24000, assigned: 22000 },
-  { name: "Subscriptions", color: "#d890ba", planned: 7000, assigned: 3050 },
-  { name: "Wellness", color: "#7bbf9c", planned: 12000, assigned: 7000 },
-  { name: "Loans", color: "#c7a64d", planned: 56000, assigned: 37500 },
-  { name: "School", color: "#70a0a8", planned: 30000, assigned: 18000 },
-  { name: "Medical", color: "#e39a70", planned: 16000, assigned: 12000 },
-  { name: "Groceries", color: "#a7b86f", planned: 46000, assigned: 42000 },
-  { name: "Savings", color: "#5d9fb0", planned: 45000, assigned: 45000 },
-  { name: "Tax planning", color: "#9ba566", planned: 24000, assigned: 18000 }
+  { name: "Home", color: "#4d8dff", planned: 160000, assigned: 141500 },
+  { name: "Utilities", color: "#ff9c6a", planned: 36000, assigned: 25370 },
+  { name: "Phone & internet", color: "#68a3ff", planned: 22000, assigned: 15000 },
+  { name: "Vehicle", color: "#b38aff", planned: 28000, assigned: 17100 },
+  { name: "Insurance", color: "#ff7d7d", planned: 50000, assigned: 42000 },
+  { name: "Transport", color: "#7ccf8a", planned: 24000, assigned: 22000 },
+  { name: "Subscriptions", color: "#d78fff", planned: 7000, assigned: 3050 },
+  { name: "Wellness", color: "#5dc2b2", planned: 12000, assigned: 7000 },
+  { name: "Loans", color: "#ffc85f", planned: 56000, assigned: 37500 },
+  { name: "School", color: "#67b8c8", planned: 30000, assigned: 18000 },
+  { name: "Medical", color: "#ff8d6f", planned: 16000, assigned: 12000 },
+  { name: "Groceries", color: "#b5c862", planned: 46000, assigned: 42000 },
+  { name: "Savings", color: "#4ea6bb", planned: 45000, assigned: 45000 },
+  { name: "Tax planning", color: "#a0af6b", planned: 24000, assigned: 18000 }
 ]);
+
+function cloneCategory(category) {
+  return {
+    name: category.name,
+    color: category.color,
+    planned: category.planned,
+    assigned: category.assigned
+  };
+}
+
+function normalizeActivity(events) {
+  if (!Array.isArray(events)) return [];
+  return events
+    .filter((event) => event && typeof event.type === "string")
+    .map((event) => ({ ...event, at: event.at || new Date().toISOString() }));
+}
+
+function cloneBill(bill) {
+  return {
+    ...bill,
+    activity: normalizeActivity(bill.activity)
+  };
+}
 
 let categories = starterCategories.map(cloneCategory);
 
-const categoryColors = ["#5cae9f", "#e38a7f", "#6c98c6", "#8f87cf", "#b17ca0", "#86a95f", "#d890ba", "#7bbf9c", "#c7a64d", "#70a0a8", "#e39a70", "#a7b86f", "#5d9fb0", "#9ba566"];
+const categoryColors = [
+  "#4d8dff",
+  "#ff9c6a",
+  "#68a3ff",
+  "#b38aff",
+  "#ff7d7d",
+  "#7ccf8a",
+  "#d78fff",
+  "#5dc2b2",
+  "#ffc85f",
+  "#67b8c8",
+  "#ff8d6f",
+  "#b5c862",
+  "#4ea6bb",
+  "#a0af6b"
+];
 
 const presets = [
   { name: "JPS electricity", category: "Utilities", amount: 18500, note: "Monthly electricity bill." },
@@ -135,19 +179,25 @@ let bills = starterBills.map(cloneBill);
 const starterBillIds = new Set(starterBills.map((bill) => bill.id));
 const starterCategoryNames = new Set(starterCategories.map((category) => category.name));
 
-let selectedBudgetCategory = categories[0].name;
+const repeatLabels = {
+  none: "Does not repeat",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  yearly: "Yearly"
+};
+
 const themeColorMeta = document.querySelector("meta[name='theme-color']");
 const app = document.querySelector("#app");
+const tabbar = document.querySelector("#tabbar");
 const tabs = document.querySelectorAll(".tab");
 const sheet = document.querySelector("#quickSheet");
 const settingsSheet = document.querySelector("#settingsSheet");
-const dayPickerSheet = document.querySelector("#dayPickerSheet");
+const actionSheet = document.querySelector("#actionSheet");
 const settingsContent = document.querySelector("#settingsContent");
-const dayPickerContent = document.querySelector("#dayPickerContent");
+const actionSheetTitle = document.querySelector("#actionSheetTitle");
+const actionSheetContent = document.querySelector("#actionSheetContent");
 const printExport = document.querySelector("#printExport");
 const toastRegion = document.querySelector("#toastRegion");
-const MAX_TOASTS = 3;
-const toastTimers = new WeakMap();
 const backdrop = document.querySelector("#sheetBackdrop");
 const billForm = document.querySelector("#billForm");
 const presetRail = document.querySelector("#presetRail");
@@ -159,13 +209,18 @@ const billRepeat = document.querySelector("#billRepeat");
 const billPaid = document.querySelector("#billPaid");
 const paidRow = document.querySelector("#paidRow");
 const deleteBillButton = document.querySelector("#deleteBill");
+const MAX_TOASTS = 3;
+const toastTimers = new WeakMap();
+
 let activeTab = "upcoming";
-let presetsOpen = false;
-let selectedHistoryMonth = "2026-04";
-let visibleCalendarMonth = "2026-04";
+let activeBillId = null;
 let editingBillId = null;
 let pendingRecurringBillId = null;
+let selectedBudgetCategory = categories[0].name;
+let selectedHistoryMonth = "2026-04";
+let visibleCalendarMonth = "2026-04";
 let lastTrigger = null;
+let actionBillId = null;
 let settings = {
   initialized: true,
   reminderDays: 3,
@@ -199,6 +254,13 @@ const monthFormat = new Intl.DateTimeFormat("en-JM", {
   year: "numeric"
 });
 
+const timelineFormat = new Intl.DateTimeFormat("en-JM", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit"
+});
+
 function parseDate(value) {
   return new Date(`${value}T12:00:00`);
 }
@@ -210,6 +272,10 @@ function toDateInputValue(date) {
   return `${year}-${month}-${day}`;
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function monthKey(value) {
   return value.slice(0, 7);
 }
@@ -218,17 +284,16 @@ function monthLabel(key) {
   return monthFormat.format(new Date(`${key}-01T12:00:00`));
 }
 
-function cloneCategory(category) {
-  return {
-    name: category.name,
-    color: category.color,
-    planned: category.planned,
-    assigned: category.assigned
-  };
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "item";
 }
 
-function cloneBill(bill) {
-  return { ...bill };
+function makeSeriesKey(source) {
+  return `${slugify(source?.name)}::${slugify(source?.category || "general")}`;
 }
 
 function shiftMonth(key, offset) {
@@ -238,8 +303,7 @@ function shiftMonth(key, offset) {
 }
 
 function getAvailableMonths() {
-  return [...new Set([...bills.map((bill) => monthKey(bill.due)), "2026-04"])]
-    .sort();
+  return [...new Set([...bills.map((bill) => monthKey(bill.due)), "2026-04"])].sort();
 }
 
 function getMonthBills(key) {
@@ -250,22 +314,24 @@ function getMonthSummary(key) {
   const items = getMonthBills(key);
   const total = items.reduce((sum, bill) => sum + bill.amount, 0);
   const paid = items.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const unpaidItems = items.filter((bill) => !bill.paid);
+  const unpaidItems = items.filter((bill) => !bill.paid && !bill.archived);
   const overdueItems = unpaidItems.filter((bill) => daysUntil(bill.due) < 0);
   return { items, total, paid, unpaidItems, overdueItems };
 }
 
-function getReminderItems() {
-  return sortBills(bills.filter((bill) => {
-    if (bill.paid) return false;
-    const days = daysUntil(bill.due);
-    return days < 0 || days <= settings.reminderDays;
-  }));
+function getVisibleBills() {
+  return sortBills(bills.filter((bill) => !bill.archived && !bill.paid));
+}
+
+function getArchivedBills() {
+  return [...bills]
+    .filter((bill) => bill.archived)
+    .sort((a, b) => new Date(b.archivedAt || `${b.due}T12:00:00`) - new Date(a.archivedAt || `${a.due}T12:00:00`));
 }
 
 function getPushReminderItems() {
   return sortBills(bills.filter((bill) => {
-    if (bill.paid) return false;
+    if (bill.paid || bill.archived) return false;
     const days = daysUntil(bill.due);
     return days >= 0 && days <= PUSH_REMINDER_DAYS;
   }));
@@ -287,7 +353,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePreference = settings.theme;
-  themeColorMeta?.setAttribute("content", theme === "light" ? "#edf0eb" : "#080b12");
+  themeColorMeta?.setAttribute("content", theme === "light" ? "#ffffff" : "#111315");
 }
 
 function showToast(message, options = {}) {
@@ -330,19 +396,120 @@ function dismissToast(toast) {
   window.setTimeout(() => toast.remove(), 220);
 }
 
+function cleanAmount(value) {
+  return Math.max(0, Number(String(value).replace(/[^0-9.]/g, "")) || 0);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function createActivity(type, extra = {}) {
+  return {
+    type,
+    at: extra.at || nowIso(),
+    ...extra
+  };
+}
+
+function appendActivity(bill, type, extra = {}) {
+  bill.activity = [...normalizeActivity(bill.activity), createActivity(type, extra)];
+}
+
+function inferRepeat(bill) {
+  const normalized = `${bill.name} ${bill.category}`.toLowerCase();
+  if (normalized.includes("property tax") || normalized.includes("insurance") || normalized.includes("fitness") || normalized.includes("registration")) return "yearly";
+  if (normalized.includes("groceries") || normalized.includes("transport")) return "none";
+  if (normalized.includes("rent") || normalized.includes("jps") || normalized.includes("nwc") || normalized.includes("internet") || normalized.includes("netflix") || normalized.includes("spotify") || normalized.includes("gym") || normalized.includes("loan") || normalized.includes("slb")) return "monthly";
+  return bill.repeat || "none";
+}
+
+function advanceDueDate(value, repeat) {
+  const next = parseDate(value);
+  if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
+  if (repeat === "quarterly") next.setMonth(next.getMonth() + 3);
+  if (repeat === "yearly") next.setFullYear(next.getFullYear() + 1);
+  return toDateInputValue(next);
+}
+
+function normalizeBill(bill) {
+  const due = bill.due || toDateInputValue(today);
+  const paid = Boolean(bill.paid);
+  return {
+    id: bill.id || Date.now() + Math.floor(Math.random() * 100000),
+    name: bill.name || "Untitled bill",
+    category: bill.category || categories[0]?.name || "Home",
+    amount: cleanAmount(bill.amount),
+    due,
+    paid,
+    repeat: ["none", "monthly", "quarterly", "yearly"].includes(bill.repeat) ? bill.repeat : inferRepeat(bill),
+    seriesKey: bill.seriesKey || makeSeriesKey(bill),
+    archived: Boolean(bill.archived),
+    archivedAt: bill.archivedAt || null,
+    completedAt: paid ? bill.completedAt || `${due}T12:00:00` : null,
+    activity: normalizeActivity(bill.activity)
+  };
+}
+
+function createNextBillFrom(bill) {
+  const repeat = bill.repeat || "none";
+  if (repeat === "none") return null;
+  return normalizeBill({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    name: bill.name,
+    category: bill.category,
+    amount: bill.amount,
+    due: advanceDueDate(bill.due, repeat),
+    paid: false,
+    repeat,
+    seriesKey: bill.seriesKey,
+    archived: false,
+    archivedAt: null,
+    completedAt: null,
+    activity: [createActivity("created", { note: "Next bill created from recurrence." })]
+  });
+}
+
+function isValidState(state) {
+  return state &&
+    Array.isArray(state.bills) &&
+    Array.isArray(state.categories) &&
+    state.bills.every((bill) => bill && typeof bill.name === "string" && typeof bill.due === "string") &&
+    state.categories.every((category) => category && typeof category.name === "string");
+}
+
+function appState() {
+  return {
+    version: 2,
+    savedAt: new Date().toISOString(),
+    bills,
+    categories,
+    settings,
+    selectedBudgetCategory,
+    selectedHistoryMonth,
+    visibleCalendarMonth,
+    metadata: {
+      starterDataLoaded: true
+    }
+  };
+}
+
 function pushSnapshot() {
   return {
     generatedAt: new Date().toISOString(),
     reminderDays: PUSH_REMINDER_DAYS,
-    bills: bills.map((bill) => ({
-      id: String(bill.id),
-      name: bill.name,
-      category: bill.category,
-      amount: bill.amount,
-      due: bill.due,
-      paid: bill.paid,
-      repeat: bill.repeat || "none"
-    }))
+    bills: bills
+      .filter((bill) => !bill.archived)
+      .map((bill) => ({
+        id: String(bill.id),
+        name: bill.name,
+        category: bill.category,
+        amount: bill.amount,
+        due: bill.due,
+        paid: bill.paid,
+        repeat: bill.repeat || "none"
+      }))
   };
 }
 
@@ -399,72 +566,6 @@ async function syncPushSnapshot() {
   saveState(false);
 }
 
-function inferRepeat(bill) {
-  const normalized = `${bill.name} ${bill.category}`.toLowerCase();
-  if (normalized.includes("property tax") || normalized.includes("insurance") || normalized.includes("fitness") || normalized.includes("registration")) return "yearly";
-  if (normalized.includes("groceries") || normalized.includes("transport")) return "none";
-  if (normalized.includes("rent") || normalized.includes("jps") || normalized.includes("nwc") || normalized.includes("internet") || normalized.includes("netflix") || normalized.includes("spotify") || normalized.includes("gym") || normalized.includes("loan") || normalized.includes("slb")) return "monthly";
-  return bill.repeat || "none";
-}
-
-function advanceDueDate(value, repeat) {
-  const next = parseDate(value);
-  if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
-  if (repeat === "quarterly") next.setMonth(next.getMonth() + 3);
-  if (repeat === "yearly") next.setFullYear(next.getFullYear() + 1);
-  return toDateInputValue(next);
-}
-
-function createNextBillFrom(bill) {
-  const repeat = bill.repeat || "none";
-  if (repeat === "none") return null;
-  return {
-    id: Date.now() + Math.floor(Math.random() * 1000),
-    name: bill.name,
-    category: bill.category,
-    amount: bill.amount,
-    due: advanceDueDate(bill.due, repeat),
-    paid: false,
-    repeat
-  };
-}
-
-function normalizeBill(bill) {
-  return {
-    id: bill.id || Date.now() + Math.floor(Math.random() * 100000),
-    name: bill.name || "Untitled bill",
-    category: bill.category || categories[0]?.name || "Home",
-    amount: cleanAmount(bill.amount),
-    due: bill.due || toDateInputValue(today),
-    paid: Boolean(bill.paid),
-    repeat: ["none", "monthly", "quarterly", "yearly"].includes(bill.repeat) ? bill.repeat : inferRepeat(bill)
-  };
-}
-
-function isValidState(state) {
-  return state &&
-    Array.isArray(state.bills) &&
-    Array.isArray(state.categories) &&
-    state.bills.every((bill) => bill && typeof bill.name === "string" && typeof bill.due === "string") &&
-    state.categories.every((category) => category && typeof category.name === "string");
-}
-
-function appState() {
-  return {
-    version: 1,
-    savedAt: new Date().toISOString(),
-    bills,
-    categories,
-    settings,
-    selectedBudgetCategory,
-    selectedHistoryMonth,
-    visibleCalendarMonth,
-    metadata: {
-      starterDataLoaded: true
-    }
-  };
-}
-
 function saveState(syncPush = true) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
@@ -504,9 +605,9 @@ function loadState() {
     settings = { ...settings, ...(state.settings || {}) };
     settings.theme = validTheme(settings.theme);
     selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
-    ensureCategorySafety();
     selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
     visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
+    ensureCategorySafety();
   } catch (error) {
     console.warn("Could not load saved UpNextBudgeting state", error);
     bills = bills.map(normalizeBill);
@@ -528,14 +629,16 @@ function getCategory(name) {
 function defaultCategory() {
   return categories.find((category) => category.name === "Home") || categories[0] || {
     name: "General",
-    color: "#8fd5c6",
+    color: "#4d8dff",
     planned: 0,
     assigned: 0
   };
 }
 
 function ensureCategorySafety() {
-  if (!categories.length) categories = [{ name: "General", color: "#8fd5c6", planned: 0, assigned: 0 }];
+  if (!categories.length) {
+    categories = [{ name: "General", color: "#4d8dff", planned: 0, assigned: 0 }];
+  }
   const fallback = defaultCategory().name;
   bills = bills.map((bill) => categories.some((category) => category.name === bill.category) ? bill : { ...bill, category: fallback });
   selectedBudgetCategory = categories.some((category) => category.name === selectedBudgetCategory) ? selectedBudgetCategory : fallback;
@@ -563,6 +666,8 @@ function categoryIconName(name) {
 
 function sortBills(items) {
   return [...items].sort((a, b) => {
+    if (a.archived !== b.archived) return a.archived ? 1 : -1;
+    if (a.paid !== b.paid) return a.paid ? 1 : -1;
     const aOverdue = !a.paid && daysUntil(a.due) < 0;
     const bOverdue = !b.paid && daysUntil(b.due) < 0;
     if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
@@ -579,7 +684,13 @@ function statusText(bill) {
   return `Due in ${days} days`;
 }
 
+function recordStatusText(bill) {
+  if (bill.archived && !bill.paid) return "Archived";
+  return statusText(bill);
+}
+
 function statusClass(bill) {
+  if (bill.archived && !bill.paid) return "is-archived";
   if (bill.paid) return "is-paid";
   const days = daysUntil(bill.due);
   if (days < 0) return "is-overdue";
@@ -588,194 +699,276 @@ function statusClass(bill) {
   return "is-scheduled";
 }
 
+function statusTone(bill) {
+  const state = statusClass(bill);
+  if (state === "is-overdue") return "danger";
+  if (state === "is-tomorrow" || state === "is-soon") return "warning";
+  if (state === "is-paid") return "success";
+  if (state === "is-archived") return "neutral";
+  return "info";
+}
+
 function monthName(date = today) {
   return new Intl.DateTimeFormat("en-JM", { month: "long", year: "numeric" }).format(date);
 }
 
-function render() {
-  if (activeTab === "calendar") renderCalendar();
-  if (activeTab === "budget") renderBudget();
-  if (activeTab === "upcoming") renderUpcoming();
-  tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.tab === activeTab));
-  updateAppBadge();
+function replaceOrInsertBill(record) {
+  const normalized = normalizeBill(record);
+  const index = bills.findIndex((bill) => bill.id === normalized.id);
+  if (index >= 0) {
+    bills[index] = normalized;
+  } else {
+    bills.push(normalized);
+  }
 }
 
-function renderUpcoming() {
-  const unpaid = sortBills(bills.filter((bill) => !bill.paid));
-  const nextThree = unpaid.slice(0, 3);
-  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
-  const moreThisMonth = unpaid.filter((bill) => {
-    const due = parseDate(bill.due);
-    return due.getMonth() === today.getMonth() && due.getFullYear() === today.getFullYear();
-  }).length - nextThree.filter((bill) => parseDate(bill.due).getMonth() === today.getMonth()).length;
-  const nextCheckDate = parseDate(nextThree[0]?.due || today.toISOString().slice(0, 10));
+function getBillById(billId) {
+  return bills.find((bill) => bill.id === billId);
+}
 
-  app.innerHTML = `
-    <header class="topbar home-hero home-reveal" style="--delay: 0ms">
-      <div class="brand-line">
-        <img class="brandmark" src="assets/icon.svg" alt="">
-        <div class="hero-copy">
-          <p class="kicker">UpNextBudgeting</p>
-          <p class="welcome-line">Welcome back, Marshall.</p>
-          <h1>Due next</h1>
-          <p class="hero-subtitle">Three bills need your attention first.</p>
-        </div>
-      </div>
-      <button class="icon-button primary-cta" id="openSheet" type="button" aria-label="Add a bill">
-        ${icon("plus")}
-        <span>Add bill</span>
-      </button>
-    </header>
+function openBillDetail(billId) {
+  const bill = getBillById(billId);
+  if (!bill) return;
+  lastTrigger = document.activeElement;
+  activeBillId = billId;
+  render();
+}
 
-    <section class="attention-summary home-reveal" aria-label="Bill summary" style="--delay: 45ms">
-      <article class="summary-metric ${overdueCount ? "is-overdue" : ""}">
-        <span>Overdue</span>
-        <strong>${overdueCount}</strong>
-      </article>
-      <article class="summary-metric">
-        <span>This month</span>
-        <strong>${Math.max(moreThisMonth, 0)} more</strong>
-      </article>
-      <article class="summary-metric">
-        <span>Next check</span>
-        <strong>${dateFormat.format(nextCheckDate)}</strong>
-      </article>
-    </section>
+function closeBillDetail(restoreFocus = true) {
+  activeBillId = null;
+  render();
+  if (restoreFocus) {
+    window.setTimeout(() => lastTrigger?.focus?.(), 0);
+  }
+}
 
-    <section class="due-stack" aria-label="Next unpaid bills">
-      ${nextThree.map((bill, index) => renderBillCard(bill, index)).join("")}
-    </section>
+function markBillPaid(billId, { quiet = false } = {}) {
+  const bill = getBillById(billId);
+  if (!bill || bill.paid) return;
+  const snapshot = cloneBill(bill);
+  const previousPending = pendingRecurringBillId;
+  bill.paid = true;
+  bill.completedAt = nowIso();
+  appendActivity(bill, "paid", { note: "Marked paid from the app." });
+  pendingRecurringBillId = bill.repeat && bill.repeat !== "none" ? bill.id : null;
+  saveState();
+  render();
+  if (!quiet) {
+    showToast(`${bill.name} marked paid.`, {
+      undo: () => {
+        replaceOrInsertBill(snapshot);
+        pendingRecurringBillId = previousPending;
+        saveState();
+        render();
+        showToast(`${bill.name} marked unpaid.`);
+      }
+    });
+  }
+}
 
-    ${renderRecurringPrompt()}
-
-    ${renderReminderStrip()}
-
-    <section class="planning-layer home-reveal" style="--delay: 260ms" aria-label="Planning notes">
-    <aside class="notice-panel guidance-panel">
-      <span class="notice-mark">${icon("alert")}</span>
-      <div>
-        <h3>Property tax stays visible</h3>
-        <p class="small-note">Due April 1 yearly in Jamaica. Full, half-yearly, or quarterly planning is supported, with April 30 as the first-payment warning date.</p>
-      </div>
-    </aside>
-
-    <section class="preset-disclosure">
-      <button class="disclosure-button" id="togglePresets" type="button" aria-expanded="${presetsOpen}">
-        <span>
-          <span class="mini-label">Memory prompts</span>
-          <strong>Preset reminders</strong>
-        </span>
-        <span class="disclosure-count">${presets.length}</span>
-        <span class="disclosure-arrow ${presetsOpen ? "is-open" : ""}" aria-hidden="true">${icon("chevron")}</span>
-      </button>
-      <div class="preset-panel ${presetsOpen ? "is-open" : ""}" aria-hidden="${!presetsOpen}">
-        <section class="preset-grid" aria-label="Suggested Jamaica-first bill types">
-          ${presets.slice(0, 6).map(renderPresetCard).join("")}
-        </section>
-      </div>
-    </section>
-    </section>
-  `;
-
-  document.querySelector("#openSheet").addEventListener("click", () => openSheet());
-  document.querySelector("#togglePresets").addEventListener("click", () => {
-    presetsOpen = !presetsOpen;
-    render();
-  });
-  document.querySelector("#createNextBill")?.addEventListener("click", () => {
-    const bill = bills.find((item) => item.id === pendingRecurringBillId);
-    const nextBill = bill ? createNextBillFrom(bill) : null;
-    if (nextBill) bills.push(nextBill);
-    pendingRecurringBillId = null;
-    saveState();
-    render();
-    if (nextBill) {
-      showToast(`Next ${nextBill.name} created.`, {
-        undo: () => {
-          bills = bills.filter((item) => item.id !== nextBill.id);
-          saveState();
-          render();
-          showToast("Next bill removed.");
-        }
-      });
+function archiveBill(billId) {
+  const bill = getBillById(billId);
+  if (!bill || bill.archived) return;
+  const snapshot = cloneBill(bill);
+  bill.archived = true;
+  bill.archivedAt = nowIso();
+  appendActivity(bill, "archived", { note: "Archived from bill detail." });
+  if (activeBillId === billId) activeBillId = null;
+  if (pendingRecurringBillId === billId) pendingRecurringBillId = null;
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  showToast(`${bill.name} archived.`, {
+    undo: () => {
+      replaceOrInsertBill(snapshot);
+      saveState();
+      render();
+      if (!settingsSheet.hidden) renderSettingsContent();
+      showToast(`${bill.name} restored.`);
     }
   });
-  document.querySelector("#dismissRecurring")?.addEventListener("click", () => {
-    pendingRecurringBillId = null;
-    saveState();
-    render();
-    showToast("Recurring prompt skipped.");
-  });
-  document.querySelectorAll("[data-paid]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const bill = bills.find((item) => item.id === Number(button.dataset.paid));
-      if (bill) {
-        const previousPending = pendingRecurringBillId;
-        bill.paid = true;
-        pendingRecurringBillId = bill.repeat && bill.repeat !== "none" ? bill.id : null;
-        saveState();
-        showToast(`${bill.name} marked paid.`, {
-          undo: () => {
-            const current = bills.find((item) => item.id === bill.id);
-            if (!current) return;
-            current.paid = false;
-            pendingRecurringBillId = previousPending;
-            saveState();
-            render();
-            showToast(`${bill.name} marked unpaid.`);
-          }
-        });
-      }
+}
+
+function restoreArchivedBill(billId) {
+  const bill = getBillById(billId);
+  if (!bill || !bill.archived) return;
+  const snapshot = cloneBill(bill);
+  bill.archived = false;
+  bill.archivedAt = null;
+  appendActivity(bill, "restored", { note: "Restored from archive." });
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  showToast(`${bill.name} restored.`, {
+    undo: () => {
+      replaceOrInsertBill(snapshot);
+      saveState();
       render();
+      if (!settingsSheet.hidden) renderSettingsContent();
+      showToast(`${bill.name} archived again.`);
+    }
+  });
+}
+
+function snoozeBill(billId, nextDue) {
+  const bill = getBillById(billId);
+  if (!bill || bill.paid || bill.archived || !nextDue || nextDue === bill.due) return;
+  const snapshot = cloneBill(bill);
+  const previousDue = bill.due;
+  bill.due = nextDue;
+  appendActivity(bill, "snoozed", {
+    from: previousDue,
+    to: nextDue,
+    note: `Snoozed from ${dateFormat.format(parseDate(previousDue))} to ${dateFormat.format(parseDate(nextDue))}.`
+  });
+  saveState();
+  closeActionSheet(false);
+  render();
+  showToast(`${bill.name} moved to ${dateFormat.format(parseDate(nextDue))}.`, {
+    undo: () => {
+      replaceOrInsertBill(snapshot);
+      saveState();
+      render();
+      showToast(`${bill.name} due date restored.`);
+    }
+  });
+}
+
+function createNextRecurringBill() {
+  const bill = getBillById(pendingRecurringBillId);
+  const nextBill = bill ? createNextBillFrom(bill) : null;
+  if (nextBill) bills.push(nextBill);
+  pendingRecurringBillId = null;
+  saveState();
+  render();
+  if (nextBill) {
+    showToast(`Next ${nextBill.name} created.`, {
+      undo: () => {
+        bills = bills.filter((item) => item.id !== nextBill.id);
+        saveState();
+        render();
+        showToast("Next bill removed.");
+      }
+    });
+  }
+}
+
+function dismissRecurringPrompt() {
+  pendingRecurringBillId = null;
+  saveState();
+  render();
+  showToast("Recurring prompt skipped.");
+}
+
+function getRelatedBills(seriesKey) {
+  return [...bills]
+    .filter((bill) => bill.seriesKey === seriesKey)
+    .sort((a, b) => parseDate(b.due) - parseDate(a.due));
+}
+
+function activityToTimelineEntry(item, event) {
+  if (event.type === "created") {
+    return {
+      at: event.at,
+      tone: "info",
+      title: "Bill created",
+      detail: event.note || `${item.name} was added to your plan.`
+    };
+  }
+  if (event.type === "edited") {
+    return {
+      at: event.at,
+      tone: "info",
+      title: "Bill updated",
+      detail: event.note || `${item.name} details were changed.`
+    };
+  }
+  if (event.type === "paid") {
+    return {
+      at: event.at,
+      tone: "success",
+      title: "Marked paid",
+      detail: `${money.format(item.amount)} cleared.`
+    };
+  }
+  if (event.type === "unpaid") {
+    return {
+      at: event.at,
+      tone: "warning",
+      title: "Marked unpaid",
+      detail: "Returned to active planning."
+    };
+  }
+  if (event.type === "snoozed") {
+    return {
+      at: event.at,
+      tone: "warning",
+      title: "Due date moved",
+      detail: `${dateFormat.format(parseDate(event.from))} to ${dateFormat.format(parseDate(event.to))}`
+    };
+  }
+  if (event.type === "archived") {
+    return {
+      at: event.at,
+      tone: "neutral",
+      title: "Archived",
+      detail: "Removed from daily triage."
+    };
+  }
+  if (event.type === "restored") {
+    return {
+      at: event.at,
+      tone: "info",
+      title: "Restored",
+      detail: "Returned to active planning."
+    };
+  }
+  return {
+    at: event.at,
+    tone: "info",
+    title: event.type,
+    detail: event.note || item.name
+  };
+}
+
+function getBillTimeline(bill) {
+  const entries = [];
+  getRelatedBills(bill.seriesKey).forEach((item) => {
+    entries.push({
+      at: `${item.due}T12:00:00`,
+      tone: "info",
+      title: "Scheduled",
+      detail: `${dateFormat.format(parseDate(item.due))} · ${money.format(item.amount)}`
+    });
+    const activityTypes = new Set(normalizeActivity(item.activity).map((event) => event.type));
+    if (item.paid && !activityTypes.has("paid")) {
+      entries.push({
+        at: item.completedAt || `${item.due}T12:00:00`,
+        tone: "success",
+        title: "Marked paid",
+        detail: `${money.format(item.amount)} cleared.`
+      });
+    }
+    if (item.archived && !activityTypes.has("archived")) {
+      entries.push({
+        at: item.archivedAt || `${item.due}T12:00:00`,
+        tone: "neutral",
+        title: "Archived",
+        detail: "Removed from daily triage."
+      });
+    }
+    normalizeActivity(item.activity).forEach((event) => {
+      entries.push(activityToTimelineEntry(item, event));
     });
   });
-  bindEditableBillCards();
-}
-
-function renderReminderStrip() {
-  const reminders = getReminderItems();
-  if (!reminders.length) return "";
-  const overdue = reminders.filter((bill) => daysUntil(bill.due) < 0).length;
-  const dueSoon = reminders.length - overdue;
-  return `
-    <section class="reminder-strip home-reveal" aria-label="Due reminders" style="--delay: 220ms">
-      <span class="notice-mark">${icon("alert")}</span>
-      <div>
-        <strong>${overdue ? `${overdue} overdue` : `${dueSoon} due soon`}</strong>
-        <p class="small-note">${reminders.slice(0, 2).map((bill) => bill.name).join(" and ")} need attention within ${settings.reminderDays} days.</p>
-      </div>
-    </section>
-  `;
-}
-
-function renderBillCard(bill, index = 0) {
-  const category = getCategory(bill.category);
-  const overdue = !bill.paid && daysUntil(bill.due) < 0;
-  const urgencyClass = statusClass(bill);
-  return `
-    <article class="bill-card home-reveal ${overdue ? "is-overdue" : ""}" style="--accent:${category.color}; --delay:${95 + index * 54}ms" data-edit-bill="${bill.id}" tabindex="0" role="button" aria-label="Edit ${bill.name}">
-      <div class="bill-card-top">
-        <h3>${bill.name}</h3>
-        <span class="urgency-badge ${urgencyClass}">${statusText(bill)}</span>
-      </div>
-      <p class="amount">${money.format(bill.amount)}</p>
-      <div class="bill-card-bottom">
-        <div class="bill-meta">
-          <span>${dateFormat.format(parseDate(bill.due))}</span>
-          <span>${bill.category}</span>
-        </div>
-        <button class="mark-button" data-paid="${bill.id}" type="button">Mark paid</button>
-      </div>
-    </article>
-  `;
+  return entries.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 
 function renderRecurringPrompt() {
-  const bill = bills.find((item) => item.id === pendingRecurringBillId);
+  const bill = getBillById(pendingRecurringBillId);
   if (!bill) return "";
   return `
-    <section class="recurring-prompt home-reveal" aria-label="Recurring bill follow-up" style="--delay: 210ms">
+    <section class="recurring-prompt home-reveal" style="--delay: 160ms" aria-label="Recurring bill follow-up">
       <div>
         <p class="mini-label">Repeats ${bill.repeat}</p>
         <strong>Create next ${bill.name}?</strong>
@@ -789,127 +982,303 @@ function renderRecurringPrompt() {
   `;
 }
 
-function renderPresetCard(preset) {
-  const category = getCategory(preset.category);
+function renderWalletCard(bill, index) {
+  const category = getCategory(bill.category);
   return `
-    <article class="preset-card" style="border-left: 5px solid ${category.color}">
-      <strong>${preset.name}</strong>
-      <p>${preset.note}</p>
+    <article class="wallet-card home-reveal ${statusClass(bill)}" style="--stack-index:${index}; --accent:${category.color}; --delay:${Math.min(70 + index * 35, 320)}ms" data-open-bill="${bill.id}" tabindex="0" role="button" aria-label="Open ${bill.name}">
+      <div class="wallet-card-top">
+        <div class="wallet-title">
+          <p class="eyebrow">${bill.category}</p>
+          <h3>${bill.name}</h3>
+        </div>
+        <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
+      </div>
+      <p class="wallet-amount">${money.format(bill.amount)}</p>
+      <div class="wallet-inline-meta">
+        <div>
+          <p class="mini-label">Due</p>
+          <strong>${dateFormat.format(parseDate(bill.due))}</strong>
+        </div>
+        <div>
+          <p class="mini-label">Repeat</p>
+          <strong>${repeatLabels[bill.repeat] || repeatLabels.none}</strong>
+        </div>
+      </div>
+      <div class="wallet-card-bottom">
+        <p class="small-note">${statusText(bill)}</p>
+        <button class="mark-button" data-paid="${bill.id}" type="button">Mark paid</button>
+      </div>
     </article>
   `;
 }
 
-function renderCalendar() {
-  const visibleMonth = new Date(`${visibleCalendarMonth}-01T12:00:00`);
-  const year = visibleMonth.getFullYear();
-  const month = visibleMonth.getMonth();
-  const firstWeekday = visibleMonth.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const days = [];
-
-  for (let i = 0; i < firstWeekday; i += 1) days.push(null);
-  for (let day = 1; day <= daysInMonth; day += 1) days.push(day);
-
-  const monthBills = sortBills(bills.filter((bill) => {
-    const due = parseDate(bill.due);
-    return due.getFullYear() === year && due.getMonth() === month;
-  }));
+function renderUpcoming() {
+  const unpaid = getVisibleBills();
+  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
+  const dueSoonCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays).length;
+  const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
 
   app.innerHTML = `
-    <header class="topbar home-reveal">
+    <header class="topbar home-hero home-reveal" style="--delay: 0ms">
       <div class="brand-line">
         <img class="brandmark" src="assets/icon.svg" alt="">
-        <div>
-          <p class="kicker">Due-date view</p>
-          <h1>Calendar</h1>
+        <div class="hero-copy">
+          <p class="kicker">UpNextBudgeting</p>
+          <p class="welcome-line">Welcome back, Marshall.</p>
+          <h1>Due next</h1>
         </div>
       </div>
-      <button class="icon-button light" id="openSheet" type="button" aria-label="Add a bill">${icon("plus")}</button>
+      <button class="icon-button primary-cta" id="openSheet" type="button" aria-label="Add a bill">
+        ${icon("plus")}
+        <span>Add bill</span>
+      </button>
     </header>
 
-    <div class="month-line calendar-controls home-reveal" style="--delay: 45ms">
-      <button class="secondary-action month-nav" id="prevMonth" type="button" aria-label="Previous month">${icon("chevron")}</button>
-      <h2>${monthName(visibleMonth)}</h2>
-      <button class="secondary-action month-nav next" id="nextMonth" type="button" aria-label="Next month">${icon("chevron")}</button>
-      <span class="status">${monthBills.filter((bill) => !bill.paid).length} unpaid</span>
-    </div>
-
-    <section class="calendar-grid home-reveal" aria-label="${monthName(visibleMonth)} calendar" style="--delay: 95ms">
-      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<div class="weekday">${day}</div>`).join("")}
-      ${days.map((day, index) => renderCalendarDay(day, monthBills, index)).join("")}
+    <section class="metrics-row home-reveal" style="--delay: 30ms" aria-label="Upcoming bill summary">
+      <article class="metric-pill ${overdueCount ? "is-alert" : ""}">
+        <span>Overdue</span>
+        <strong>${overdueCount}</strong>
+      </article>
+      <article class="metric-pill">
+        <span>Due soon</span>
+        <strong>${dueSoonCount}</strong>
+      </article>
+      <article class="metric-pill">
+        <span>This month</span>
+        <strong>${dueThisMonth}</strong>
+      </article>
     </section>
 
-    <div class="section-heading home-reveal" style="--delay: 145ms">
-      <h2>Agenda</h2>
-      <span class="mini-label">${monthLabel(visibleCalendarMonth)}</span>
-    </div>
-    <section class="agenda-list">
-      ${monthBills.map((bill, index) => renderAgendaCard(bill, index)).join("")}
+    <section class="wallet-stack" aria-label="Upcoming bills">
+      ${unpaid.length ? unpaid.map((bill, index) => renderWalletCard(bill, index)).join("") : `
+        <article class="empty-panel home-reveal" style="--delay: 70ms">
+          <p class="mini-label">Clear</p>
+          <h2>You are caught up.</h2>
+          <p class="small-note">Add a bill to keep your next due date visible.</p>
+        </article>
+      `}
     </section>
+
+    ${renderRecurringPrompt()}
   `;
 
   document.querySelector("#openSheet").addEventListener("click", () => openSheet());
-  document.querySelector("#prevMonth").addEventListener("click", () => {
-    visibleCalendarMonth = shiftMonth(visibleCalendarMonth, -1);
-    saveState();
-    render();
-  });
-  document.querySelector("#nextMonth").addEventListener("click", () => {
-    visibleCalendarMonth = shiftMonth(visibleCalendarMonth, 1);
-    saveState();
-    render();
-  });
-  bindCalendarDayEditing(monthBills);
-  bindEditableBillCards();
+  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
+  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
+  bindPaidButtons();
+  bindBillOpenButtons();
 }
 
-function renderCalendarDay(day, monthBills, index = 0) {
-  if (!day) return `<div class="calendar-day is-muted" aria-hidden="true"></div>`;
-  const matches = monthBills.filter((bill) => parseDate(bill.due).getDate() === day);
-  const hasOverdue = matches.some((bill) => !bill.paid && daysUntil(bill.due) < 0);
-  const hasDueSoon = matches.some((bill) => !bill.paid && daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays);
-  const hasPaidOnly = matches.length && matches.every((bill) => bill.paid);
-  const isToday = toDateInputValue(today) === `${visibleCalendarMonth}-${String(day).padStart(2, "0")}`;
-  const category = matches[0] ? getCategory(matches[0].category) : null;
+function renderTimelineItem(entry) {
   return `
-    <div class="calendar-day ${matches.length ? "has-bill" : ""} ${hasOverdue ? "has-overdue" : ""} ${hasDueSoon ? "has-due-soon" : ""} ${hasPaidOnly ? "has-paid-only" : ""} ${isToday ? "is-today" : ""}" style="--accent:${category?.color || "var(--teal)"}; --delay:${Math.min(index * 8, 220)}ms" ${matches.length ? `data-calendar-day="${day}" tabindex="0" role="button" aria-label="Edit bills due ${dateFormat.format(parseDate(`${visibleCalendarMonth}-${String(day).padStart(2, "0")}`))}"` : ""}>
-      ${day}
-      ${matches.length ? `<span class="dot" style="--accent:${category.color}"></span>` : ""}
-    </div>
+    <article class="timeline-item ${entry.tone}">
+      <span class="timeline-dot" aria-hidden="true"></span>
+      <div>
+        <strong>${entry.title}</strong>
+        <p>${entry.detail}</p>
+      </div>
+      <time>${timelineFormat.format(new Date(entry.at))}</time>
+    </article>
   `;
 }
 
-function renderAgendaCard(bill, index = 0) {
+function renderBillDetail() {
+  const bill = getBillById(activeBillId);
+  if (!bill) {
+    activeBillId = null;
+    render();
+    return;
+  }
   const category = getCategory(bill.category);
-  const state = statusClass(bill);
-  return `
-    <article class="agenda-card home-reveal ${state}" style="--accent:${category.color}; --delay:${185 + index * 42}ms" data-edit-bill="${bill.id}" tabindex="0" role="button" aria-label="Edit ${bill.name}">
-      <div class="budget-line">
-        <div>
-          <p class="eyebrow">${longDateFormat.format(parseDate(bill.due))}</p>
-          <h3 class="agenda-title">${bill.name}</h3>
+  const timeline = getBillTimeline(bill).slice(0, 12);
+
+  app.innerHTML = `
+    <section class="detail-screen">
+      <header class="topbar detail-topbar home-reveal" style="--delay: 0ms">
+        <button class="icon-button light" id="closeDetail" type="button" aria-label="Back to bills">${icon("back")}</button>
+        <div class="detail-topbar-copy">
+          <p class="kicker">${bill.category}</p>
+          <h1>${bill.name}</h1>
         </div>
-        <p class="amount">${money.format(bill.amount)}</p>
+        <button class="icon-button light" id="detailEdit" type="button" aria-label="Edit bill">${icon("edit")}</button>
+      </header>
+
+      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay: 30ms">
+        <div class="detail-hero-head">
+          <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
+          <span class="mini-label">${bill.archived ? "Archived" : "Active bill"}</span>
+        </div>
+        <p class="detail-amount">${money.format(bill.amount)}</p>
+        <div class="detail-inline-meta">
+          <div>
+            <span>Due date</span>
+            <strong>${longDateFormat.format(parseDate(bill.due))}</strong>
+          </div>
+          <div>
+            <span>Repeat</span>
+            <strong>${repeatLabels[bill.repeat] || repeatLabels.none}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-actions home-reveal" style="--delay: 70ms">
+        <button class="primary-action" id="detailMarkPaid" type="button" ${bill.paid ? "disabled" : ""}>${bill.paid ? "Paid" : "Mark paid"}</button>
+        <button class="secondary-action" id="detailSnooze" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
+        <button class="secondary-action" id="detailArchive" type="button" ${bill.archived ? "disabled" : ""}>Archive</button>
+      </section>
+
+      ${pendingRecurringBillId === bill.id ? renderRecurringPrompt() : ""}
+
+      <section class="detail-grid home-reveal" style="--delay: 110ms">
+        <article class="info-card">
+          <div class="info-card-head">
+            <span class="card-icon">${icon("repeat")}</span>
+            <h3>Schedule</h3>
+          </div>
+          <p class="small-note">Category</p>
+          <strong>${bill.category}</strong>
+          <p class="small-note detail-copy">${statusText(bill)}${bill.completedAt ? ` · paid ${timelineFormat.format(new Date(bill.completedAt))}` : ""}</p>
+        </article>
+        <article class="info-card">
+          <div class="info-card-head">
+            <span class="card-icon">${icon("bell")}</span>
+            <h3>Reminders</h3>
+          </div>
+          <p class="small-note">In-app window</p>
+          <strong>${settings.reminderDays} day${settings.reminderDays === 1 ? "" : "s"}</strong>
+          <p class="small-note detail-copy">${pushSupportStatus()}</p>
+        </article>
+      </section>
+
+      <section class="detail-section home-reveal" style="--delay: 150ms">
+        <div class="section-heading">
+          <h2>Timeline</h2>
+          <span class="mini-label">${getRelatedBills(bill.seriesKey).length} entries</span>
+        </div>
+        <div class="timeline-list">
+          ${timeline.map(renderTimelineItem).join("")}
+        </div>
+      </section>
+    </section>
+  `;
+
+  document.querySelector("#closeDetail").addEventListener("click", () => closeBillDetail());
+  document.querySelector("#detailEdit").addEventListener("click", () => openSheet(bill.id));
+  document.querySelector("#detailMarkPaid").addEventListener("click", () => markBillPaid(bill.id));
+  document.querySelector("#detailSnooze").addEventListener("click", () => openSnoozeSheet(bill.id));
+  document.querySelector("#detailArchive").addEventListener("click", () => archiveBill(bill.id));
+  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
+  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
+}
+
+function polarPoint(cx, cy, r, angle) {
+  const radians = (angle - 90) * (Math.PI / 180);
+  return {
+    x: cx + r * Math.cos(radians),
+    y: cy + r * Math.sin(radians)
+  };
+}
+
+function describeArc(cx, cy, r, startAngle, endAngle) {
+  const span = Math.max(0.01, Math.min(359.99, endAngle - startAngle));
+  const start = polarPoint(cx, cy, r, endAngle);
+  const end = polarPoint(cx, cy, r, startAngle);
+  const largeArcFlag = span <= 180 ? 0 : 1;
+  return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+}
+
+function escapeAttribute(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderBudgetChart() {
+  const totalPlanned = categories.reduce((sum, category) => sum + category.planned, 0);
+  const totalAssigned = categories.reduce((sum, category) => sum + category.assigned, 0);
+  const focus = getCategory(selectedBudgetCategory);
+  const focusAssigned = focus?.assigned || 0;
+  const focusPlanned = focus?.planned || 0;
+  const centerLabel = focus ? focus.name : "All categories";
+  const centerAssigned = focus ? focusAssigned : totalAssigned;
+  const centerPlanned = focus ? focusPlanned : totalPlanned;
+  const centerPercent = centerPlanned ? Math.round((centerAssigned / centerPlanned) * 100) : 0;
+
+  let cursor = -90;
+  const paths = categories
+    .filter((category) => category.planned > 0)
+    .map((category) => {
+      const span = totalPlanned ? (category.planned / totalPlanned) * 360 : 0;
+      const gap = categories.length > 1 ? 2.4 : 0;
+      const start = cursor + gap / 2;
+      const end = cursor + span - gap / 2;
+      cursor += span;
+      if (end <= start) return "";
+      const assignedEnd = start + (end - start) * Math.min(1, category.planned ? category.assigned / category.planned : 0);
+      const focused = category.name === selectedBudgetCategory;
+      const encodedName = encodeURIComponent(category.name);
+      return `
+        <g class="chart-segment ${focused ? "is-focused" : ""}" data-chart-category="${encodedName}" tabindex="0" focusable="true" role="button" aria-label="Show ${escapeAttribute(category.name)} budget details" style="--accent:${category.color}">
+          <path class="chart-segment-track" d="${describeArc(120, 120, 82, start, end)}"></path>
+          ${category.assigned ? `<path class="chart-segment-fill" d="${describeArc(120, 120, 82, start, assignedEnd)}"></path>` : ""}
+        </g>
+      `;
+    })
+    .join("");
+  const focusColor = focus?.color || "var(--info)";
+
+  return `
+    <section class="chart-panel home-reveal" style="--delay: 40ms">
+      <div class="chart-wrap" aria-label="Budget overview chart">
+        <svg viewBox="0 0 240 240" class="budget-chart" role="img" aria-label="Assigned versus planned budget chart">
+          <circle cx="120" cy="120" r="82" class="chart-ring"></circle>
+          ${paths}
+        </svg>
+        <div class="chart-center">
+          <span><i class="chart-center-swatch" style="--accent:${focusColor}" aria-hidden="true"></i>${centerLabel}</span>
+          <strong>${money.format(centerAssigned)}</strong>
+          <small>${centerPercent}% of ${money.format(centerPlanned || 0)}</small>
+        </div>
       </div>
-      <div class="card-meta compact">
-        <span class="urgency-badge ${state}">${bill.paid ? "Paid" : statusText(bill)}</span>
-        <span class="small-note">${bill.category}</span>
-      </div>
-    </article>
+    </section>
+  `;
+}
+
+function renderBudgetRow(category, index) {
+  const percent = category.planned ? Math.min(100, Math.round((category.assigned / category.planned) * 100)) : 0;
+  const glyph = categoryIconName(category.name);
+  const isFocused = category.name === selectedBudgetCategory;
+  const encodedName = encodeURIComponent(category.name);
+  return `
+    <button class="budget-row home-reveal ${isFocused ? "is-focused" : ""}" style="--accent:${category.color}; --delay:${90 + index * 28}ms" data-focus-category="${encodedName}" type="button" aria-label="${escapeAttribute(isFocused ? `Adjust ${category.name}` : `Focus ${category.name}`)}">
+      <span class="budget-row-icon">${icon(glyph)}</span>
+      <span class="budget-row-copy">
+        <strong>${category.name}</strong>
+        <small>${money.format(category.assigned)} assigned of ${money.format(category.planned)}</small>
+      </span>
+      <span class="budget-row-side">
+        <span class="budget-row-meta">${percent}%</span>
+        ${isFocused ? `<span class="budget-row-hint">Adjust</span>` : ""}
+      </span>
+    </button>
   `;
 }
 
 function renderBudget() {
   const totalAssigned = categories.reduce((sum, category) => sum + category.assigned, 0);
   const totalPlanned = categories.reduce((sum, category) => sum + category.planned, 0);
+  const totalPercent = totalPlanned ? Math.round((totalAssigned / totalPlanned) * 100) : 0;
 
   app.innerHTML = `
-    <header class="topbar home-reveal">
+    <header class="topbar home-reveal" style="--delay: 0ms">
       <div class="brand-line">
         <img class="brandmark" src="assets/icon.svg" alt="">
-        <div>
-          <p class="kicker">Light planning</p>
+        <div class="hero-copy">
+          <p class="kicker">Budget awareness</p>
           <h1>Budget</h1>
+          <p class="hero-note">A graphic view of what is assigned against the plan.</p>
         </div>
       </div>
       <div class="top-actions">
@@ -918,186 +1287,109 @@ function renderBudget() {
       </div>
     </header>
 
-    <section class="budget-total home-reveal" style="--delay: 45ms">
+    <section class="budget-summary home-reveal" style="--delay: 20ms">
       <div>
-        <p>Assigned this cycle</p>
+        <span>Assigned this cycle</span>
         <strong>${money.format(totalAssigned)}</strong>
       </div>
-      <span class="status">${totalPlanned ? Math.round((totalAssigned / totalPlanned) * 100) : 0}%</span>
+      <div>
+        <span>Planned total</span>
+        <strong>${money.format(totalPlanned)}</strong>
+      </div>
+      <div>
+        <span>Coverage</span>
+        <strong>${totalPercent}%</strong>
+      </div>
     </section>
 
-    <div class="section-heading home-reveal" style="--delay: 95ms">
-      <h2>Categories</h2>
-      <span class="mini-label">simple plan</span>
-    </div>
+    ${renderBudgetChart()}
 
-    <section class="budget-list">
-      ${categories.map((category, index) => renderBudgetCard(category, index)).join("")}
+    <section class="budget-legend">
+      <div class="section-heading home-reveal" style="--delay: 70ms">
+        <h2>Categories</h2>
+        <span class="mini-label">Tap again to adjust</span>
+      </div>
+      <div class="budget-list">
+        ${categories.map((category, index) => renderBudgetRow(category, index)).join("")}
+      </div>
     </section>
   `;
 
   document.querySelector("#openSheet").addEventListener("click", () => openSheet());
   document.querySelector("#openSettings").addEventListener("click", openSettingsSheet);
+  bindBudgetCategorySelection();
 }
 
-function renderBudgetCard(category, index = 0) {
-  const percent = category.planned ? Math.min(100, Math.round((category.assigned / category.planned) * 100)) : 0;
-  const glyph = categoryIconName(category.name);
-  return `
-    <article class="budget-card home-reveal" style="--accent:${category.color}; --value:${percent}%; --delay:${135 + index * 34}ms">
-      <div class="budget-line">
-        <div class="bill-heading">
-          <span class="category-glyph" aria-hidden="true">${icon(glyph)}</span>
-          <div>
-            <h3 class="budget-name">${category.name}</h3>
-            <p class="small-note">${money.format(category.assigned)} assigned of ${money.format(category.planned)}</p>
-          </div>
-        </div>
-        <span class="status">${percent}%</span>
-      </div>
-      <div class="meter" aria-hidden="true"><span></span></div>
-    </article>
-  `;
-}
-
-function openSheet(billId = null) {
-  lastTrigger = document.activeElement;
-  editingBillId = billId;
-  const bill = bills.find((item) => item.id === billId);
-  document.querySelector("#sheetTitle").textContent = bill ? "Edit bill" : "Add a bill";
-  billForm.querySelector(".primary-action").textContent = bill ? "Save changes" : "Add to Upcoming";
-  deleteBillButton.hidden = !bill;
-  paidRow.hidden = !bill;
-  if (bill) {
-    billName.value = bill.name;
-    billAmount.value = bill.amount;
-    billDate.value = bill.due;
-    syncBillCategoryOptions(bill.category);
-    billRepeat.value = bill.repeat || "none";
-    billPaid.checked = Boolean(bill.paid);
-  } else {
-    billForm.reset();
-    syncBillCategoryOptions();
-    billDate.value = toDateInputValue(today);
-    billRepeat.value = "none";
-    billPaid.checked = false;
+function decodeCategoryDataset(value) {
+  try {
+    return decodeURIComponent(value || "");
+  } catch {
+    return value || "";
   }
-  sheet.hidden = false;
-  backdrop.hidden = false;
-  billName.focus();
 }
 
-function closeSheet() {
-  sheet.hidden = true;
-  if (settingsSheet.hidden && dayPickerSheet.hidden) backdrop.hidden = true;
-  billForm.reset();
-  editingBillId = null;
-  deleteBillButton.hidden = true;
-  paidRow.hidden = true;
-  document.querySelector("#sheetTitle").textContent = "Add a bill";
-  billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
-  lastTrigger?.focus?.();
-}
-
-function openSettingsSheet() {
-  lastTrigger = document.activeElement;
-  renderSettingsContent();
-  settingsSheet.hidden = false;
-  backdrop.hidden = false;
-}
-
-function closeSettingsSheet() {
-  settingsSheet.hidden = true;
-  if (sheet.hidden && dayPickerSheet.hidden) backdrop.hidden = true;
-  lastTrigger?.focus?.();
-}
-
-function openDayPicker(day, monthBills) {
-  const dayBills = sortBills(monthBills.filter((bill) => parseDate(bill.due).getDate() === day));
-  if (!dayBills.length) return;
-  if (dayBills.length === 1) {
-    openSheet(dayBills[0].id);
+function focusBudgetCategory(categoryName, options = {}) {
+  const category = getCategory(categoryName);
+  if (!category) return;
+  if (options.openIfFocused && selectedBudgetCategory === category.name) {
+    openBudgetCategorySheet(category.name);
     return;
   }
-  lastTrigger = document.activeElement;
-  const date = parseDate(`${visibleCalendarMonth}-${String(day).padStart(2, "0")}`);
-  document.querySelector("#dayPickerTitle").textContent = longDateFormat.format(date);
-  dayPickerContent.innerHTML = dayBills.map(renderDayPickerBill).join("");
-  dayPickerSheet.hidden = false;
-  backdrop.hidden = false;
-  dayPickerSheet.querySelector("[data-day-picker-bill]")?.focus();
-  dayPickerSheet.querySelectorAll("[data-day-picker-bill]").forEach((button) => {
+  selectedBudgetCategory = category.name;
+  saveState(false);
+  render();
+}
+
+function bindBudgetCategorySelection() {
+  document.querySelectorAll("[data-focus-category]").forEach((button) => {
     button.addEventListener("click", () => {
-      const billId = Number(button.dataset.dayPickerBill);
-      closeDayPicker(false);
-      openSheet(billId);
+      focusBudgetCategory(decodeCategoryDataset(button.dataset.focusCategory), { openIfFocused: true });
+    });
+  });
+  document.querySelectorAll("[data-chart-category]").forEach((segment) => {
+    const categoryName = decodeCategoryDataset(segment.dataset.chartCategory);
+    segment.addEventListener("click", () => {
+      focusBudgetCategory(categoryName);
+    });
+    segment.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+      event.preventDefault();
+      focusBudgetCategory(categoryName);
     });
   });
 }
 
-function renderDayPickerBill(bill) {
-  const category = getCategory(bill.category);
-  const state = statusClass(bill);
+function renderHistoryBill(bill) {
   return `
-    <button class="day-picker-item ${state}" type="button" data-day-picker-bill="${bill.id}" style="--accent:${category.color}">
-      <span>
+    <div class="history-item">
+      <div>
         <strong>${bill.name}</strong>
-        <small>${bill.category} · ${statusText(bill)}</small>
-      </span>
-      <span>${money.format(bill.amount)}</span>
-    </button>
+        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
+      </div>
+      <div>
+        <strong>${money.format(bill.amount)}</strong>
+        <span>${recordStatusText(bill)}</span>
+      </div>
+    </div>
   `;
 }
 
-function closeDayPicker(restoreFocus = true) {
-  dayPickerSheet.hidden = true;
-  dayPickerContent.innerHTML = "";
-  if (sheet.hidden && settingsSheet.hidden) backdrop.hidden = true;
-  if (restoreFocus) lastTrigger?.focus?.();
-}
-
-function bindEditableBillCards() {
-  document.querySelectorAll("[data-edit-bill]").forEach((card) => {
-    const edit = () => openSheet(Number(card.dataset.editBill));
-    card.addEventListener("click", edit);
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        edit();
-      }
-    });
-  });
-}
-
-function bindCalendarDayEditing(monthBills) {
-  document.querySelectorAll("[data-calendar-day]").forEach((dayCell) => {
-    const open = () => openDayPicker(Number(dayCell.dataset.calendarDay), monthBills);
-    dayCell.addEventListener("click", open);
-    dayCell.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        open();
-      }
-    });
-  });
-}
-
-function closeAllSheets() {
-  if (!sheet.hidden) closeSheet();
-  if (!settingsSheet.hidden) closeSettingsSheet();
-  if (!dayPickerSheet.hidden) closeDayPicker(false);
-  backdrop.hidden = true;
-}
-
-function syncBillCategoryOptions(preferred = billCategory.value) {
-  const fallback = categories[0]?.name || "";
-  billCategory.innerHTML = categories.map((category) => `<option>${category.name}</option>`).join("");
-  billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
+function renderArchivedBillRow(bill) {
+  return `
+    <div class="archived-item">
+      <div>
+        <strong>${bill.name}</strong>
+        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
+      </div>
+      <button class="secondary-action" type="button" data-restore-bill="${bill.id}">Restore</button>
+    </div>
+  `;
 }
 
 function renderSettingsContent() {
   const selected = getCategory(selectedBudgetCategory);
   const months = getAvailableMonths();
+  const archivedBills = getArchivedBills();
   if (!months.includes(selectedHistoryMonth)) selectedHistoryMonth = months[months.length - 1] || "2026-04";
   const summary = getMonthSummary(selectedHistoryMonth);
   settingsContent.innerHTML = `
@@ -1106,7 +1398,7 @@ function renderSettingsContent() {
         <h3>Appearance</h3>
         <span class="mini-label">theme</span>
       </div>
-      <p class="settings-copy">Choose the glass theme, or let the app follow your device.</p>
+      <p class="settings-copy">Choose a matte light or dark appearance, or follow your device.</p>
       <label>
         <span>Theme</span>
         <select id="themePreference">
@@ -1121,7 +1413,7 @@ function renderSettingsContent() {
         <h3>Monthly history</h3>
         <span class="mini-label">export</span>
       </div>
-      <p class="settings-copy">Choose a month, review what happened, then export the record.</p>
+      <p class="settings-copy">Choose a month, review the record, then export it.</p>
       <label class="history-select">
         <span>Month</span>
         <select id="historyMonth">
@@ -1155,7 +1447,7 @@ function renderSettingsContent() {
         <h3>Reminders</h3>
         <span class="mini-label">in-app</span>
       </div>
-      <p class="settings-copy">Show overdue and due-soon reminders when you open Upcoming.</p>
+      <p class="settings-copy">Show overdue and due-soon reminders whenever you open Upcoming.</p>
       <form id="reminderForm" class="control-form">
         <label>
           <span>Reminder window</span>
@@ -1207,10 +1499,20 @@ function renderSettingsContent() {
     </section>
     <section class="settings-section">
       <div class="section-heading compact">
+        <h3>Archived bills</h3>
+        <span class="mini-label">${archivedBills.length}</span>
+      </div>
+      <p class="settings-copy">Archived bills stay out of triage, but you can restore them here.</p>
+      <div class="archived-list">
+        ${archivedBills.length ? archivedBills.slice(0, 8).map(renderArchivedBillRow).join("") : `<p class="settings-copy">No archived bills right now.</p>`}
+      </div>
+    </section>
+    <section class="settings-section">
+      <div class="section-heading compact">
         <h3>Budget categories</h3>
         <span class="mini-label">active</span>
       </div>
-      <p class="settings-copy">Adjust planned amounts, add a category, or remove one from your light budget plan.</p>
+      <p class="settings-copy">Adjust planned amounts, add a category, or remove one from your budget plan.</p>
       <form id="editCategoryForm" class="control-form">
         <label>
           <span>Category</span>
@@ -1237,10 +1539,6 @@ function renderSettingsContent() {
         <button class="secondary-action add" type="submit">Add</button>
       </form>
     </section>
-    <section class="settings-section quiet">
-      <p class="mini-label">Later</p>
-      <p class="settings-copy">More app settings can live here later.</p>
-    </section>
   `;
   setupAppearanceControls();
   setupMonthlyHistory();
@@ -1248,97 +1546,261 @@ function renderSettingsContent() {
   setupPushControls();
   setupBackupControls();
   setupStarterClearControls();
+  setupArchivedControls();
   setupBudgetControls();
 }
 
-function renderHistoryBill(bill) {
-  return `
-    <div class="history-item">
-      <div>
-        <strong>${bill.name}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
-      </div>
-      <div>
-        <strong>${money.format(bill.amount)}</strong>
-        <span>${bill.paid ? "Paid" : statusText(bill)}</span>
-      </div>
-    </div>
-  `;
+function openSheet(billId = null) {
+  lastTrigger = document.activeElement;
+  editingBillId = billId;
+  const bill = getBillById(billId);
+  document.querySelector("#sheetTitle").textContent = bill ? "Edit bill" : "Add a bill";
+  billForm.querySelector(".primary-action").textContent = bill ? "Save changes" : "Add to Upcoming";
+  deleteBillButton.hidden = !bill;
+  paidRow.hidden = !bill;
+  if (bill) {
+    billName.value = bill.name;
+    billAmount.value = bill.amount;
+    billDate.value = bill.due;
+    syncBillCategoryOptions(bill.category);
+    billRepeat.value = bill.repeat || "none";
+    billPaid.checked = Boolean(bill.paid);
+  } else {
+    billForm.reset();
+    syncBillCategoryOptions();
+    billDate.value = toDateInputValue(today);
+    billRepeat.value = "none";
+    billPaid.checked = false;
+  }
+  sheet.hidden = false;
+  backdrop.hidden = false;
+  billName.focus();
 }
 
-function setupForm() {
-  syncBillCategoryOptions();
-  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${preset.name}">${preset.name}</button>`).join("");
+function closeSheet() {
+  sheet.hidden = true;
+  if (settingsSheet.hidden && actionSheet.hidden) backdrop.hidden = true;
+  billForm.reset();
+  editingBillId = null;
+  deleteBillButton.hidden = true;
+  paidRow.hidden = true;
+  document.querySelector("#sheetTitle").textContent = "Add a bill";
+  billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
+  lastTrigger?.focus?.();
+}
 
-  presetRail.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-preset]");
-    if (!button) return;
-    const preset = presets.find((item) => item.name === button.dataset.preset);
-    billName.value = preset.name;
-    billAmount.value = preset.amount;
-    billCategory.value = preset.category;
-    billRepeat.value = inferRepeat(preset);
+function openSettingsSheet() {
+  lastTrigger = document.activeElement;
+  renderSettingsContent();
+  settingsSheet.hidden = false;
+  backdrop.hidden = false;
+}
+
+function closeSettingsSheet() {
+  settingsSheet.hidden = true;
+  if (sheet.hidden && actionSheet.hidden) backdrop.hidden = true;
+  lastTrigger?.focus?.();
+}
+
+function openSnoozeSheet(billId) {
+  const bill = getBillById(billId);
+  if (!bill) return;
+  actionBillId = billId;
+  lastTrigger = document.activeElement;
+  actionSheetTitle.textContent = "Snooze bill";
+  actionSheetContent.innerHTML = `
+    <section class="action-group">
+      <button class="sheet-choice" type="button" data-snooze-offset="1">Tomorrow</button>
+      <button class="sheet-choice" type="button" data-snooze-offset="3">3 days</button>
+      <button class="sheet-choice" type="button" data-snooze-offset="7">1 week</button>
+    </section>
+    <form id="pickSnoozeDate" class="action-form">
+      <label>
+        <span>Pick date</span>
+        <input id="customSnoozeDate" type="date" value="${bill.due}" min="${toDateInputValue(today)}">
+      </label>
+      <button class="primary-action small" type="submit">Apply date</button>
+    </form>
+  `;
+  actionSheet.hidden = false;
+  backdrop.hidden = false;
+  actionSheet.querySelector("[data-snooze-offset]")?.focus();
+  actionSheet.querySelectorAll("[data-snooze-offset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextDate = parseDate(bill.due);
+      nextDate.setDate(nextDate.getDate() + Number(button.dataset.snoozeOffset));
+      snoozeBill(billId, toDateInputValue(nextDate));
+    });
   });
-
-  billForm.addEventListener("submit", (event) => {
+  document.querySelector("#pickSnoozeDate").addEventListener("submit", (event) => {
     event.preventDefault();
-    const wasEditing = Boolean(editingBillId);
-    const payload = {
-      name: billName.value.trim(),
-      category: billCategory.value,
-      amount: cleanAmount(billAmount.value),
-      due: billDate.value,
-      paid: editingBillId ? billPaid.checked : false,
-      repeat: billRepeat.value
-    };
-    if (editingBillId) {
-      const bill = bills.find((item) => item.id === editingBillId);
-      if (bill) Object.assign(bill, payload);
-    } else {
-      bills.push({ id: Date.now(), ...payload });
-    }
-    saveState();
-    closeSheet();
-    activeTab = "upcoming";
-    render();
-    showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
+    snoozeBill(billId, document.querySelector("#customSnoozeDate").value);
+  });
+}
+
+function updateCategoryPlan(name, plannedValue) {
+  const selected = getCategory(name);
+  selected.planned = cleanAmount(plannedValue);
+  selectedBudgetCategory = selected.name;
+  syncBillCategoryOptions(selected.name);
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  return selected;
+}
+
+function removeCategoryByName(name) {
+  if (categories.length <= 1) return null;
+  const snapshot = snapshotForUndo();
+  const index = categories.findIndex((category) => category.name === name);
+  if (index < 0) return null;
+  const removedName = categories[index].name;
+  categories.splice(index, 1);
+  selectedBudgetCategory = categories[Math.max(0, index - 1)]?.name || defaultCategory().name;
+  ensureCategorySafety();
+  syncBillCategoryOptions(selectedBudgetCategory);
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  return { snapshot, removedName };
+}
+
+function addCategoryByName(name, plannedValue) {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Enter a category name." };
+  if (categories.some((category) => category.name.toLowerCase() === trimmed.toLowerCase())) {
+    return { error: `${trimmed} already exists.` };
+  }
+  categories.push({
+    name: trimmed,
+    color: categoryColors[categories.length % categoryColors.length],
+    planned: cleanAmount(plannedValue),
+    assigned: 0
+  });
+  selectedBudgetCategory = trimmed;
+  syncBillCategoryOptions(trimmed);
+  saveState();
+  render();
+  if (!settingsSheet.hidden) renderSettingsContent();
+  return { name: trimmed };
+}
+
+function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
+  const selected = getCategory(categoryName);
+  if (!selected) return;
+  selectedBudgetCategory = selected.name;
+  lastTrigger = document.activeElement;
+  actionSheetTitle.textContent = selected.name;
+  actionSheetContent.innerHTML = `
+    <section class="action-panel-copy">
+      <p class="settings-copy">Adjust the current category without leaving Budget.</p>
+    </section>
+    <form id="budgetCategorySheetForm" class="action-form">
+      <label>
+        <span>Planned amount</span>
+        <input id="budgetCategoryPlanned" inputmode="numeric" value="${selected.planned}" aria-label="Planned amount for ${selected.name}">
+      </label>
+      <div class="control-actions">
+        <button class="primary-action small" type="submit">Update</button>
+        <button class="secondary-action" id="budgetCategoryRemove" type="button">Remove</button>
+      </div>
+    </form>
+    <form id="budgetCategoryAddForm" class="action-form">
+      <label>
+        <span>New category</span>
+        <input id="budgetCategoryName" autocomplete="off" placeholder="Emergency">
+      </label>
+      <label>
+        <span>Planned amount</span>
+        <input id="budgetCategoryAmount" inputmode="numeric" placeholder="25000">
+      </label>
+      <button class="secondary-action" type="submit">Add category</button>
+    </form>
+  `;
+  actionSheet.hidden = false;
+  backdrop.hidden = false;
+  document.querySelector("#budgetCategoryPlanned")?.focus();
+
+  document.querySelector("#budgetCategorySheetForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const updated = updateCategoryPlan(selected.name, document.querySelector("#budgetCategoryPlanned").value);
+    closeActionSheet(false);
+    showToast(`${updated.name} plan updated.`);
   });
 
-  deleteBillButton.addEventListener("click", () => {
-    if (!editingBillId) return;
-    const bill = bills.find((item) => item.id === editingBillId);
-    if (!bill || !confirm(`Delete ${bill.name}?`)) return;
-    const deletedBill = cloneBill(bill);
-    const previousPending = pendingRecurringBillId;
-    bills = bills.filter((item) => item.id !== editingBillId);
-    pendingRecurringBillId = pendingRecurringBillId === editingBillId ? null : pendingRecurringBillId;
-    saveState();
-    closeSheet();
-    render();
-    showToast(`${deletedBill.name} deleted.`, {
-      undo: () => {
-        if (!bills.some((item) => item.id === deletedBill.id)) bills.push(cloneBill(deletedBill));
-        pendingRecurringBillId = previousPending;
-        saveState();
-        render();
-        showToast(`${deletedBill.name} restored.`);
-      }
+  document.querySelector("#budgetCategoryRemove").addEventListener("click", () => {
+    const removed = removeCategoryByName(selected.name);
+    if (!removed) return;
+    closeActionSheet(false);
+    showToast(`${removed.removedName} removed.`, {
+      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
     });
   });
 
-  document.querySelector("#closeSheet").addEventListener("click", closeSheet);
-  document.querySelector("#closeSettingsSheet").addEventListener("click", closeSettingsSheet);
-  document.querySelector("#closeDayPickerSheet").addEventListener("click", closeDayPicker);
-  backdrop.addEventListener("click", closeAllSheets);
+  document.querySelector("#budgetCategoryAddForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const result = addCategoryByName(
+      document.querySelector("#budgetCategoryName").value,
+      document.querySelector("#budgetCategoryAmount").value
+    );
+    if (result.error) {
+      showToast(result.error);
+      return;
+    }
+    closeActionSheet(false);
+    showToast(`${result.name} category added.`);
+  });
 }
 
-function cleanAmount(value) {
-  return Math.max(0, Number(String(value).replace(/[^0-9.]/g, "")) || 0);
+function closeActionSheet(restoreFocus = true) {
+  actionSheet.hidden = true;
+  actionBillId = null;
+  actionSheetTitle.textContent = "Quick action";
+  actionSheetContent.innerHTML = "";
+  if (sheet.hidden && settingsSheet.hidden) backdrop.hidden = true;
+  if (restoreFocus) lastTrigger?.focus?.();
 }
 
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+function closeAllSheets() {
+  if (!sheet.hidden) closeSheet();
+  if (!settingsSheet.hidden) closeSettingsSheet();
+  if (!actionSheet.hidden) closeActionSheet(false);
+  backdrop.hidden = true;
+}
+
+function activeSheet() {
+  if (!actionSheet.hidden) return actionSheet;
+  if (!settingsSheet.hidden) return settingsSheet;
+  if (!sheet.hidden) return sheet;
+  return null;
+}
+
+function syncBillCategoryOptions(preferred = billCategory.value) {
+  const fallback = categories[0]?.name || "";
+  billCategory.innerHTML = categories.map((category) => `<option>${category.name}</option>`).join("");
+  billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
+}
+
+function bindBillOpenButtons() {
+  document.querySelectorAll("[data-open-bill]").forEach((card) => {
+    const open = () => openBillDetail(Number(card.dataset.openBill));
+    card.addEventListener("click", open);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+}
+
+function bindPaidButtons() {
+  document.querySelectorAll("[data-paid]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      markBillPaid(Number(button.dataset.paid));
+    });
+  });
 }
 
 function exportRows(key) {
@@ -1350,11 +1812,11 @@ function exportRows(key) {
     bill.category,
     bill.due,
     bill.amount,
-    bill.paid ? "Paid" : statusText(bill),
+    recordStatusText(bill),
     "",
     "",
     "",
-    ""
+    bill.archived ? "Archived from daily triage" : ""
   ]);
   const categoryRows = categories.map((category) => [
     "Category",
@@ -1422,7 +1884,7 @@ function renderPrintExport(key) {
                 <td>${bill.name}</td>
                 <td>${bill.category}</td>
                 <td>${dateFormat.format(parseDate(bill.due))}</td>
-                <td>${bill.paid ? "Paid" : statusText(bill)}</td>
+                <td>${recordStatusText(bill)}</td>
                 <td>${money.format(bill.amount)}</td>
               </tr>
             `).join("") || `<tr><td colspan="5">No bills recorded for this month.</td></tr>`}
@@ -1485,6 +1947,7 @@ function applyImportedState(state) {
   selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
   visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
   pendingRecurringBillId = null;
+  activeBillId = null;
   ensureCategorySafety();
   applyTheme();
   syncBillCategoryOptions(selectedBudgetCategory);
@@ -1494,16 +1957,6 @@ function applyImportedState(state) {
   showToast("Backup restored.");
 }
 
-function setupAppearanceControls() {
-  const themePreference = document.querySelector("#themePreference");
-  themePreference.addEventListener("change", () => {
-    settings.theme = validTheme(themePreference.value);
-    applyTheme();
-    saveState(false);
-    showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
-  });
-}
-
 function snapshotForUndo() {
   return {
     bills: bills.map(cloneBill),
@@ -1511,7 +1964,8 @@ function snapshotForUndo() {
     selectedBudgetCategory,
     selectedHistoryMonth,
     visibleCalendarMonth,
-    pendingRecurringBillId
+    pendingRecurringBillId,
+    activeBillId
   };
 }
 
@@ -1522,6 +1976,7 @@ function restoreSnapshot(snapshot, message = "Restored.") {
   selectedHistoryMonth = snapshot.selectedHistoryMonth;
   visibleCalendarMonth = snapshot.visibleCalendarMonth;
   pendingRecurringBillId = snapshot.pendingRecurringBillId;
+  activeBillId = snapshot.activeBillId;
   ensureCategorySafety();
   syncBillCategoryOptions(selectedBudgetCategory);
   saveState();
@@ -1541,6 +1996,7 @@ function clearStarterData(mode) {
   if (mode === "bills" || mode === "both") {
     bills = bills.filter((bill) => !starterBillIds.has(bill.id));
     pendingRecurringBillId = pendingRecurringBillId && starterBillIds.has(pendingRecurringBillId) ? null : pendingRecurringBillId;
+    if (activeBillId && starterBillIds.has(activeBillId)) activeBillId = null;
   }
   if (mode === "categories" || mode === "both") {
     categories = categories.filter((category) => !starterCategoryNames.has(category.name));
@@ -1555,6 +2011,16 @@ function clearStarterData(mode) {
   });
 }
 
+function setupAppearanceControls() {
+  const themePreference = document.querySelector("#themePreference");
+  themePreference.addEventListener("change", () => {
+    settings.theme = validTheme(themePreference.value);
+    applyTheme();
+    saveState(false);
+    showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
+  });
+}
+
 function setupMonthlyHistory() {
   const historyMonth = document.querySelector("#historyMonth");
   const exportCsvButton = document.querySelector("#exportCsv");
@@ -1562,7 +2028,7 @@ function setupMonthlyHistory() {
 
   historyMonth.addEventListener("change", () => {
     selectedHistoryMonth = historyMonth.value;
-    saveState();
+    saveState(false);
     renderSettingsContent();
   });
 
@@ -1716,25 +2182,30 @@ function setupStarterClearControls() {
   document.querySelector("#clearStarterAll").addEventListener("click", () => clearStarterData("both"));
 }
 
-function activeSheet() {
-  if (!dayPickerSheet.hidden) return dayPickerSheet;
-  if (!settingsSheet.hidden) return settingsSheet;
-  if (!sheet.hidden) return sheet;
-  return null;
+function setupArchivedControls() {
+  document.querySelectorAll("[data-restore-bill]").forEach((button) => {
+    button.addEventListener("click", () => restoreArchivedBill(Number(button.dataset.restoreBill)));
+  });
 }
 
 function setupAccessibility() {
   document.addEventListener("keydown", (event) => {
     const currentSheet = activeSheet();
-    if (!currentSheet) return;
     if (event.key === "Escape") {
-      event.preventDefault();
-      if (currentSheet === dayPickerSheet) closeDayPicker();
-      if (currentSheet === settingsSheet) closeSettingsSheet();
-      if (currentSheet === sheet) closeSheet();
+      if (currentSheet) {
+        event.preventDefault();
+        if (currentSheet === actionSheet) closeActionSheet();
+        if (currentSheet === settingsSheet) closeSettingsSheet();
+        if (currentSheet === sheet) closeSheet();
+        return;
+      }
+      if (activeBillId) {
+        event.preventDefault();
+        closeBillDetail();
+      }
       return;
     }
-    if (event.key !== "Tab") return;
+    if (!currentSheet || event.key !== "Tab") return;
     const focusable = [...currentSheet.querySelectorAll("button, input, select, textarea, a[href], [tabindex]:not([tabindex='-1'])")]
       .filter((element) => !element.disabled && !element.hidden && element.offsetParent !== null);
     if (!focusable.length) return;
@@ -1767,60 +2238,152 @@ function setupBudgetControls() {
 
   editCategoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const selected = getCategory(editCategory.value);
-    selected.planned = cleanAmount(editPlanned.value);
-    selectedBudgetCategory = selected.name;
-    syncBillCategoryOptions(selected.name);
-    saveState();
-    render();
+    const selected = updateCategoryPlan(editCategory.value, editPlanned.value);
     renderSettingsContent();
     showToast(`${selected.name} plan updated.`);
   });
 
   removeCategory.addEventListener("click", () => {
-    if (categories.length <= 1) return;
-    const snapshot = snapshotForUndo();
-    const index = categories.findIndex((category) => category.name === editCategory.value);
-    if (index < 0) return;
-    const removedName = categories[index].name;
-    categories.splice(index, 1);
-    selectedBudgetCategory = categories[Math.max(0, index - 1)].name;
-    ensureCategorySafety();
-    syncBillCategoryOptions(selectedBudgetCategory);
-    saveState();
-    render();
+    const removed = removeCategoryByName(editCategory.value);
+    if (!removed) return;
     renderSettingsContent();
-    showToast(`${removedName} removed.`, {
-      undo: () => restoreSnapshot(snapshot, `${removedName} restored.`)
+    showToast(`${removed.removedName} removed.`, {
+      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
     });
   });
 
   addCategoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const name = newCategoryName.value.trim();
-    if (!name) return;
-    if (categories.some((category) => category.name.toLowerCase() === name.toLowerCase())) {
-      showToast(`${name} already exists.`);
+    const result = addCategoryByName(newCategoryName.value, newCategoryAmount.value);
+    if (result?.error) {
+      showToast(result.error);
       return;
     }
-    categories.push({
-      name,
-      color: categoryColors[categories.length % categoryColors.length],
-      planned: cleanAmount(newCategoryAmount.value),
-      assigned: 0
-    });
-    selectedBudgetCategory = name;
-    syncBillCategoryOptions(name);
-    saveState();
-    render();
     renderSettingsContent();
-    showToast(`${name} category added.`);
+    showToast(`${result.name} category added.`);
   });
+}
+
+function setupForm() {
+  syncBillCategoryOptions();
+  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${preset.name}">${preset.name}</button>`).join("");
+
+  presetRail.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-preset]");
+    if (!button) return;
+    const preset = presets.find((item) => item.name === button.dataset.preset);
+    billName.value = preset.name;
+    billAmount.value = preset.amount;
+    billCategory.value = preset.category;
+    billRepeat.value = inferRepeat(preset);
+  });
+
+  billForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const wasEditing = Boolean(editingBillId);
+    const payload = {
+      name: billName.value.trim(),
+      category: billCategory.value,
+      amount: cleanAmount(billAmount.value),
+      due: billDate.value,
+      paid: editingBillId ? billPaid.checked : false,
+      repeat: billRepeat.value
+    };
+    if (editingBillId) {
+      const bill = getBillById(editingBillId);
+      if (bill) {
+        const before = cloneBill(bill);
+        bill.name = payload.name;
+        bill.category = payload.category;
+        bill.amount = payload.amount;
+        bill.due = payload.due;
+        bill.repeat = payload.repeat;
+        if (!before.paid && payload.paid) {
+          bill.paid = true;
+          bill.completedAt = nowIso();
+          appendActivity(bill, "paid", { note: "Marked paid from edit view." });
+        } else if (before.paid && !payload.paid) {
+          bill.paid = false;
+          bill.completedAt = null;
+          appendActivity(bill, "unpaid", { note: "Marked unpaid from edit view." });
+        } else {
+          bill.paid = payload.paid;
+        }
+        if (
+          before.name !== bill.name ||
+          before.amount !== bill.amount ||
+          before.category !== bill.category ||
+          before.due !== bill.due ||
+          before.repeat !== bill.repeat
+        ) {
+          appendActivity(bill, "edited", { note: "Bill details were updated." });
+        }
+      }
+    } else {
+      bills.push(normalizeBill({
+        id: Date.now(),
+        ...payload,
+        seriesKey: makeSeriesKey(payload),
+        activity: [createActivity("created", { note: "Bill added to the plan." })],
+        completedAt: payload.paid ? nowIso() : null
+      }));
+    }
+    saveState();
+    closeSheet();
+    activeTab = "upcoming";
+    render();
+    if (!settingsSheet.hidden) renderSettingsContent();
+    showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
+  });
+
+  deleteBillButton.addEventListener("click", () => {
+    if (!editingBillId) return;
+    const bill = getBillById(editingBillId);
+    if (!bill || !confirm(`Delete ${bill.name}?`)) return;
+    const deletedBill = cloneBill(bill);
+    const previousPending = pendingRecurringBillId;
+    const previousActive = activeBillId;
+    bills = bills.filter((item) => item.id !== editingBillId);
+    if (pendingRecurringBillId === editingBillId) pendingRecurringBillId = null;
+    if (activeBillId === editingBillId) activeBillId = null;
+    saveState();
+    closeSheet();
+    render();
+    showToast(`${deletedBill.name} deleted.`, {
+      undo: () => {
+        replaceOrInsertBill(deletedBill);
+        pendingRecurringBillId = previousPending;
+        activeBillId = previousActive;
+        saveState();
+        render();
+        showToast(`${deletedBill.name} restored.`);
+      }
+    });
+  });
+
+  document.querySelector("#closeSheet").addEventListener("click", closeSheet);
+  document.querySelector("#closeSettingsSheet").addEventListener("click", closeSettingsSheet);
+  document.querySelector("#closeActionSheet").addEventListener("click", () => closeActionSheet());
+  backdrop.addEventListener("click", closeAllSheets);
+}
+
+function render() {
+  if (activeBillId) {
+    renderBillDetail();
+  } else if (activeTab === "budget") {
+    renderBudget();
+  } else {
+    renderUpcoming();
+  }
+  tabs.forEach((tab) => tab.classList.toggle("is-active", !activeBillId && tab.dataset.tab === activeTab));
+  if (tabbar) tabbar.hidden = Boolean(activeBillId);
+  updateAppBadge();
 }
 
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     activeTab = tab.dataset.tab;
+    activeBillId = null;
     render();
   });
 });
