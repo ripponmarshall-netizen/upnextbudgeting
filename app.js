@@ -89,6 +89,12 @@ function cloneBill(bill) {
   };
 }
 
+function cloneExpense(expense) {
+  return {
+    ...expense
+  };
+}
+
 let categories = starterCategories.map(cloneCategory);
 
 const categoryColors = [
@@ -176,6 +182,15 @@ const starterBills = Object.freeze([
 ]);
 
 let bills = starterBills.map(cloneBill);
+const starterExpenses = Object.freeze([
+  { id: 3001, amount: 8200, category: "Groceries", merchant: "Hi-Lo groceries", note: "Weekly shop", date: "2026-04-18", paymentSource: "Debit card" },
+  { id: 3002, amount: 1800, category: "Transport", merchant: "Taxi", note: "Town errands", date: "2026-04-19", paymentSource: "Cash" },
+  { id: 3003, amount: 2600, category: "Medical", merchant: "Pharmacy", note: "Prescription refill", date: "2026-04-20", paymentSource: "Debit card" },
+  { id: 3004, amount: 4200, category: "Groceries", merchant: "Market run", note: "Produce", date: "2026-04-21", paymentSource: "Cash" },
+  { id: 3005, amount: 1500, category: "Wellness", merchant: "Juice bar", note: "Post-gym", date: "2026-04-22", paymentSource: "Debit card" }
+]);
+let expenses = starterExpenses.map(cloneExpense);
+let expenseCategories = starterCategories.map((category) => category.name);
 const starterBillIds = new Set(starterBills.map((bill) => bill.id));
 const starterCategoryNames = new Set(starterCategories.map((category) => category.name));
 
@@ -196,6 +211,13 @@ const actionSheet = document.querySelector("#actionSheet");
 const settingsContent = document.querySelector("#settingsContent");
 const actionSheetTitle = document.querySelector("#actionSheetTitle");
 const actionSheetContent = document.querySelector("#actionSheetContent");
+const expenseSheet = document.querySelector("#expenseSheet");
+const expenseForm = document.querySelector("#expenseForm");
+const expenseAmount = document.querySelector("#expenseAmount");
+const expenseCategory = document.querySelector("#expenseCategory");
+const expenseMerchant = document.querySelector("#expenseMerchant");
+const expenseDate = document.querySelector("#expenseDate");
+const expenseSource = document.querySelector("#expenseSource");
 const printExport = document.querySelector("#printExport");
 const toastRegion = document.querySelector("#toastRegion");
 const backdrop = document.querySelector("#sheetBackdrop");
@@ -206,19 +228,26 @@ const billAmount = document.querySelector("#billAmount");
 const billDate = document.querySelector("#billDate");
 const billCategory = document.querySelector("#billCategory");
 const billRepeat = document.querySelector("#billRepeat");
+const propertyTaxPlanRow = document.querySelector("#propertyTaxPlanRow");
+const propertyTaxPlan = document.querySelector("#propertyTaxPlan");
 const billPaid = document.querySelector("#billPaid");
 const paidRow = document.querySelector("#paidRow");
 const deleteBillButton = document.querySelector("#deleteBill");
 const MAX_TOASTS = 3;
 const toastTimers = new WeakMap();
 
-let activeTab = "upcoming";
+let activeTab = "home";
 let activeBillId = null;
 let editingBillId = null;
 let pendingRecurringBillId = null;
 let selectedBudgetCategory = categories[0].name;
 let selectedHistoryMonth = monthKey(toDateInputValue(today));
 let visibleCalendarMonth = monthKey(toDateInputValue(today));
+let selectedExpenseCategory = "All";
+let selectedCalendarDay = null;
+let billFilter = "all";
+let billSearch = "";
+let billSort = "due";
 let lastTrigger = null;
 let actionBillId = null;
 let settings = {
@@ -229,7 +258,12 @@ let settings = {
   pushEndpoint: "",
   pushStatus: "Ready",
   lastPushSync: "",
-  theme: "system"
+  theme: "system",
+  cashflow: {
+    monthlyStartingBalance: 260000,
+    safeSpendBuffer: 20000,
+    paymentSources: ["Cash", "Debit card", "Credit card", "Bank transfer"]
+  }
 };
 
 const money = new Intl.NumberFormat("en-JM", {
@@ -303,7 +337,10 @@ function shiftMonth(key, offset) {
 }
 
 function getAvailableMonths() {
-  const months = [...new Set(bills.map((bill) => monthKey(bill.due)))].sort();
+  const months = [...new Set([
+    ...bills.map((bill) => monthKey(bill.due)),
+    ...expenses.map((expense) => monthKey(expense.date))
+  ])].sort();
   return months.length ? months : [monthKey(toDateInputValue(today))];
 }
 
@@ -318,6 +355,55 @@ function getMonthSummary(key) {
   const unpaidItems = items.filter((bill) => !bill.paid && !bill.archived);
   const overdueItems = unpaidItems.filter((bill) => daysUntil(bill.due) < 0);
   return { items, total, paid, unpaidItems, overdueItems };
+}
+
+function getMonthExpenses(key = monthKey(toDateInputValue(today))) {
+  return [...expenses]
+    .filter((expense) => monthKey(expense.date) === key)
+    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id);
+}
+
+function getExpenseTotal(key = monthKey(toDateInputValue(today)), category = "All") {
+  return getMonthExpenses(key)
+    .filter((expense) => category === "All" || expense.category === category)
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
+function getUnpaidBillTotal(key = monthKey(toDateInputValue(today))) {
+  return bills
+    .filter((bill) => !bill.paid && !bill.archived && monthKey(bill.due) === key)
+    .reduce((sum, bill) => sum + bill.amount, 0);
+}
+
+function getSafeToSpend(key = monthKey(toDateInputValue(today))) {
+  const starting = settings.cashflow?.monthlyStartingBalance || 0;
+  const buffer = settings.cashflow?.safeSpendBuffer || 0;
+  return starting - getUnpaidBillTotal(key) - getExpenseTotal(key) - buffer;
+}
+
+function getRecentExpenses(limit = 5) {
+  return [...expenses]
+    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id)
+    .slice(0, limit);
+}
+
+function expensesByDate(items) {
+  return items.reduce((groups, expense) => {
+    groups[expense.date] = groups[expense.date] || [];
+    groups[expense.date].push(expense);
+    return groups;
+  }, {});
+}
+
+function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4) {
+  const totals = getMonthExpenses(key).reduce((map, expense) => {
+    map[expense.category] = (map[expense.category] || 0) + expense.amount;
+    return map;
+  }, {});
+  return Object.entries(totals)
+    .map(([name, amount]) => ({ name, amount, color: getCategory(name)?.color || "#4d8dff" }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit);
 }
 
 function getVisibleBills() {
@@ -426,6 +512,10 @@ function inferRepeat(bill) {
   return bill.repeat || "none";
 }
 
+function isPropertyTaxBill(source) {
+  return `${source?.name || ""} ${source?.category || ""}`.toLowerCase().includes("property tax");
+}
+
 function advanceDueDate(value, repeat) {
   const next = parseDate(value);
   if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
@@ -445,11 +535,44 @@ function normalizeBill(bill) {
     due,
     paid,
     repeat: ["none", "monthly", "quarterly", "yearly"].includes(bill.repeat) ? bill.repeat : inferRepeat(bill),
+    propertyTaxPlan: ["full", "half-yearly", "quarterly"].includes(bill.propertyTaxPlan) ? bill.propertyTaxPlan : "full",
     seriesKey: bill.seriesKey || makeSeriesKey(bill),
     archived: Boolean(bill.archived),
     archivedAt: bill.archivedAt || null,
     completedAt: paid ? bill.completedAt || `${due}T12:00:00` : null,
     activity: normalizeActivity(bill.activity)
+  };
+}
+
+function normalizeExpense(expense) {
+  const createdAt = expense.createdAt || nowIso();
+  return {
+    id: expense.id || Date.now() + Math.floor(Math.random() * 100000),
+    amount: cleanAmount(expense.amount),
+    category: expense.category || defaultCategory().name,
+    merchant: expense.merchant || expense.note || "Expense",
+    note: expense.note || "",
+    date: expense.date || toDateInputValue(today),
+    paymentSource: expense.paymentSource || settings.cashflow?.paymentSources?.[0] || "Cash",
+    createdAt,
+    updatedAt: expense.updatedAt || createdAt
+  };
+}
+
+function normalizeExpenseCategories(items) {
+  const names = [...new Set([...(Array.isArray(items) ? items : []), ...categories.map((category) => category.name)])]
+    .filter(Boolean);
+  return names.length ? names : ["General"];
+}
+
+function normalizeCashflowSettings(source = {}) {
+  const sources = Array.isArray(source.paymentSources) && source.paymentSources.length
+    ? source.paymentSources
+    : ["Cash", "Debit card", "Credit card", "Bank transfer"];
+  return {
+    monthlyStartingBalance: cleanAmount(source.monthlyStartingBalance ?? 260000),
+    safeSpendBuffer: cleanAmount(source.safeSpendBuffer ?? 20000),
+    paymentSources: sources
   };
 }
 
@@ -464,6 +587,7 @@ function createNextBillFrom(bill) {
     due: advanceDueDate(bill.due, repeat),
     paid: false,
     repeat,
+    propertyTaxPlan: bill.propertyTaxPlan || "full",
     seriesKey: bill.seriesKey,
     archived: false,
     archivedAt: null,
@@ -477,17 +601,21 @@ function isValidState(state) {
     Array.isArray(state.bills) &&
     Array.isArray(state.categories) &&
     state.bills.every((bill) => bill && typeof bill.name === "string" && typeof bill.due === "string") &&
-    state.categories.every((category) => category && typeof category.name === "string");
+    state.categories.every((category) => category && typeof category.name === "string") &&
+    (!state.expenses || Array.isArray(state.expenses));
 }
 
 function appState() {
   return {
-    version: 2,
+    version: 3,
     savedAt: new Date().toISOString(),
     bills,
     categories,
+    expenses,
+    expenseCategories,
     settings,
     selectedBudgetCategory,
+    selectedExpenseCategory,
     selectedHistoryMonth,
     visibleCalendarMonth,
     metadata: {
@@ -590,6 +718,9 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       bills = bills.map(normalizeBill);
+      expenses = expenses.map(normalizeExpense);
+      expenseCategories = normalizeExpenseCategories(expenseCategories);
+      settings.cashflow = normalizeCashflowSettings(settings.cashflow);
       saveState();
       applyTheme();
       return;
@@ -605,13 +736,19 @@ function loadState() {
     bills = state.bills.map(normalizeBill);
     settings = { ...settings, ...(state.settings || {}) };
     settings.theme = validTheme(settings.theme);
+    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+    expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : starterExpenses.map(normalizeExpense);
+    expenseCategories = normalizeExpenseCategories(state.expenseCategories);
     selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
+    selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
     selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
     visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
     ensureCategorySafety();
   } catch (error) {
     console.warn("Could not load saved UpNextBudgeting state", error);
     bills = bills.map(normalizeBill);
+    expenses = expenses.map(normalizeExpense);
+    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
     ensureCategorySafety();
     saveState();
   }
@@ -642,7 +779,10 @@ function ensureCategorySafety() {
   }
   const fallback = defaultCategory().name;
   bills = bills.map((bill) => categories.some((category) => category.name === bill.category) ? bill : { ...bill, category: fallback });
+  expenses = expenses.map((expense) => categories.some((category) => category.name === expense.category) ? expense : { ...expense, category: fallback });
+  expenseCategories = normalizeExpenseCategories(expenseCategories);
   selectedBudgetCategory = categories.some((category) => category.name === selectedBudgetCategory) ? selectedBudgetCategory : fallback;
+  selectedExpenseCategory = selectedExpenseCategory === "All" || expenseCategories.includes(selectedExpenseCategory) ? selectedExpenseCategory : "All";
 }
 
 function categoryIconName(name) {
@@ -1013,44 +1153,117 @@ function renderWalletCard(bill, index) {
   `;
 }
 
-function renderUpcoming() {
-  const unpaid = getVisibleBills();
-  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
-  const dueSoonCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays).length;
-  const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
-
-  app.innerHTML = `
-    <header class="topbar home-hero home-reveal" style="--delay: 0ms">
+function renderTopAppBar({ kicker, title, subtitle = "" }) {
+  return `
+    <header class="topbar app-topbar home-reveal" style="--delay: 0ms">
       <div class="brand-line">
         <img class="brandmark" src="assets/icon.svg" alt="">
         <div class="hero-copy">
-          <p class="kicker">UpNextBudgeting</p>
-          <p class="welcome-line">Welcome back, Marshall.</p>
-          <h1>Due next</h1>
+          <p class="kicker">${kicker}</p>
+          <h1>${title}</h1>
+          ${subtitle ? `<p class="hero-note">${subtitle}</p>` : ""}
         </div>
       </div>
-      <button class="icon-button primary-cta" id="openSheet" type="button" aria-label="Add a bill">
-        ${icon("plus")}
-        <span>Add bill</span>
-      </button>
+      <div class="top-actions">
+        <button class="icon-button light" data-toggle-theme type="button" aria-label="Toggle theme">${icon("wellness")}</button>
+        <button class="icon-button light" data-open-settings type="button" aria-label="Open settings">${icon("gear")}</button>
+      </div>
     </header>
+  `;
+}
 
-    <section class="metrics-row home-reveal" style="--delay: 30ms" aria-label="Upcoming bill summary">
-      <article class="metric-pill ${overdueCount ? "is-alert" : ""}">
-        <span>Overdue</span>
-        <strong>${overdueCount}</strong>
-      </article>
-      <article class="metric-pill">
-        <span>Due soon</span>
-        <strong>${dueSoonCount}</strong>
-      </article>
-      <article class="metric-pill">
-        <span>This month</span>
-        <strong>${dueThisMonth}</strong>
-      </article>
+function renderKpiCard(label, value, detail = "", tone = "") {
+  return `
+    <article class="kpi-card ${tone}">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      ${detail ? `<small>${detail}</small>` : ""}
+    </article>
+  `;
+}
+
+function renderExpenseRow(expense) {
+  const category = getCategory(expense.category);
+  return `
+    <article class="expense-row" style="--accent:${category.color}">
+      <span class="expense-dot" aria-hidden="true"></span>
+      <div>
+        <strong>${expense.merchant}</strong>
+        <span>${expense.category} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${expense.paymentSource}` : ""}</span>
+      </div>
+      <strong>${money.format(expense.amount)}</strong>
+      <button class="text-action danger-text" data-delete-expense="${expense.id}" type="button">Remove</button>
+    </article>
+  `;
+}
+
+function renderBillListCard(bill, index = 0) {
+  const category = getCategory(bill.category);
+  return `
+    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay:${Math.min(40 + index * 24, 260)}ms">
+      <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${bill.name}">
+        <span class="budget-row-icon">${icon(categoryIconName(bill.category))}</span>
+        <span class="budget-row-copy">
+          <strong>${bill.name}</strong>
+          <small>${bill.category} · ${repeatLabels[bill.repeat] || repeatLabels.none}</small>
+        </span>
+        <span class="bill-card-amount">${money.format(bill.amount)}</span>
+      </button>
+      <div class="bill-card-meta">
+        <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
+        <span>${longDateFormat.format(parseDate(bill.due))}</span>
+      </div>
+      <div class="bill-card-actions">
+        <button class="mark-button" data-paid="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>${bill.paid ? "Paid" : "Mark paid"}</button>
+        <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
+        <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderHome() {
+  const unpaid = getVisibleBills();
+  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
+  const dueSevenCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= 7).length;
+  const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
+  const currentMonth = monthKey(toDateInputValue(today));
+  const spent = getExpenseTotal(currentMonth);
+  const safe = getSafeToSpend(currentMonth);
+  const recentExpenses = getRecentExpenses(4);
+  const propertyTax = unpaid.find((bill) => bill.name.toLowerCase().includes("property tax"));
+
+  app.innerHTML = `
+    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall.", subtitle: "Stay ahead of bills, track spending, and know what is safe to spend." })}
+
+    <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
+      <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
+      <button class="secondary-action" data-open-expense-sheet type="button">${icon("groceries")} Add expense</button>
     </section>
 
-    <section class="wallet-stack" aria-label="Upcoming bills">
+    <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Monthly cashflow summary">
+      ${renderKpiCard("Overdue", overdueCount, "bills need action", overdueCount ? "is-alert" : "")}
+      ${renderKpiCard("Due in 7 days", dueSevenCount, `${dueThisMonth} this month`)}
+      ${renderKpiCard("Spent", money.format(spent), monthName())}
+      ${renderKpiCard("Safe to spend", money.format(safe), `${money.format(settings.cashflow.safeSpendBuffer)} buffer`, safe < 0 ? "is-alert" : "is-safe")}
+    </section>
+
+    <section class="cashflow-card home-reveal" style="--delay: 70ms">
+      <div>
+        <p class="mini-label">Projected after bills</p>
+        <h2>${money.format((settings.cashflow.monthlyStartingBalance || 0) - getUnpaidBillTotal(currentMonth) - spent)}</h2>
+        <p class="small-note">Starting balance minus open bills and recorded expenses.</p>
+      </div>
+      <span class="state-pill ${safe < 0 ? "is-overdue" : "is-paid"}">${safe < 0 ? "tight" : "steady"}</span>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading home-reveal" style="--delay: 90ms">
+        <h2>Needs attention</h2>
+        <span class="mini-label">${unpaid.length} open</span>
+      </div>
+      ${propertyTax ? `<article class="property-note home-reveal" style="--delay: 105ms"><strong>Property tax stays visible</strong><span>Due April 1 yearly in Jamaica. April 30 remains the first-payment warning date.</span></article>` : ""}
+      <div class="wallet-stack" aria-label="Upcoming bills">
       ${unpaid.length ? unpaid.map((bill, index) => renderWalletCard(bill, index)).join("") : `
         <article class="empty-panel home-reveal" style="--delay: 70ms">
           <p class="mini-label">Clear</p>
@@ -1058,16 +1271,32 @@ function renderUpcoming() {
           <p class="small-note">Add a bill to keep your next due date visible.</p>
         </article>
       `}
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading home-reveal" style="--delay: 140ms">
+        <h2>Recent expenses</h2>
+        <button class="text-action" data-open-expense-sheet type="button">Add expense</button>
+      </div>
+      <div class="expense-list compact">
+        ${recentExpenses.length ? recentExpenses.map(renderExpenseRow).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>Track day-to-day spending here.</h2><p class="small-note">Fast capture keeps cashflow honest without turning this into accounting.</p></article>`}
+      </div>
     </section>
 
     ${renderRecurringPrompt()}
   `;
 
-  document.querySelector("#openSheet").addEventListener("click", () => openSheet());
+  bindScreenActions();
   document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
   document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
   bindPaidButtons();
   bindBillOpenButtons();
+  bindExpenseActions();
+}
+
+function renderUpcoming() {
+  renderHome();
 }
 
 function renderTimelineItem(entry) {
@@ -1092,6 +1321,7 @@ function renderBillDetail() {
   }
   const category = getCategory(bill.category);
   const timeline = getBillTimeline(bill).slice(0, 12);
+  const isPropertyTax = isPropertyTaxBill(bill);
 
   app.innerHTML = `
     <section class="detail-screen">
@@ -1150,6 +1380,13 @@ function renderBillDetail() {
           <p class="small-note detail-copy">${pushSupportStatus()}</p>
         </article>
       </section>
+
+      ${isPropertyTax ? `
+        <section class="property-note detail-note home-reveal" style="--delay: 130ms">
+          <strong>Jamaica property tax planning</strong>
+          <span>Due April 1 yearly. Current plan: ${bill.propertyTaxPlan === "half-yearly" ? "half-yearly" : bill.propertyTaxPlan}. Keep April 30 visible as the first-payment warning date.</span>
+        </section>
+      ` : ""}
 
       <section class="detail-section home-reveal" style="--delay: 150ms">
         <div class="section-heading">
@@ -1360,6 +1597,253 @@ function bindBudgetCategorySelection() {
   });
 }
 
+function filteredBills() {
+  const search = billSearch.trim().toLowerCase();
+  const filtered = bills.filter((bill) => {
+    if (billFilter === "overdue" && !(daysUntil(bill.due) < 0 && !bill.paid && !bill.archived)) return false;
+    if (billFilter === "due-soon" && !(daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays && !bill.paid && !bill.archived)) return false;
+    if (billFilter === "paid" && !bill.paid) return false;
+    if (billFilter === "recurring" && (!bill.repeat || bill.repeat === "none")) return false;
+    if (!search) return true;
+    return `${bill.name} ${bill.category}`.toLowerCase().includes(search);
+  });
+  if (billSort === "amount") return filtered.sort((a, b) => b.amount - a.amount);
+  if (billSort === "name") return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  return sortBills(filtered);
+}
+
+function renderBills() {
+  const filters = [
+    ["all", "All"],
+    ["overdue", "Overdue"],
+    ["due-soon", "Due soon"],
+    ["paid", "Paid"],
+    ["recurring", "Recurring"]
+  ];
+  const items = filteredBills();
+  app.innerHTML = `
+    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills", subtitle: "Manage recurring and expected obligations without losing the due-next clarity." })}
+    <section class="screen-controls home-reveal" style="--delay: 20ms">
+      <div class="chip-row" aria-label="Bill filters">
+        ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
+      </div>
+      <label class="search-box">
+        <span class="mini-label">Search</span>
+        <input id="billSearch" value="${escapeAttribute(billSearch)}" placeholder="JPS, rent, tax...">
+      </label>
+      <label class="search-box">
+        <span class="mini-label">Sort</span>
+        <select id="billSort">
+          <option value="due" ${billSort === "due" ? "selected" : ""}>Due date</option>
+          <option value="amount" ${billSort === "amount" ? "selected" : ""}>Amount</option>
+          <option value="name" ${billSort === "name" ? "selected" : ""}>Name</option>
+        </select>
+      </label>
+    </section>
+    <section class="bill-list">
+      ${items.length ? items.map(renderBillListCard).join("") : `<article class="empty-panel"><p class="mini-label">No matches</p><h2>No bills found.</h2><p class="small-note">Adjust filters or add a new bill.</p></article>`}
+    </section>
+  `;
+  bindScreenActions();
+  document.querySelectorAll("[data-bill-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      billFilter = button.dataset.billFilter;
+      render();
+    });
+  });
+  document.querySelector("#billSearch").addEventListener("input", (event) => {
+    billSearch = event.target.value;
+    renderBills();
+  });
+  document.querySelector("#billSort").addEventListener("change", (event) => {
+    billSort = event.target.value;
+    render();
+  });
+  bindPaidButtons();
+  bindBillOpenButtons();
+  bindBillSecondaryActions();
+}
+
+function renderExpenseCategoryChips() {
+  return ["All", ...expenseCategories].map((category) => `
+    <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${category}</button>
+  `).join("");
+}
+
+function renderExpenses() {
+  const currentMonth = monthKey(toDateInputValue(today));
+  const monthExpenses = getMonthExpenses(currentMonth)
+    .filter((expense) => selectedExpenseCategory === "All" || expense.category === selectedExpenseCategory);
+  const grouped = expensesByDate(monthExpenses);
+  const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
+  const topCategories = topExpenseCategories(currentMonth, 3);
+  app.innerHTML = `
+    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses", subtitle: "Fast capture for the day-to-day spending that changes your safe-to-spend number." })}
+    <section class="quick-actions home-reveal" style="--delay: 20ms">
+      <button class="primary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
+      <button class="secondary-action" data-open-bill-sheet type="button">${icon("tax")} Add bill</button>
+    </section>
+    <section class="expense-summary-grid home-reveal" style="--delay: 40ms">
+      ${renderKpiCard("Spent this month", money.format(total), selectedExpenseCategory)}
+      ${renderKpiCard("Transactions", monthExpenses.length, "recorded")}
+      ${renderKpiCard("Safe to spend", money.format(getSafeToSpend(currentMonth)), "after bills and buffer", getSafeToSpend(currentMonth) < 0 ? "is-alert" : "is-safe")}
+    </section>
+    <section class="screen-controls home-reveal" style="--delay: 60ms">
+      <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
+    </section>
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>Top categories</h2>
+        <span class="mini-label">${monthLabel(currentMonth)}</span>
+      </div>
+      <div class="mini-bars">
+        ${topCategories.length ? topCategories.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">Add expenses to see category patterns.</p>`}
+      </div>
+    </section>
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>Recent transactions</h2>
+        <span class="mini-label">${monthExpenses.length}</span>
+      </div>
+      <div class="date-groups">
+        ${Object.keys(grouped).length ? Object.entries(grouped).map(([date, items]) => `
+          <section class="date-group">
+            <p class="mini-label">${longDateFormat.format(parseDate(date))}</p>
+            <div class="expense-list">${items.map(renderExpenseRow).join("")}</div>
+          </section>
+        `).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>No spending recorded yet.</h2><p class="small-note">Use Add expense to capture a transaction in seconds.</p></article>`}
+      </div>
+    </section>
+  `;
+  bindScreenActions();
+  document.querySelectorAll("[data-expense-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedExpenseCategory = decodeCategoryDataset(button.dataset.expenseFilter);
+      render();
+    });
+  });
+  bindExpenseActions();
+}
+
+function getCalendarDays(key) {
+  const first = new Date(`${key}-01T12:00:00`);
+  const startOffset = first.getDay();
+  const gridStart = new Date(first);
+  gridStart.setDate(first.getDate() - startOffset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return toDateInputValue(date);
+  });
+}
+
+function renderCalendarDay(date) {
+  const key = monthKey(date);
+  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
+  const expensesForDay = expenses.filter((expense) => expense.date === date);
+  const totalOut = billsForDay.reduce((sum, bill) => sum + bill.amount, 0) + expensesForDay.reduce((sum, expense) => sum + expense.amount, 0);
+  const isCurrentMonth = key === visibleCalendarMonth;
+  return `
+    <button class="calendar-day ${isCurrentMonth ? "" : "is-muted"} ${date === toDateInputValue(today) ? "is-today" : ""}" data-calendar-day="${date}" type="button">
+      <span>${parseDate(date).getDate()}</span>
+      <div class="day-dots">
+        ${billsForDay.length ? `<i class="bill-dot"></i>` : ""}
+        ${expensesForDay.length ? `<i class="expense-dot-small"></i>` : ""}
+      </div>
+      ${totalOut ? `<small>${money.format(totalOut)}</small>` : ""}
+    </button>
+  `;
+}
+
+function renderCalendar() {
+  const days = getCalendarDays(visibleCalendarMonth);
+  const dayBills = selectedCalendarDay ? bills.filter((bill) => bill.due === selectedCalendarDay && !bill.archived) : [];
+  const dayExpenses = selectedCalendarDay ? expenses.filter((expense) => expense.date === selectedCalendarDay) : [];
+  app.innerHTML = `
+    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar", subtitle: "See bills and spending together across the month." })}
+    <section class="month-controls home-reveal" style="--delay: 20ms">
+      <button class="secondary-action" data-shift-calendar="-1" type="button">Previous</button>
+      <strong>${monthLabel(visibleCalendarMonth)}</strong>
+      <button class="secondary-action" data-shift-calendar="1" type="button">Next</button>
+    </section>
+    <section class="calendar-grid home-reveal" style="--delay: 40ms">
+      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<span class="calendar-weekday">${day}</span>`).join("")}
+      ${days.map(renderCalendarDay).join("")}
+    </section>
+    <section class="day-drawer home-reveal" style="--delay: 70ms">
+      <div class="section-heading">
+        <h2>${selectedCalendarDay ? longDateFormat.format(parseDate(selectedCalendarDay)) : "Select a day"}</h2>
+        <button class="text-action" data-open-expense-sheet type="button">Add expense</button>
+      </div>
+      ${selectedCalendarDay ? `
+        <div class="bill-list compact">${dayBills.map(renderBillListCard).join("") || `<p class="settings-copy">No bills due.</p>`}</div>
+        <div class="expense-list compact">${dayExpenses.map(renderExpenseRow).join("") || `<p class="settings-copy">No expenses recorded.</p>`}</div>
+      ` : `<p class="settings-copy">Tap a day to see bills, expenses, and quick actions.</p>`}
+    </section>
+  `;
+  bindScreenActions();
+  document.querySelectorAll("[data-shift-calendar]").forEach((button) => {
+    button.addEventListener("click", () => {
+      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, Number(button.dataset.shiftCalendar));
+      selectedCalendarDay = null;
+      saveState(false);
+      render();
+    });
+  });
+  document.querySelectorAll("[data-calendar-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedCalendarDay = button.dataset.calendarDay;
+      render();
+    });
+  });
+  bindPaidButtons();
+  bindBillOpenButtons();
+  bindBillSecondaryActions();
+  bindExpenseActions();
+}
+
+function renderInsights() {
+  const currentMonth = monthKey(toDateInputValue(today));
+  const spent = getExpenseTotal(currentMonth);
+  const unpaidBills = getUnpaidBillTotal(currentMonth);
+  const subscriptions = bills
+    .filter((bill) => bill.category === "Subscriptions" && !bill.archived && monthKey(bill.due) === currentMonth)
+    .reduce((sum, bill) => sum + bill.amount, 0);
+  const paidThisMonth = bills.filter((bill) => bill.paid && monthKey(bill.due) === currentMonth);
+  const totalThisMonth = bills.filter((bill) => monthKey(bill.due) === currentMonth);
+  const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
+  const top = topExpenseCategories(currentMonth, 5);
+  app.innerHTML = `
+    ${renderTopAppBar({ kicker: "Decision support", title: "Insights", subtitle: "A calm read on bills, spending, and what remains." })}
+    <section class="insight-grid home-reveal" style="--delay: 30ms">
+      ${renderKpiCard("Fixed bills open", money.format(unpaidBills), "unpaid this month")}
+      ${renderKpiCard("Variable spent", money.format(spent), monthLabel(currentMonth))}
+      ${renderKpiCard("Subscriptions", money.format(subscriptions), "this month")}
+      ${renderKpiCard("Paid rate", `${onTimeRate}%`, "bills this month", onTimeRate >= 75 ? "is-safe" : "is-alert")}
+    </section>
+    ${renderBudgetChart()}
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>Top spending categories</h2>
+        <span class="mini-label">variable</span>
+      </div>
+      <div class="mini-bars">
+        ${top.length ? top.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(spent, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">Add expenses to unlock spending insights.</p>`}
+      </div>
+    </section>
+    <section class="cashflow-card">
+      <div>
+        <p class="mini-label">Projected balance</p>
+        <h2>${money.format((settings.cashflow.monthlyStartingBalance || 0) - unpaidBills - spent)}</h2>
+        <p class="small-note">After open bills and recorded expenses.</p>
+      </div>
+      <span class="state-pill ${getSafeToSpend(currentMonth) < 0 ? "is-overdue" : "is-paid"}">${getSafeToSpend(currentMonth) < 0 ? "watch" : "safe"}</span>
+    </section>
+  `;
+  bindScreenActions();
+  bindBudgetCategorySelection();
+}
+
 function renderHistoryBill(bill) {
   return `
     <div class="history-item">
@@ -1408,6 +1892,24 @@ function renderSettingsContent() {
           <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
         </select>
       </label>
+    </section>
+    <section class="settings-section">
+      <div class="section-heading compact">
+        <h3>Cashflow</h3>
+        <span class="mini-label">safe spend</span>
+      </div>
+      <p class="settings-copy">Set a monthly starting balance and a cushion to power projected balance and safe-to-spend cards.</p>
+      <form id="cashflowForm" class="control-form">
+        <label>
+          <span>Monthly starting balance</span>
+          <input id="monthlyStartingBalance" inputmode="numeric" value="${settings.cashflow.monthlyStartingBalance}" aria-label="Monthly starting balance">
+        </label>
+        <label>
+          <span>Safety buffer</span>
+          <input id="safeSpendBuffer" inputmode="numeric" value="${settings.cashflow.safeSpendBuffer}" aria-label="Safe to spend buffer">
+        </label>
+        <button class="primary-action small" type="submit">Save cashflow</button>
+      </form>
     </section>
     <section class="settings-section">
       <div class="section-heading compact">
@@ -1542,6 +2044,7 @@ function renderSettingsContent() {
     </section>
   `;
   setupAppearanceControls();
+  setupCashflowControls();
   setupMonthlyHistory();
   setupReminderSettings();
   setupPushControls();
@@ -1565,14 +2068,17 @@ function openSheet(billId = null) {
     billDate.value = bill.due;
     syncBillCategoryOptions(bill.category);
     billRepeat.value = bill.repeat || "none";
+    propertyTaxPlan.value = bill.propertyTaxPlan || "full";
     billPaid.checked = Boolean(bill.paid);
   } else {
     billForm.reset();
     syncBillCategoryOptions();
     billDate.value = toDateInputValue(today);
     billRepeat.value = "none";
+    propertyTaxPlan.value = "full";
     billPaid.checked = false;
   }
+  updatePropertyTaxPlanVisibility();
   sheet.hidden = false;
   backdrop.hidden = false;
   billName.focus();
@@ -1580,13 +2086,40 @@ function openSheet(billId = null) {
 
 function closeSheet() {
   sheet.hidden = true;
-  if (settingsSheet.hidden && actionSheet.hidden) backdrop.hidden = true;
+  if (settingsSheet.hidden && actionSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
   billForm.reset();
   editingBillId = null;
   deleteBillButton.hidden = true;
   paidRow.hidden = true;
   document.querySelector("#sheetTitle").textContent = "Add a bill";
   billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
+  lastTrigger?.focus?.();
+}
+
+function syncExpenseCategoryOptions(preferred = expenseCategory.value) {
+  expenseCategories = normalizeExpenseCategories(expenseCategories);
+  const fallback = expenseCategories[0] || defaultCategory().name;
+  expenseCategory.innerHTML = expenseCategories.map((category) => `<option>${category}</option>`).join("");
+  expenseCategory.value = expenseCategories.includes(preferred) ? preferred : fallback;
+  expenseSource.innerHTML = settings.cashflow.paymentSources.map((source) => `<option>${source}</option>`).join("");
+}
+
+function openExpenseSheet({ keepValues = false } = {}) {
+  lastTrigger = document.activeElement;
+  if (!keepValues) {
+    expenseForm.reset();
+    expenseDate.value = selectedCalendarDay || toDateInputValue(today);
+  }
+  syncExpenseCategoryOptions(selectedExpenseCategory === "All" ? undefined : selectedExpenseCategory);
+  expenseSheet.hidden = false;
+  backdrop.hidden = false;
+  expenseAmount.focus();
+}
+
+function closeExpenseSheet() {
+  expenseSheet.hidden = true;
+  if (sheet.hidden && settingsSheet.hidden && actionSheet.hidden) backdrop.hidden = true;
+  expenseForm.reset();
   lastTrigger?.focus?.();
 }
 
@@ -1599,7 +2132,7 @@ function openSettingsSheet() {
 
 function closeSettingsSheet() {
   settingsSheet.hidden = true;
-  if (sheet.hidden && actionSheet.hidden) backdrop.hidden = true;
+  if (sheet.hidden && actionSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
   lastTrigger?.focus?.();
 }
 
@@ -1678,6 +2211,7 @@ function addCategoryByName(name, plannedValue) {
     planned: cleanAmount(plannedValue),
     assigned: 0
   });
+  if (!expenseCategories.includes(trimmed)) expenseCategories.push(trimmed);
   selectedBudgetCategory = trimmed;
   syncBillCategoryOptions(trimmed);
   saveState();
@@ -1758,7 +2292,7 @@ function closeActionSheet(restoreFocus = true) {
   actionBillId = null;
   actionSheetTitle.textContent = "Quick action";
   actionSheetContent.innerHTML = "";
-  if (sheet.hidden && settingsSheet.hidden) backdrop.hidden = true;
+  if (sheet.hidden && settingsSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
   if (restoreFocus) lastTrigger?.focus?.();
 }
 
@@ -1766,11 +2300,13 @@ function closeAllSheets() {
   if (!sheet.hidden) closeSheet();
   if (!settingsSheet.hidden) closeSettingsSheet();
   if (!actionSheet.hidden) closeActionSheet(false);
+  if (!expenseSheet.hidden) closeExpenseSheet();
   backdrop.hidden = true;
 }
 
 function activeSheet() {
   if (!actionSheet.hidden) return actionSheet;
+  if (!expenseSheet.hidden) return expenseSheet;
   if (!settingsSheet.hidden) return settingsSheet;
   if (!sheet.hidden) return sheet;
   return null;
@@ -1782,6 +2318,33 @@ function syncBillCategoryOptions(preferred = billCategory.value) {
   billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
 }
 
+function updatePropertyTaxPlanVisibility() {
+  propertyTaxPlanRow.hidden = !isPropertyTaxBill({ name: billName.value, category: billCategory.value });
+}
+
+function toggleThemePreference() {
+  const nextTheme = resolvedTheme() === "dark" ? "light" : "dark";
+  settings.theme = nextTheme;
+  applyTheme();
+  saveState(false);
+  showToast(`${nextTheme === "dark" ? "Dark" : "Light"} theme applied.`);
+}
+
+function bindScreenActions() {
+  document.querySelectorAll("[data-open-bill-sheet]").forEach((button) => {
+    button.addEventListener("click", () => openSheet());
+  });
+  document.querySelectorAll("[data-open-expense-sheet]").forEach((button) => {
+    button.addEventListener("click", () => openExpenseSheet());
+  });
+  document.querySelectorAll("[data-open-settings]").forEach((button) => {
+    button.addEventListener("click", openSettingsSheet);
+  });
+  document.querySelectorAll("[data-toggle-theme]").forEach((button) => {
+    button.addEventListener("click", toggleThemePreference);
+  });
+}
+
 function bindBillOpenButtons() {
   document.querySelectorAll("[data-open-bill]").forEach((card) => {
     const open = () => openBillDetail(Number(card.dataset.openBill));
@@ -1791,6 +2354,21 @@ function bindBillOpenButtons() {
         event.preventDefault();
         open();
       }
+    });
+  });
+}
+
+function bindBillSecondaryActions() {
+  document.querySelectorAll("[data-edit-bill]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSheet(Number(button.dataset.editBill));
+    });
+  });
+  document.querySelectorAll("[data-snooze-bill]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSnoozeSheet(Number(button.dataset.snoozeBill));
     });
   });
 }
@@ -1944,7 +2522,11 @@ function applyImportedState(state) {
   bills = state.bills.map(normalizeBill);
   settings = { initialized: true, reminderDays: 3, ...(state.settings || {}) };
   settings.theme = validTheme(settings.theme);
+  settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+  expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
+  expenseCategories = normalizeExpenseCategories(state.expenseCategories);
   selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
+  selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
   selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
   visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
   pendingRecurringBillId = null;
@@ -1962,7 +2544,10 @@ function snapshotForUndo() {
   return {
     bills: bills.map(cloneBill),
     categories: categories.map(cloneCategory),
+    expenses: expenses.map(cloneExpense),
+    expenseCategories: [...expenseCategories],
     selectedBudgetCategory,
+    selectedExpenseCategory,
     selectedHistoryMonth,
     visibleCalendarMonth,
     pendingRecurringBillId,
@@ -1973,7 +2558,10 @@ function snapshotForUndo() {
 function restoreSnapshot(snapshot, message = "Restored.") {
   bills = snapshot.bills.map(cloneBill);
   categories = snapshot.categories.map(cloneCategory);
+  expenses = snapshot.expenses.map(cloneExpense);
+  expenseCategories = [...snapshot.expenseCategories];
   selectedBudgetCategory = snapshot.selectedBudgetCategory;
+  selectedExpenseCategory = snapshot.selectedExpenseCategory;
   selectedHistoryMonth = snapshot.selectedHistoryMonth;
   visibleCalendarMonth = snapshot.visibleCalendarMonth;
   pendingRecurringBillId = snapshot.pendingRecurringBillId;
@@ -2001,6 +2589,7 @@ function clearStarterData(mode) {
   }
   if (mode === "categories" || mode === "both") {
     categories = categories.filter((category) => !starterCategoryNames.has(category.name));
+    expenseCategories = expenseCategories.filter((category) => !starterCategoryNames.has(category));
   }
   ensureCategorySafety();
   syncBillCategoryOptions(selectedBudgetCategory);
@@ -2019,6 +2608,21 @@ function setupAppearanceControls() {
     applyTheme();
     saveState(false);
     showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
+  });
+}
+
+function setupCashflowControls() {
+  const form = document.querySelector("#cashflowForm");
+  const startingBalance = document.querySelector("#monthlyStartingBalance");
+  const buffer = document.querySelector("#safeSpendBuffer");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    settings.cashflow.monthlyStartingBalance = cleanAmount(startingBalance.value);
+    settings.cashflow.safeSpendBuffer = cleanAmount(buffer.value);
+    saveState();
+    render();
+    renderSettingsContent();
+    showToast("Cashflow settings updated.");
   });
 }
 
@@ -2196,6 +2800,7 @@ function setupAccessibility() {
       if (currentSheet) {
         event.preventDefault();
         if (currentSheet === actionSheet) closeActionSheet();
+        if (currentSheet === expenseSheet) closeExpenseSheet();
         if (currentSheet === settingsSheet) closeSettingsSheet();
         if (currentSheet === sheet) closeSheet();
         return;
@@ -2265,6 +2870,72 @@ function setupBudgetControls() {
   });
 }
 
+function addExpenseFromForm({ addAnother = false } = {}) {
+  const expense = normalizeExpense({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    amount: expenseAmount.value,
+    category: expenseCategory.value,
+    merchant: expenseMerchant.value.trim() || expenseCategory.value,
+    note: expenseMerchant.value.trim(),
+    date: expenseDate.value,
+    paymentSource: expenseSource.value,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  });
+  expenses.push(expense);
+  if (!expenseCategories.includes(expense.category)) expenseCategories.push(expense.category);
+  saveState();
+  render();
+  showToast(`${expense.merchant} added.`, {
+    undo: () => {
+      expenses = expenses.filter((item) => item.id !== expense.id);
+      saveState();
+      render();
+      showToast("Expense removed.");
+    }
+  });
+  if (addAnother) {
+    openExpenseSheet({ keepValues: true });
+    expenseAmount.value = "";
+    expenseMerchant.value = "";
+  } else {
+    closeExpenseSheet();
+  }
+}
+
+function deleteExpense(expenseId) {
+  const expense = expenses.find((item) => item.id === expenseId);
+  if (!expense) return;
+  const snapshot = cloneExpense(expense);
+  expenses = expenses.filter((item) => item.id !== expenseId);
+  saveState();
+  render();
+  showToast(`${snapshot.merchant} removed.`, {
+    undo: () => {
+      expenses.push(snapshot);
+      saveState();
+      render();
+      showToast(`${snapshot.merchant} restored.`);
+    }
+  });
+}
+
+function bindExpenseActions() {
+  document.querySelectorAll("[data-delete-expense]").forEach((button) => {
+    button.addEventListener("click", () => deleteExpense(Number(button.dataset.deleteExpense)));
+  });
+}
+
+function setupExpenseForm() {
+  syncExpenseCategoryOptions();
+  expenseForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const addAnother = event.submitter?.dataset.expenseSubmit === "again";
+    addExpenseFromForm({ addAnother });
+  });
+  document.querySelector("#closeExpenseSheet").addEventListener("click", closeExpenseSheet);
+}
+
 function setupForm() {
   syncBillCategoryOptions();
   presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${preset.name}">${preset.name}</button>`).join("");
@@ -2277,7 +2948,12 @@ function setupForm() {
     billAmount.value = preset.amount;
     billCategory.value = preset.category;
     billRepeat.value = inferRepeat(preset);
+    if (isPropertyTaxBill(preset)) propertyTaxPlan.value = "full";
+    updatePropertyTaxPlanVisibility();
   });
+
+  billName.addEventListener("input", updatePropertyTaxPlanVisibility);
+  billCategory.addEventListener("change", updatePropertyTaxPlanVisibility);
 
   billForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2288,7 +2964,8 @@ function setupForm() {
       amount: cleanAmount(billAmount.value),
       due: billDate.value,
       paid: editingBillId ? billPaid.checked : false,
-      repeat: billRepeat.value
+      repeat: billRepeat.value,
+      propertyTaxPlan: propertyTaxPlan.value
     };
     if (editingBillId) {
       const bill = getBillById(editingBillId);
@@ -2299,6 +2976,7 @@ function setupForm() {
         bill.amount = payload.amount;
         bill.due = payload.due;
         bill.repeat = payload.repeat;
+        bill.propertyTaxPlan = payload.propertyTaxPlan;
         if (!before.paid && payload.paid) {
           bill.paid = true;
           bill.completedAt = nowIso();
@@ -2315,7 +2993,8 @@ function setupForm() {
           before.amount !== bill.amount ||
           before.category !== bill.category ||
           before.due !== bill.due ||
-          before.repeat !== bill.repeat
+          before.repeat !== bill.repeat ||
+          before.propertyTaxPlan !== bill.propertyTaxPlan
         ) {
           appendActivity(bill, "edited", { note: "Bill details were updated." });
         }
@@ -2331,7 +3010,7 @@ function setupForm() {
     }
     saveState();
     closeSheet();
-    activeTab = "upcoming";
+    activeTab = "home";
     render();
     if (!settingsSheet.hidden) renderSettingsContent();
     showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
@@ -2371,10 +3050,16 @@ function setupForm() {
 function render() {
   if (activeBillId) {
     renderBillDetail();
-  } else if (activeTab === "budget") {
-    renderBudget();
+  } else if (activeTab === "bills") {
+    renderBills();
+  } else if (activeTab === "expenses") {
+    renderExpenses();
+  } else if (activeTab === "calendar") {
+    renderCalendar();
+  } else if (activeTab === "insights") {
+    renderInsights();
   } else {
-    renderUpcoming();
+    renderHome();
   }
   tabs.forEach((tab) => tab.classList.toggle("is-active", !activeBillId && tab.dataset.tab === activeTab));
   if (tabbar) tabbar.hidden = Boolean(activeBillId);
@@ -2409,5 +3094,6 @@ if ("serviceWorker" in navigator) {
 
 loadState();
 setupForm();
+setupExpenseForm();
 setupAccessibility();
 render();

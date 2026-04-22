@@ -16,17 +16,35 @@
       <main id="app" class="screen" aria-live="polite"></main>
 
       <nav class="tabbar" id="tabbar" aria-label="Primary">
-        <button class="tab is-active" data-tab="upcoming" type="button">
+        <button class="tab is-active" data-tab="home" type="button">
           <span class="tab-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h10M5 16.5h7"/><path d="M17 14.5l2 2 3-3"/></svg>
           </span>
-          <span>Upcoming</span>
+          <span>Home</span>
         </button>
-        <button class="tab" data-tab="budget" type="button">
+        <button class="tab" data-tab="bills" type="button">
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 3.5h10l2 3.5v13.5H5V7l2-3.5Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+          </span>
+          <span>Bills</span>
+        </button>
+        <button class="tab" data-tab="expenses" type="button">
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 7.5h14v12H5z"/><path d="M8 11h8M8 15h5"/><path d="M17 4.5v3"/></svg>
+          </span>
+          <span>Expenses</span>
+        </button>
+        <button class="tab" data-tab="calendar" type="button">
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6.5 4.5v3M17.5 4.5v3"/><rect x="4" y="6.5" width="16" height="13" rx="2"/><path d="M4 10h16M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01"/></svg>
+          </span>
+          <span>Calendar</span>
+        </button>
+        <button class="tab" data-tab="insights" type="button">
           <span class="tab-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M5 17.5V10M12 17.5V6.5M19 17.5v-4"/><path d="M4 20h16"/><rect x="3.5" y="8" width="3" height="9.5" rx="1"/><rect x="10.5" y="4.5" width="3" height="13" rx="1"/><rect x="17.5" y="11.5" width="3" height="6" rx="1"/></svg>
           </span>
-          <span>Budget</span>
+          <span>Insights</span>
         </button>
       </nav>
     </div>
@@ -72,6 +90,14 @@
             <option value="yearly">Yearly</option>
           </select>
         </label>
+        <label id="propertyTaxPlanRow" hidden>
+          <span>Property tax planning</span>
+          <select id="propertyTaxPlan" name="propertyTaxPlan">
+            <option value="full">Pay in full</option>
+            <option value="half-yearly">Half-yearly</option>
+            <option value="quarterly">Quarterly</option>
+          </select>
+        </label>
         <label class="check-row" id="paidRow" hidden>
           <input id="billPaid" name="paid" type="checkbox">
           <span>Already paid</span>
@@ -110,6 +136,46 @@
         </button>
       </div>
       <div id="actionSheetContent"></div>
+    </section>
+    <section class="quick-sheet expense-sheet" id="expenseSheet" aria-labelledby="expenseSheetTitle" aria-modal="true" role="dialog" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-top">
+        <div>
+          <p class="eyebrow">Fast capture</p>
+          <h2 id="expenseSheetTitle">Add expense</h2>
+        </div>
+        <button class="icon-button light" id="closeExpenseSheet" type="button" aria-label="Close expense form">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <form id="expenseForm" class="expense-form">
+        <label class="amount-entry">
+          <span>Amount</span>
+          <input id="expenseAmount" name="amount" inputmode="numeric" required placeholder="2500">
+        </label>
+        <label>
+          <span>Category</span>
+          <select id="expenseCategory" name="category"></select>
+        </label>
+        <label>
+          <span>Merchant or note</span>
+          <input id="expenseMerchant" name="merchant" autocomplete="off" placeholder="Sovereign groceries">
+        </label>
+        <div class="form-row">
+          <label>
+            <span>Date</span>
+            <input id="expenseDate" name="date" type="date" required>
+          </label>
+          <label>
+            <span>Source</span>
+            <select id="expenseSource" name="source"></select>
+          </label>
+        </div>
+        <div class="control-actions">
+          <button class="primary-action" type="submit" data-expense-submit="close">Save expense</button>
+          <button class="secondary-action" type="submit" data-expense-submit="again">Save & add another</button>
+        </div>
+      </form>
     </section>
     <section id="printExport" class="print-export" aria-hidden="true"></section>
 
