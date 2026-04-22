@@ -50,20 +50,20 @@ function icon(name) {
 }
 
 const starterCategories = Object.freeze([
-  { name: "Home", color: "#4d8dff", planned: 160000, assigned: 141500 },
-  { name: "Utilities", color: "#ff9c6a", planned: 36000, assigned: 25370 },
-  { name: "Phone & internet", color: "#68a3ff", planned: 22000, assigned: 15000 },
-  { name: "Vehicle", color: "#b38aff", planned: 28000, assigned: 17100 },
-  { name: "Insurance", color: "#ff7d7d", planned: 50000, assigned: 42000 },
-  { name: "Transport", color: "#7ccf8a", planned: 24000, assigned: 22000 },
-  { name: "Subscriptions", color: "#d78fff", planned: 7000, assigned: 3050 },
-  { name: "Wellness", color: "#5dc2b2", planned: 12000, assigned: 7000 },
-  { name: "Loans", color: "#ffc85f", planned: 56000, assigned: 37500 },
-  { name: "School", color: "#67b8c8", planned: 30000, assigned: 18000 },
-  { name: "Medical", color: "#ff8d6f", planned: 16000, assigned: 12000 },
-  { name: "Groceries", color: "#b5c862", planned: 46000, assigned: 42000 },
-  { name: "Savings", color: "#4ea6bb", planned: 45000, assigned: 45000 },
-  { name: "Tax planning", color: "#a0af6b", planned: 24000, assigned: 18000 }
+  { name: "Home", color: "#c4b5fd", planned: 160000, assigned: 141500 },
+  { name: "Utilities", color: "#fed7aa", planned: 36000, assigned: 25370 },
+  { name: "Phone & internet", color: "#bae6fd", planned: 22000, assigned: 15000 },
+  { name: "Vehicle", color: "#ddd6fe", planned: 28000, assigned: 17100 },
+  { name: "Insurance", color: "#fecaca", planned: 50000, assigned: 42000 },
+  { name: "Transport", color: "#bbf7d0", planned: 24000, assigned: 22000 },
+  { name: "Subscriptions", color: "#f0abfc", planned: 7000, assigned: 3050 },
+  { name: "Wellness", color: "#99f6e4", planned: 12000, assigned: 7000 },
+  { name: "Loans", color: "#fef08a", planned: 56000, assigned: 37500 },
+  { name: "School", color: "#a5f3fc", planned: 30000, assigned: 18000 },
+  { name: "Medical", color: "#fed7aa", planned: 16000, assigned: 12000 },
+  { name: "Groceries", color: "#d9f99d", planned: 46000, assigned: 42000 },
+  { name: "Savings", color: "#6ee7b7", planned: 45000, assigned: 45000 },
+  { name: "Tax planning", color: "#e9d5ff", planned: 24000, assigned: 18000 }
 ]);
 
 function cloneCategory(category) {
@@ -98,20 +98,20 @@ function cloneExpense(expense) {
 let categories = starterCategories.map(cloneCategory);
 
 const categoryColors = [
-  "#4d8dff",
-  "#ff9c6a",
-  "#68a3ff",
-  "#b38aff",
-  "#ff7d7d",
-  "#7ccf8a",
-  "#d78fff",
-  "#5dc2b2",
-  "#ffc85f",
-  "#67b8c8",
-  "#ff8d6f",
-  "#b5c862",
-  "#4ea6bb",
-  "#a0af6b"
+  "#c4b5fd",
+  "#fed7aa",
+  "#bae6fd",
+  "#ddd6fe",
+  "#fecaca",
+  "#bbf7d0",
+  "#f0abfc",
+  "#99f6e4",
+  "#fef08a",
+  "#a5f3fc",
+  "#fed7aa",
+  "#d9f99d",
+  "#6ee7b7",
+  "#e9d5ff"
 ];
 
 const presets = [

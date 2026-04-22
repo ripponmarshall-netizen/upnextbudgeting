@@ -11,18 +11,22 @@
   --line-strong: rgba(255, 255, 255, 0.15);
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.16);
-  --danger: #ff7d7d;
-  --danger-bg: rgba(255, 125, 125, 0.12);
-  --warning: #ffb563;
-  --warning-bg: rgba(255, 181, 99, 0.14);
-  --success: #6fd394;
-  --success-bg: rgba(111, 211, 148, 0.12);
-  --info: #6fa5ff;
-  --info-bg: rgba(111, 165, 255, 0.12);
+  --brand: #c084fc;
+  --brand-soft: rgba(192, 132, 252, 0.14);
+  --brand-border: rgba(192, 132, 252, 0.28);
+  --danger: #fca5a5;
+  --danger-bg: rgba(252, 165, 165, 0.13);
+  --warning: #fcd34d;
+  --warning-bg: rgba(252, 211, 77, 0.13);
+  --success: #86efac;
+  --success-bg: rgba(134, 239, 172, 0.13);
+  --info: #93c5fd;
+  --info-bg: rgba(147, 197, 253, 0.13);
   --neutral: #9aa0a6;
   --neutral-bg: rgba(154, 160, 166, 0.12);
-  --radius: 8px;
-  --radius-small: 6px;
+  --radius: 14px;
+  --radius-small: 10px;
+  --font-display: "Plus Jakarta Sans", "Satoshi", "Inter", system-ui, sans-serif;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -101,6 +105,7 @@ h1 {
   line-height: 0.98;
   font-weight: 800;
   letter-spacing: 0;
+  font-family: var(--font-display);
 }
 
 h2 {
@@ -171,7 +176,8 @@ h3 {
   height: 40px;
   flex: 0 0 auto;
   border-radius: var(--radius);
-  background: var(--surface-3);
+  background: linear-gradient(135deg, var(--brand-soft), color-mix(in srgb, var(--info) 15%, transparent));
+  border: 1px solid var(--brand-border);
   box-shadow: var(--shadow-soft);
 }
 
@@ -257,10 +263,10 @@ h3 {
 .icon-button.primary-cta,
 .primary-action,
 .mark-button {
-  background: var(--text);
-  color: var(--bg);
+  background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 70%, var(--info)));
+  color: #ffffff;
   border-color: transparent;
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--brand) 35%, transparent);
 }
 
 .primary-cta {
@@ -321,9 +327,10 @@ h3 {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 96%, var(--brand) 4%);
   box-shadow: var(--shadow);
   z-index: 60;
+  border-color: var(--line);
 }
 
 .tab {
@@ -339,9 +346,9 @@ h3 {
 }
 
 .tab.is-active {
-  background: var(--surface-4);
-  border-color: var(--line-strong);
-  color: var(--text);
+  background: var(--brand-soft);
+  border-color: var(--brand-border);
+  color: var(--brand);
 }
 
 .tab-icon {
@@ -363,9 +370,9 @@ h3 {
   flex: 1;
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: linear-gradient(135deg, var(--surface-2), color-mix(in srgb, var(--brand) 6%, var(--surface-2)));
   display: grid;
   gap: 6px;
 }
@@ -383,6 +390,11 @@ h3 {
   line-height: 1;
   font-weight: 760;
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  background: linear-gradient(90deg, var(--text) 40%, var(--brand));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .metric-pill.is-alert strong {
@@ -402,7 +414,11 @@ h3 {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--accent, var(--info)) 8%, var(--surface)),
+    var(--surface)
+  );
   box-shadow: var(--shadow-soft);
 }
 
@@ -412,9 +428,23 @@ h3 {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 5px;
   border-radius: var(--radius) 0 0 var(--radius);
   background: var(--accent, var(--info));
+  transition: background 500ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wallet-card.is-paid {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--success) 30%, transparent), var(--shadow-soft);
+}
+
+.wallet-card.is-overdue {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent), var(--shadow-soft);
+}
+
+.wallet-card.is-tomorrow,
+.wallet-card.is-soon {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 30%, transparent), var(--shadow-soft);
 }
 
 .wallet-card,
@@ -468,6 +498,8 @@ h3 {
   font-size: 1.85rem;
   line-height: 0.96;
   font-weight: 800;
+  font-family: var(--font-display);
+  color: color-mix(in srgb, var(--accent, var(--info)) 70%, var(--text));
 }
 
 .wallet-inline-meta,
@@ -598,6 +630,17 @@ h3 {
   padding: 14px;
   display: grid;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--accent, var(--brand));
 }
 
 .kpi-card span,
@@ -615,6 +658,7 @@ h3 {
   font-weight: 820;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+  font-family: var(--font-display);
 }
 
 .kpi-card.is-alert strong {
@@ -939,6 +983,11 @@ h3 {
 
 .detail-hero {
   padding: 16px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--accent, var(--info)) 8%, var(--surface)),
+    var(--surface)
+  );
 }
 
 .detail-hero-head {
@@ -953,6 +1002,7 @@ h3 {
   font-size: clamp(2.3rem, 10vw, 3.2rem);
   line-height: 0.94;
   font-weight: 800;
+  font-family: var(--font-display);
 }
 
 .detail-actions {
@@ -1120,6 +1170,7 @@ h3 {
   font-size: 1.35rem;
   line-height: 1;
   font-weight: 800;
+  font-family: var(--font-display);
 }
 
 .chart-center span {
@@ -1197,7 +1248,7 @@ h3 {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.56);
+  background: rgba(10, 8, 18, 0.55);
   z-index: 70;
 }
 
@@ -1445,12 +1496,12 @@ button:focus-visible,
 @keyframes revealUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px) scale(0.98);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -1473,6 +1524,14 @@ button:focus-visible,
     transform: translateY(-1px);
     border-color: var(--line-strong);
     box-shadow: var(--shadow);
+  }
+
+  .wallet-card:hover,
+  .bill-list-card:hover,
+  .budget-row:hover,
+  .expense-row:hover {
+    border-color: var(--brand-border);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 12%, rgba(0,0,0,0.2));
   }
 }
 
@@ -1510,10 +1569,13 @@ button:disabled {
   --line-strong: rgba(17, 20, 24, 0.16);
   --shadow: 0 10px 28px rgba(17, 20, 24, 0.08);
   --shadow-soft: 0 4px 12px rgba(17, 20, 24, 0.05);
-  --danger-bg: rgba(255, 125, 125, 0.1);
-  --warning-bg: rgba(255, 181, 99, 0.12);
-  --success-bg: rgba(111, 211, 148, 0.12);
-  --info-bg: rgba(111, 165, 255, 0.12);
+  --brand: #a855f7;
+  --brand-soft: rgba(168, 85, 247, 0.10);
+  --brand-border: rgba(168, 85, 247, 0.22);
+  --danger-bg: rgba(252, 165, 165, 0.18);
+  --warning-bg: rgba(252, 211, 77, 0.18);
+  --success-bg: rgba(134, 239, 172, 0.18);
+  --info-bg: rgba(147, 197, 253, 0.18);
   --neutral-bg: rgba(154, 160, 166, 0.1);
   color-scheme: light;
 }
@@ -1525,8 +1587,9 @@ button:disabled {
 [data-theme="light"] .icon-button.primary-cta,
 [data-theme="light"] .primary-action,
 [data-theme="light"] .mark-button {
-  background: #111418;
+  background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 70%, var(--info)));
   color: #ffffff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--brand) 35%, transparent);
 }
 
 [data-theme="light"] .card-icon,
