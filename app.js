@@ -217,8 +217,8 @@ let activeBillId = null;
 let editingBillId = null;
 let pendingRecurringBillId = null;
 let selectedBudgetCategory = categories[0].name;
-let selectedHistoryMonth = "2026-04";
-let visibleCalendarMonth = "2026-04";
+let selectedHistoryMonth = monthKey(toDateInputValue(today));
+let visibleCalendarMonth = monthKey(toDateInputValue(today));
 let lastTrigger = null;
 let actionBillId = null;
 let settings = {
@@ -303,7 +303,8 @@ function shiftMonth(key, offset) {
 }
 
 function getAvailableMonths() {
-  return [...new Set([...bills.map((bill) => monthKey(bill.due)), "2026-04"])].sort();
+  const months = [...new Set(bills.map((bill) => monthKey(bill.due)))].sort();
+  return months.length ? months : [monthKey(toDateInputValue(today))];
 }
 
 function getMonthBills(key) {
@@ -1390,7 +1391,7 @@ function renderSettingsContent() {
   const selected = getCategory(selectedBudgetCategory);
   const months = getAvailableMonths();
   const archivedBills = getArchivedBills();
-  if (!months.includes(selectedHistoryMonth)) selectedHistoryMonth = months[months.length - 1] || "2026-04";
+  if (!months.includes(selectedHistoryMonth)) selectedHistoryMonth = months[months.length - 1] || monthKey(toDateInputValue(today));
   const summary = getMonthSummary(selectedHistoryMonth);
   settingsContent.innerHTML = `
     <section class="settings-section">
@@ -1447,7 +1448,7 @@ function renderSettingsContent() {
         <h3>Reminders</h3>
         <span class="mini-label">in-app</span>
       </div>
-      <p class="settings-copy">Show overdue and due-soon reminders whenever you open Upcoming.</p>
+      <p class="settings-copy">Controls the due-soon status used across Upcoming, bill details, and local reminder checks.</p>
       <form id="reminderForm" class="control-form">
         <label>
           <span>Reminder window</span>
@@ -1504,7 +1505,7 @@ function renderSettingsContent() {
       </div>
       <p class="settings-copy">Archived bills stay out of triage, but you can restore them here.</p>
       <div class="archived-list">
-        ${archivedBills.length ? archivedBills.slice(0, 8).map(renderArchivedBillRow).join("") : `<p class="settings-copy">No archived bills right now.</p>`}
+        ${archivedBills.length ? archivedBills.map(renderArchivedBillRow).join("") : `<p class="settings-copy">No archived bills right now.</p>`}
       </div>
     </section>
     <section class="settings-section">

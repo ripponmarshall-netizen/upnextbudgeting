@@ -70,6 +70,8 @@ select {
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 img,
@@ -797,6 +799,8 @@ h3 {
   place-content: center;
   text-align: center;
   gap: 5px;
+  padding: 0 72px;
+  pointer-events: none;
 }
 
 .chart-center strong {
@@ -810,6 +814,9 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
 }
 
 .chart-center-swatch {
@@ -878,7 +885,7 @@ h3 {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.56);
-  z-index: 40;
+  z-index: 70;
 }
 
 .quick-sheet {
@@ -891,7 +898,7 @@ h3 {
   padding: 0 18px calc(24px + env(safe-area-inset-bottom));
   overflow-y: auto;
   border-radius: 14px 14px 0 0;
-  z-index: 50;
+  z-index: 80;
 }
 
 .sheet-handle {
@@ -1059,7 +1066,7 @@ button:focus-visible,
 
 .toast-region {
   position: fixed;
-  z-index: 70;
+  z-index: 90;
   right: max(14px, calc((100vw - 520px) / 2 + 14px));
   left: max(14px, calc((100vw - 520px) / 2 + 14px));
   bottom: calc(84px + env(safe-area-inset-bottom));
