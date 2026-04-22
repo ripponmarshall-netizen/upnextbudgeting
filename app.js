@@ -625,9 +625,12 @@ function appState() {
 }
 
 function pushSnapshot() {
+  // Use settings.reminderDays (user-configurable) as the push window.
+  // Falls back to PUSH_REMINDER_DAYS (5) if settings not yet initialised.
+  const reminderDays = settings.reminderDays > 0 ? settings.reminderDays : PUSH_REMINDER_DAYS;
   return {
     generatedAt: new Date().toISOString(),
-    reminderDays: PUSH_REMINDER_DAYS,
+    reminderDays,
     bills: bills
       .filter((bill) => !bill.archived)
       .map((bill) => ({
@@ -709,6 +712,8 @@ function saveState(syncPush = true) {
       } catch (saveError) {
         console.warn("Could not save notification sync status", saveError);
       }
+      // Surface the failure so the user knows to re-sync manually.
+      showToast("Notification sync failed — open Settings to retry.", { duration: 7000 });
     });
   }
 }
@@ -1800,6 +1805,28 @@ function renderCalendar() {
   bindBillOpenButtons();
   bindBillSecondaryActions();
   bindExpenseActions();
+
+  // Swipe left/right on the calendar grid to navigate months.
+  (function attachCalendarSwipe() {
+    const grid = app.querySelector(".calendar-grid");
+    if (!grid) return;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    grid.addEventListener("touchstart", (event) => {
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    }, { passive: true });
+    grid.addEventListener("touchend", (event) => {
+      const dx = event.changedTouches[0].clientX - touchStartX;
+      const dy = event.changedTouches[0].clientY - touchStartY;
+      // Only act on predominantly horizontal swipes of at least 48px.
+      if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
+      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, dx < 0 ? 1 : -1);
+      selectedCalendarDay = null;
+      saveState(false);
+      render();
+    }, { passive: true });
+  })();
 }
 
 function renderInsights() {

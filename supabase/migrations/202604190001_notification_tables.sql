@@ -55,18 +55,25 @@ create trigger notification_subscriptions_touch
 before update on public.notification_subscriptions
 for each row execute function public.touch_updated_at();
 
--- Supabase Cron setup, after deploying functions and setting secrets:
--- Enable the Cron integration, then schedule the sender for 6:00 AM Jamaica time.
--- Replace <PROJECT_REF> if you prefer SQL setup instead of Dashboard setup.
+-- ============================================================
+-- Cron + Edge Function wiring (applied via separate migration):
+-- ============================================================
 --
--- select cron.schedule(
---   'upnextbudgeting-due-notifications-6am-jamaica',
---   '0 11 * * *',
---   $$
---   select net.http_post(
---     url := 'https://<PROJECT_REF>.supabase.co/functions/v1/send-due-notifications',
---     headers := '{"Content-Type":"application/json","Authorization":"Bearer <SUPABASE_ANON_KEY>"}'::jsonb,
---     body := '{"source":"cron"}'::jsonb
---   );
---   $$
--- );
+-- 1. In the Supabase Dashboard go to:
+--    Project Settings > Edge Functions > Secrets
+--    Add: CRON_SECRET = <some-random-secret-string>
+--    (same value you will use in the cron command below)
+--
+-- 2. Also set app.cron_secret at the database level so the cron SQL
+--    can read it without hardcoding the secret in this file:
+--    Run once in the SQL editor:
+--      ALTER DATABASE postgres SET app.cron_secret = '<your-secret>';
+--
+-- 3. The cron job is scheduled in migration 202604220001_fix_cron_push.sql:
+--    Schedule: '0 11 * * *'  (11:00 UTC = 6:00 AM Jamaica time)
+--    Job name: 'upnextbudgeting-send-push-6am-jamaica'
+--
+-- The function send-due-notifications accepts either:
+--   - x-cron-secret header matching CRON_SECRET env var, OR
+--   - A valid Bearer token (for manual Dashboard invocations)
+-- JWT verification is disabled on the function itself.

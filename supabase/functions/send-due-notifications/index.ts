@@ -43,6 +43,16 @@ function notificationCopy(bills: Array<{ name: string; due: string; amount: numb
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Allow requests that either carry the cron shared secret OR a valid Bearer token.
+  // The anon/service-role Bearer path is kept for manual invocations from the dashboard.
+  const cronSecret = request.headers.get("x-cron-secret");
+  const expectedCronSecret = Deno.env.get("CRON_SECRET");
+  const authHeader = request.headers.get("Authorization") ?? "";
+  const hasValidBearer = authHeader.startsWith("Bearer ") && authHeader.length > 10;
+  if (expectedCronSecret && cronSecret !== expectedCronSecret && !hasValidBearer) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+
   try {
     configureWebPush();
     const supabase = createClient(
