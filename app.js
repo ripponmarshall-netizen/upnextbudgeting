@@ -1,12 +1,7 @@
 const DEMO_MODE = false;
 const DEMO_DATE = "2026-04-19";
 const STORAGE_KEY = "upnextbudgeting:v1";
-const PUSH_REMINDER_DAYS = 5;
-const SUPABASE_CONFIG = {
-  url: "https://nmrtjlattlurektpkzzi.supabase.co",
-  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tcnRqbGF0dGx1cmVrdHBrenppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2ODAzNDYsImV4cCI6MjA5MTI1NjM0Nn0.qy8n7HQo7qDRTZt2YsmX8a8A_WsYewaG0JCASteBv5w",
-  vapidPublicKey: "BH7l15H00yaZzqxZBHORO0CFoM7zWkskDjdTmeyEYORYK5p3QfqySFE_pw_EuzZGIAX3nQwweyxraki-Wx4tLOY"
-};
+const BADGE_REMINDER_DAYS = 5;
 
 function getToday() {
   if (DEMO_MODE) return new Date(`${DEMO_DATE}T12:00:00`);
@@ -50,20 +45,20 @@ function icon(name) {
 }
 
 const starterCategories = Object.freeze([
-  { name: "Home", color: "#4d8dff", planned: 160000, assigned: 141500 },
-  { name: "Utilities", color: "#ff9c6a", planned: 36000, assigned: 25370 },
-  { name: "Phone & internet", color: "#68a3ff", planned: 22000, assigned: 15000 },
-  { name: "Vehicle", color: "#b38aff", planned: 28000, assigned: 17100 },
-  { name: "Insurance", color: "#ff7d7d", planned: 50000, assigned: 42000 },
-  { name: "Transport", color: "#7ccf8a", planned: 24000, assigned: 22000 },
-  { name: "Subscriptions", color: "#d78fff", planned: 7000, assigned: 3050 },
-  { name: "Wellness", color: "#5dc2b2", planned: 12000, assigned: 7000 },
-  { name: "Loans", color: "#ffc85f", planned: 56000, assigned: 37500 },
-  { name: "School", color: "#67b8c8", planned: 30000, assigned: 18000 },
-  { name: "Medical", color: "#ff8d6f", planned: 16000, assigned: 12000 },
-  { name: "Groceries", color: "#b5c862", planned: 46000, assigned: 42000 },
-  { name: "Savings", color: "#4ea6bb", planned: 45000, assigned: 45000 },
-  { name: "Tax planning", color: "#a0af6b", planned: 24000, assigned: 18000 }
+  { name: "Home", color: "#c4b5fd", planned: 160000, assigned: 141500 },
+  { name: "Utilities", color: "#fed7aa", planned: 36000, assigned: 25370 },
+  { name: "Phone & internet", color: "#bae6fd", planned: 22000, assigned: 15000 },
+  { name: "Vehicle", color: "#ddd6fe", planned: 28000, assigned: 17100 },
+  { name: "Insurance", color: "#fecaca", planned: 50000, assigned: 42000 },
+  { name: "Transport", color: "#bbf7d0", planned: 24000, assigned: 22000 },
+  { name: "Subscriptions", color: "#f0abfc", planned: 7000, assigned: 3050 },
+  { name: "Wellness", color: "#99f6e4", planned: 12000, assigned: 7000 },
+  { name: "Loans", color: "#fef08a", planned: 56000, assigned: 37500 },
+  { name: "School", color: "#a5f3fc", planned: 30000, assigned: 18000 },
+  { name: "Medical", color: "#fed7aa", planned: 16000, assigned: 12000 },
+  { name: "Groceries", color: "#d9f99d", planned: 46000, assigned: 42000 },
+  { name: "Savings", color: "#6ee7b7", planned: 45000, assigned: 45000 },
+  { name: "Tax planning", color: "#e9d5ff", planned: 24000, assigned: 18000 }
 ]);
 
 function cloneCategory(category) {
@@ -98,20 +93,20 @@ function cloneExpense(expense) {
 let categories = starterCategories.map(cloneCategory);
 
 const categoryColors = [
-  "#4d8dff",
-  "#ff9c6a",
-  "#68a3ff",
-  "#b38aff",
-  "#ff7d7d",
-  "#7ccf8a",
-  "#d78fff",
-  "#5dc2b2",
-  "#ffc85f",
-  "#67b8c8",
-  "#ff8d6f",
-  "#b5c862",
-  "#4ea6bb",
-  "#a0af6b"
+  "#c4b5fd",
+  "#fed7aa",
+  "#bae6fd",
+  "#ddd6fe",
+  "#fecaca",
+  "#bbf7d0",
+  "#f0abfc",
+  "#99f6e4",
+  "#fef08a",
+  "#a5f3fc",
+  "#fed7aa",
+  "#d9f99d",
+  "#6ee7b7",
+  "#e9d5ff"
 ];
 
 const presets = [
@@ -234,9 +229,18 @@ const billPaid = document.querySelector("#billPaid");
 const paidRow = document.querySelector("#paidRow");
 const deleteBillButton = document.querySelector("#deleteBill");
 const MAX_TOASTS = 3;
+const SHEET_TRANSITION_MS = 260;
 const toastTimers = new WeakMap();
+const sheetTimers = new WeakMap();
 
-let activeTab = "home";
+function initialTab() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
+  const normalized = requested === "budget" ? "insights" : requested;
+  return [...tabs].some((tab) => tab.dataset.tab === normalized) ? normalized : "home";
+}
+
+let activeTab = initialTab();
 let activeBillId = null;
 let editingBillId = null;
 let pendingRecurringBillId = null;
@@ -253,11 +257,6 @@ let actionBillId = null;
 let settings = {
   initialized: true,
   reminderDays: 3,
-  notificationToken: "",
-  pushEnabled: false,
-  pushEndpoint: "",
-  pushStatus: "Ready",
-  lastPushSync: "",
   theme: "system",
   cashflow: {
     monthlyStartingBalance: 260000,
@@ -406,6 +405,130 @@ function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4
     .slice(0, limit);
 }
 
+function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
+  const monthBills = getMonthBills(key).filter((bill) => !bill.archived);
+  const monthExpenses = getMonthExpenses(key);
+  const fixedBills = monthBills.reduce((sum, bill) => sum + bill.amount, 0);
+  const paidBills = monthBills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
+  const openBills = monthBills.filter((bill) => !bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
+  const variableSpent = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const starting = settings.cashflow?.monthlyStartingBalance || 0;
+  const buffer = settings.cashflow?.safeSpendBuffer || 0;
+  const projected = starting - openBills - variableSpent;
+  const safeToSpend = projected - buffer;
+  const topCategory = topExpenseCategories(key, 1)[0] || null;
+  const propertyTaxDue = monthBills.some(isPropertyTaxBill);
+  return {
+    key,
+    fixedBills,
+    paidBills,
+    openBills,
+    variableSpent,
+    starting,
+    buffer,
+    projected,
+    safeToSpend,
+    topCategory,
+    propertyTaxDue,
+    billCount: monthBills.length,
+    expenseCount: monthExpenses.length
+  };
+}
+
+function getPreviousMonthComparison(key = monthKey(toDateInputValue(today))) {
+  const previousKey = shiftMonth(key, -1);
+  const hasPrevious = getAvailableMonths().includes(previousKey);
+  const current = getMonthAnalytics(key);
+  const previous = hasPrevious ? getMonthAnalytics(previousKey) : null;
+  const expenseDelta = previous ? current.variableSpent - previous.variableSpent : 0;
+  const fixedDelta = previous ? current.fixedBills - previous.fixedBills : 0;
+  const safeDelta = previous ? current.safeToSpend - previous.safeToSpend : 0;
+  return { current, previous, previousKey, hasPrevious, expenseDelta, fixedDelta, safeDelta };
+}
+
+function getDailyOutflow(date) {
+  const dayBills = bills
+    .filter((bill) => bill.due === date && !bill.archived)
+    .reduce((sum, bill) => sum + bill.amount, 0);
+  const dayExpenses = expenses
+    .filter((expense) => expense.date === date)
+    .reduce((sum, expense) => sum + expense.amount, 0);
+  return dayBills + dayExpenses;
+}
+
+function getProjectedBalanceSeries(days = 30) {
+  const starting = settings.cashflow?.monthlyStartingBalance || 0;
+  let projected = starting;
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+    const valueDate = toDateInputValue(date);
+    if (index === 0) {
+      projected = starting
+        - expenses.filter((expense) => parseDate(expense.date) <= parseDate(valueDate) && monthKey(expense.date) === monthKey(valueDate)).reduce((sum, expense) => sum + expense.amount, 0)
+        - bills.filter((bill) => !bill.archived && !bill.paid && parseDate(bill.due) <= parseDate(valueDate) && monthKey(bill.due) === monthKey(valueDate)).reduce((sum, bill) => sum + bill.amount, 0);
+    } else {
+      projected -= getDailyOutflow(valueDate);
+    }
+    return { date: valueDate, value: projected };
+  });
+}
+
+function getSpendingRhythm(key = monthKey(toDateInputValue(today))) {
+  const weeks = [
+    { label: "W1", amount: 0 },
+    { label: "W2", amount: 0 },
+    { label: "W3", amount: 0 },
+    { label: "W4", amount: 0 },
+    { label: "W5", amount: 0 }
+  ];
+  getMonthExpenses(key).forEach((expense) => {
+    const day = parseDate(expense.date).getDate();
+    const index = Math.min(4, Math.floor((day - 1) / 7));
+    weeks[index].amount += expense.amount;
+  });
+  return weeks;
+}
+
+function getUpcomingPressure() {
+  const openBills = bills.filter((bill) => !bill.paid && !bill.archived);
+  return [7, 14, 30].map((days) => ({
+    days,
+    label: `${days} days`,
+    amount: openBills
+      .filter((bill) => {
+        const due = daysUntil(bill.due);
+        return due >= 0 && due <= days;
+      })
+      .reduce((sum, bill) => sum + bill.amount, 0)
+  }));
+}
+
+function getCategoryMovers(key = monthKey(toDateInputValue(today)), limit = 3) {
+  const previousKey = shiftMonth(key, -1);
+  const hasPrevious = getAvailableMonths().includes(previousKey);
+  const currentTotals = topExpenseCategories(key, 24).reduce((map, item) => {
+    map[item.name] = item.amount;
+    return map;
+  }, {});
+  const previousTotals = hasPrevious ? topExpenseCategories(previousKey, 24).reduce((map, item) => {
+    map[item.name] = item.amount;
+    return map;
+  }, {}) : {};
+  return Object.keys({ ...currentTotals, ...previousTotals })
+    .map((name) => ({
+      name,
+      amount: currentTotals[name] || 0,
+      previous: previousTotals[name] || 0,
+      delta: (currentTotals[name] || 0) - (previousTotals[name] || 0),
+      color: getCategory(name)?.color || "#4d8dff",
+      hasPrevious
+    }))
+    .filter((item) => item.amount || item.previous)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, limit);
+}
+
 function getVisibleBills() {
   return sortBills(bills.filter((bill) => !bill.archived && !bill.paid));
 }
@@ -416,21 +539,22 @@ function getArchivedBills() {
     .sort((a, b) => new Date(b.archivedAt || `${b.due}T12:00:00`) - new Date(a.archivedAt || `${a.due}T12:00:00`));
 }
 
-function getPushReminderItems() {
+function getReminderBadgeItems() {
   return sortBills(bills.filter((bill) => {
     if (bill.paid || bill.archived) return false;
     const days = daysUntil(bill.due);
-    return days >= 0 && days <= PUSH_REMINDER_DAYS;
+    return days >= 0 && days <= BADGE_REMINDER_DAYS;
   }));
 }
 
 function validTheme(value) {
-  return ["system", "dark", "light"].includes(value) ? value : "system";
+  return ["system", "dark", "light", "pastel"].includes(value) ? value : "system";
 }
 
 function resolvedTheme() {
   const theme = validTheme(settings.theme);
   if (theme !== "system") return theme;
+  // pastel is an explicit choice, system falls back to dark/light
   const media = window.matchMedia?.("(prefers-color-scheme: light)");
   return media?.matches ? "light" : "dark";
 }
@@ -440,7 +564,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePreference = settings.theme;
-  themeColorMeta?.setAttribute("content", theme === "light" ? "#ffffff" : "#111315");
+  themeColorMeta?.setAttribute("content", (theme === "light" || theme === "pastel") ? "#fcf8ff" : "#111315");
 }
 
 function showToast(message, options = {}) {
@@ -624,92 +748,28 @@ function appState() {
   };
 }
 
-function pushSnapshot() {
-  return {
-    generatedAt: new Date().toISOString(),
-    reminderDays: PUSH_REMINDER_DAYS,
-    bills: bills
-      .filter((bill) => !bill.archived)
-      .map((bill) => ({
-        id: String(bill.id),
-        name: bill.name,
-        category: bill.category,
-        amount: bill.amount,
-        due: bill.due,
-        paid: bill.paid,
-        repeat: bill.repeat || "none"
-      }))
-  };
+function removeBackendSettings() {
+  [
+    "notificationToken",
+    "pushEnabled",
+    "pushEndpoint",
+    "pushStatus",
+    "lastPushSync"
+  ].forEach((key) => delete settings[key]);
 }
 
-function isSupabasePushConfigured() {
-  return Boolean(SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey && SUPABASE_CONFIG.vapidPublicKey);
+function localReminderStatus() {
+  const count = getReminderBadgeItems().length;
+  if (!count) return "No due-soon bills in the local badge window.";
+  return `${count} due-soon bill${count === 1 ? "" : "s"} tracked locally for badge-ready browsers.`;
 }
 
-function isStandaloneApp() {
-  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-}
-
-function pushSupportStatus() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "Unsupported on this browser";
-  if (!isStandaloneApp()) return "Needs Home Screen install";
-  if (Notification.permission === "denied") return "Permission denied";
-  if (settings.pushEnabled) return "Notifications enabled";
-  if (!isSupabasePushConfigured()) return "Needs Supabase config";
-  return "Ready";
-}
-
-function base64UrlToUint8Array(value) {
-  const padding = "=".repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replaceAll("-", "+").replaceAll("_", "/");
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
-}
-
-async function callPushFunction(payload) {
-  if (!isSupabasePushConfigured()) throw new Error("Add Supabase URL, anon key, and VAPID public key in app.js first.");
-  const response = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/push-subscribe`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_CONFIG.anonKey}`,
-      apikey: SUPABASE_CONFIG.anonKey
-    },
-    body: JSON.stringify(payload)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Notification sync failed.");
-  return data;
-}
-
-async function syncPushSnapshot() {
-  if (!settings.pushEnabled || !settings.notificationToken || !settings.pushEndpoint || !isSupabasePushConfigured()) return;
-  await callPushFunction({
-    action: "syncSnapshot",
-    token: settings.notificationToken,
-    endpoint: settings.pushEndpoint,
-    snapshot: pushSnapshot()
-  });
-  settings.lastPushSync = new Date().toISOString();
-  settings.pushStatus = "Notifications enabled";
-  saveState(false);
-}
-
-function saveState(syncPush = true) {
+function saveState() {
+  removeBackendSettings();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
   } catch (error) {
     console.warn("Could not save UpNextBudgeting state", error);
-  }
-  if (syncPush) {
-    syncPushSnapshot().catch((error) => {
-      settings.pushStatus = error.message || "Notification sync failed";
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
-      } catch (saveError) {
-        console.warn("Could not save notification sync status", saveError);
-      }
-    });
   }
 }
 
@@ -721,6 +781,7 @@ function loadState() {
       expenses = expenses.map(normalizeExpense);
       expenseCategories = normalizeExpenseCategories(expenseCategories);
       settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+      removeBackendSettings();
       saveState();
       applyTheme();
       return;
@@ -737,6 +798,7 @@ function loadState() {
     settings = { ...settings, ...(state.settings || {}) };
     settings.theme = validTheme(settings.theme);
     settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+    removeBackendSettings();
     expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : starterExpenses.map(normalizeExpense);
     expenseCategories = normalizeExpenseCategories(state.expenseCategories);
     selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
@@ -749,6 +811,7 @@ function loadState() {
     bills = bills.map(normalizeBill);
     expenses = expenses.map(normalizeExpense);
     settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+    removeBackendSettings();
     ensureCategorySafety();
     saveState();
   }
@@ -1165,6 +1228,7 @@ function renderTopAppBar({ kicker, title, subtitle = "" }) {
         </div>
       </div>
       <div class="top-actions">
+        <span class="profile-token" aria-hidden="true"><span>M</span></span>
         <button class="icon-button light" data-toggle-theme type="button" aria-label="Toggle theme">${icon("wellness")}</button>
         <button class="icon-button light" data-open-settings type="button" aria-label="Open settings">${icon("gear")}</button>
       </div>
@@ -1179,6 +1243,185 @@ function renderKpiCard(label, value, detail = "", tone = "") {
       <strong>${value}</strong>
       ${detail ? `<small>${detail}</small>` : ""}
     </article>
+  `;
+}
+
+function sparklinePath(series, width = 260, height = 92, padding = 10) {
+  if (!series.length) return "";
+  const values = series.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, 1);
+  return series.map((point, index) => {
+    const x = padding + (index / Math.max(series.length - 1, 1)) * (width - padding * 2);
+    const y = height - padding - ((point.value - min) / range) * (height - padding * 2);
+    return `${index ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(" ");
+}
+
+function renderSparklineChart({ title, summary, series, tone = "is-safe" }) {
+  const path = sparklinePath(series);
+  const first = series[0]?.value || 0;
+  const last = series[series.length - 1]?.value || 0;
+  const delta = last - first;
+  const deltaLabel = `${delta >= 0 ? "up" : "down"} ${money.format(Math.abs(delta))}`;
+  return `
+    <section class="analytics-card money-health-card home-reveal ${tone}" style="--delay: 78ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Money health</p>
+          <h2>${title}</h2>
+        </div>
+        <span class="state-pill ${tone}">${deltaLabel}</span>
+      </div>
+      <p class="settings-copy">${summary}</p>
+      <svg class="sparkline-chart" viewBox="0 0 260 92" role="img" aria-label="${escapeAttribute(`${title}. ${summary}. Projected balance changes ${deltaLabel} over 30 days.`)}">
+        <path class="sparkline-grid" d="M 10 24 H 250 M 10 68 H 250"></path>
+        <path class="sparkline-fill" d="${path} L 250 82 L 10 82 Z"></path>
+        <path class="sparkline-line" d="${path}"></path>
+      </svg>
+    </section>
+  `;
+}
+
+function renderStackedBarChart({ title, summary, parts }) {
+  const total = parts.reduce((sum, part) => sum + part.amount, 0);
+  return `
+    <section class="analytics-card home-reveal" style="--delay: 52ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Composition</p>
+          <h2>${title}</h2>
+        </div>
+        <strong>${money.format(total)}</strong>
+      </div>
+      <p class="settings-copy">${summary}</p>
+      <div class="stacked-bar" role="img" aria-label="${escapeAttribute(`${title}. Total ${money.format(total)}.`)}">
+        ${parts.map((part) => `<i style="--value:${total ? (part.amount / total) * 100 : 0}%; --accent:${part.color}" title="${escapeAttribute(`${part.label}: ${money.format(part.amount)}`)}"></i>`).join("")}
+      </div>
+      <div class="chart-legend">
+        ${parts.map((part) => `<span><i style="--accent:${part.color}"></i>${part.label} ${money.format(part.amount)}</span>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCategoryBars({ title, summary, items, total, emptyText = "Add expenses to unlock this view." }) {
+  return `
+    <section class="analytics-card home-reveal" style="--delay: 66ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Categories</p>
+          <h2>${title}</h2>
+        </div>
+        <span class="mini-label">${items.length} shown</span>
+      </div>
+      <p class="settings-copy">${summary}</p>
+      <div class="premium-bars">
+        ${items.length ? items.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${emptyText}</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderSpendingRhythmChart(key = monthKey(toDateInputValue(today))) {
+  const rhythm = getSpendingRhythm(key);
+  const total = rhythm.reduce((sum, item) => sum + item.amount, 0);
+  const max = Math.max(...rhythm.map((item) => item.amount), 1);
+  return `
+    <section class="analytics-card home-reveal" style="--delay: 52ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Rhythm</p>
+          <h2>Weekly spending rhythm</h2>
+        </div>
+        <strong>${money.format(total)}</strong>
+      </div>
+      <p class="settings-copy">Variable expenses grouped by week so spikes are easier to spot.</p>
+      <div class="rhythm-chart" role="img" aria-label="${escapeAttribute(`Weekly spending rhythm for ${monthLabel(key)}. Total ${money.format(total)}.`)}">
+        ${rhythm.map((item) => `<article style="--value:${Math.max(4, Math.round((item.amount / max) * 100))}%"><i></i><span>${item.label}</span><strong>${money.format(item.amount)}</strong></article>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCategoryMovers(key = monthKey(toDateInputValue(today))) {
+  const movers = getCategoryMovers(key, 3);
+  return `
+    <section class="analytics-card home-reveal" style="--delay: 58ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Trend</p>
+          <h2>Category movers</h2>
+        </div>
+        <span class="mini-label">${monthLabel(key)}</span>
+      </div>
+      <p class="settings-copy">${movers[0]?.hasPrevious ? "Largest category changes compared with last month." : "Not enough history yet for category movement."}</p>
+      <div class="mover-list">
+        ${movers.length ? movers.map((item) => `<article style="--accent:${item.color}">
+          <span>${item.name}</span>
+          <strong>${item.hasPrevious ? `${item.delta >= 0 ? "up" : "down"} ${money.format(Math.abs(item.delta))}` : money.format(item.amount)}</strong>
+        </article>`).join("") : `<p class="settings-copy">Add expenses to see category movement.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderUpcomingPressureStrip() {
+  const pressure = getUpcomingPressure();
+  const max = Math.max(...pressure.map((item) => item.amount), 1);
+  return `
+    <section class="analytics-card pressure-strip home-reveal" style="--delay: 34ms">
+      <div class="analytics-card-head">
+        <div>
+          <p class="mini-label">Upcoming pressure</p>
+          <h2>Committed bills</h2>
+        </div>
+        <span class="mini-label">open only</span>
+      </div>
+      <p class="settings-copy">How much cash is already committed by due date window.</p>
+      <div class="pressure-bars" role="img" aria-label="Upcoming bill pressure for 7, 14, and 30 days.">
+        ${pressure.map((item) => `<article style="--value:${Math.max(6, Math.round((item.amount / max) * 100))}%"><span>${item.label}</span><i></i><strong>${money.format(item.amount)}</strong></article>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPressureCalendarMarks(date) {
+  const amount = getDailyOutflow(date);
+  const maxOutflow = Math.max(...getCalendarDays(visibleCalendarMonth).map(getDailyOutflow), 1);
+  const ratio = amount / maxOutflow;
+  const level = !amount ? "none" : ratio > 0.66 ? "high" : ratio > 0.33 ? "medium" : "low";
+  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
+  const expensesForDay = expenses.filter((expense) => expense.date === date);
+  return `
+    <div class="day-dots" aria-hidden="true">
+      ${billsForDay.length ? `<i class="bill-dot"></i>` : ""}
+      ${expensesForDay.length ? `<i class="expense-dot-small"></i>` : ""}
+    </div>
+    ${amount ? `<i class="pressure-mark is-${level}" style="--pressure:${Math.max(18, Math.round(ratio * 100))}%"></i>` : ""}
+  `;
+}
+
+function renderInsightHighlight(analytics, comparison = getPreviousMonthComparison(analytics.key)) {
+  const safe = analytics.safeToSpend >= 0;
+  const top = analytics.topCategory ? `${analytics.topCategory.name} is the largest variable category.` : "No variable category is leading yet.";
+  const comparisonText = comparison.hasPrevious
+    ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
+    : "Not enough history yet for a month-over-month trend.";
+  return `
+    <section class="insight-highlight ${safe ? "is-safe" : "is-alert"} home-reveal" style="--delay: 44ms">
+      <div>
+        <p class="mini-label">Highlight</p>
+        <h2>${safe ? "Safe buffer intact" : "Upcoming pressure"}</h2>
+        <p>${safe ? "Projected balance stays above your safety buffer." : "Open bills and spending are pushing below the safety buffer."}</p>
+      </div>
+      <div class="highlight-notes">
+        <span>${top}</span>
+        <span>${comparisonText}</span>
+        ${analytics.propertyTaxDue ? `<span>Property tax is active in this month’s plan.</span>` : ""}
+      </div>
+    </section>
   `;
 }
 
@@ -1228,13 +1471,16 @@ function renderHome() {
   const dueSevenCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= 7).length;
   const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
   const currentMonth = monthKey(toDateInputValue(today));
+  const analytics = getMonthAnalytics(currentMonth);
+  const comparison = getPreviousMonthComparison(currentMonth);
+  const projectedSeries = getProjectedBalanceSeries(30);
   const spent = getExpenseTotal(currentMonth);
   const safe = getSafeToSpend(currentMonth);
   const recentExpenses = getRecentExpenses(4);
   const propertyTax = unpaid.find((bill) => bill.name.toLowerCase().includes("property tax"));
 
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall.", subtitle: "Stay ahead of bills, track spending, and know what is safe to spend." })}
+    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall." })}
 
     <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
       <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
@@ -1251,11 +1497,20 @@ function renderHome() {
     <section class="cashflow-card home-reveal" style="--delay: 70ms">
       <div>
         <p class="mini-label">Projected after bills</p>
-        <h2>${money.format((settings.cashflow.monthlyStartingBalance || 0) - getUnpaidBillTotal(currentMonth) - spent)}</h2>
+        <h2>${money.format(analytics.projected)}</h2>
         <p class="small-note">Starting balance minus open bills and recorded expenses.</p>
       </div>
       <span class="state-pill ${safe < 0 ? "is-overdue" : "is-paid"}">${safe < 0 ? "tight" : "steady"}</span>
     </section>
+
+    ${renderSparklineChart({
+      title: safe < 0 ? "Upcoming pressure" : "Steady after bills",
+      summary: comparison.hasPrevious
+        ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
+        : "Not enough history yet for a month-over-month trend.",
+      series: projectedSeries,
+      tone: safe < 0 ? "is-overdue" : "is-paid"
+    })}
 
     <section class="section-block">
       <div class="section-heading home-reveal" style="--delay: 90ms">
@@ -1377,7 +1632,7 @@ function renderBillDetail() {
           </div>
           <p class="small-note">In-app window</p>
           <strong>${settings.reminderDays} day${settings.reminderDays === 1 ? "" : "s"}</strong>
-          <p class="small-note detail-copy">${pushSupportStatus()}</p>
+          <p class="small-note detail-copy">${localReminderStatus()}</p>
         </article>
       </section>
 
@@ -1484,80 +1739,6 @@ function renderBudgetChart() {
   `;
 }
 
-function renderBudgetRow(category, index) {
-  const percent = category.planned ? Math.min(100, Math.round((category.assigned / category.planned) * 100)) : 0;
-  const glyph = categoryIconName(category.name);
-  const isFocused = category.name === selectedBudgetCategory;
-  const encodedName = encodeURIComponent(category.name);
-  return `
-    <button class="budget-row home-reveal ${isFocused ? "is-focused" : ""}" style="--accent:${category.color}; --delay:${90 + index * 28}ms" data-focus-category="${encodedName}" type="button" aria-label="${escapeAttribute(isFocused ? `Adjust ${category.name}` : `Focus ${category.name}`)}">
-      <span class="budget-row-icon">${icon(glyph)}</span>
-      <span class="budget-row-copy">
-        <strong>${category.name}</strong>
-        <small>${money.format(category.assigned)} assigned of ${money.format(category.planned)}</small>
-      </span>
-      <span class="budget-row-side">
-        <span class="budget-row-meta">${percent}%</span>
-        ${isFocused ? `<span class="budget-row-hint">Adjust</span>` : ""}
-      </span>
-    </button>
-  `;
-}
-
-function renderBudget() {
-  const totalAssigned = categories.reduce((sum, category) => sum + category.assigned, 0);
-  const totalPlanned = categories.reduce((sum, category) => sum + category.planned, 0);
-  const totalPercent = totalPlanned ? Math.round((totalAssigned / totalPlanned) * 100) : 0;
-
-  app.innerHTML = `
-    <header class="topbar home-reveal" style="--delay: 0ms">
-      <div class="brand-line">
-        <img class="brandmark" src="assets/icon.svg" alt="">
-        <div class="hero-copy">
-          <p class="kicker">Budget awareness</p>
-          <h1>Budget</h1>
-          <p class="hero-note">A graphic view of what is assigned against the plan.</p>
-        </div>
-      </div>
-      <div class="top-actions">
-        <button class="icon-button light" id="openSettings" type="button" aria-label="Open settings">${icon("gear")}</button>
-        <button class="icon-button light" id="openSheet" type="button" aria-label="Add a bill">${icon("plus")}</button>
-      </div>
-    </header>
-
-    <section class="budget-summary home-reveal" style="--delay: 20ms">
-      <div>
-        <span>Assigned this cycle</span>
-        <strong>${money.format(totalAssigned)}</strong>
-      </div>
-      <div>
-        <span>Planned total</span>
-        <strong>${money.format(totalPlanned)}</strong>
-      </div>
-      <div>
-        <span>Coverage</span>
-        <strong>${totalPercent}%</strong>
-      </div>
-    </section>
-
-    ${renderBudgetChart()}
-
-    <section class="budget-legend">
-      <div class="section-heading home-reveal" style="--delay: 70ms">
-        <h2>Categories</h2>
-        <span class="mini-label">Tap again to adjust</span>
-      </div>
-      <div class="budget-list">
-        ${categories.map((category, index) => renderBudgetRow(category, index)).join("")}
-      </div>
-    </section>
-  `;
-
-  document.querySelector("#openSheet").addEventListener("click", () => openSheet());
-  document.querySelector("#openSettings").addEventListener("click", openSettingsSheet);
-  bindBudgetCategorySelection();
-}
-
 function decodeCategoryDataset(value) {
   try {
     return decodeURIComponent(value || "");
@@ -1622,7 +1803,7 @@ function renderBills() {
   ];
   const items = filteredBills();
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills", subtitle: "Manage recurring and expected obligations without losing the due-next clarity." })}
+    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills" })}
     <section class="screen-controls home-reveal" style="--delay: 20ms">
       <div class="chip-row" aria-label="Bill filters">
         ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
@@ -1640,6 +1821,7 @@ function renderBills() {
         </select>
       </label>
     </section>
+    ${renderUpcomingPressureStrip()}
     <section class="bill-list">
       ${items.length ? items.map(renderBillListCard).join("") : `<article class="empty-panel"><p class="mini-label">No matches</p><h2>No bills found.</h2><p class="small-note">Adjust filters or add a new bill.</p></article>`}
     </section>
@@ -1678,7 +1860,7 @@ function renderExpenses() {
   const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
   const topCategories = topExpenseCategories(currentMonth, 3);
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses", subtitle: "Fast capture for the day-to-day spending that changes your safe-to-spend number." })}
+    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses" })}
     <section class="quick-actions home-reveal" style="--delay: 20ms">
       <button class="primary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
       <button class="secondary-action" data-open-bill-sheet type="button">${icon("tax")} Add bill</button>
@@ -1691,15 +1873,15 @@ function renderExpenses() {
     <section class="screen-controls home-reveal" style="--delay: 60ms">
       <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
     </section>
-    <section class="section-block">
-      <div class="section-heading">
-        <h2>Top categories</h2>
-        <span class="mini-label">${monthLabel(currentMonth)}</span>
-      </div>
-      <div class="mini-bars">
-        ${topCategories.length ? topCategories.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">Add expenses to see category patterns.</p>`}
-      </div>
-    </section>
+    ${renderSpendingRhythmChart(currentMonth)}
+    ${renderCategoryBars({
+      title: "Top categories",
+      summary: topCategories.length ? `${topCategories[0].name} is the largest variable category this month.` : "Add expenses to see category patterns.",
+      items: topCategories,
+      total,
+      emptyText: "Add expenses to see category patterns."
+    })}
+    ${renderCategoryMovers(currentMonth)}
     <section class="section-block">
       <div class="section-heading">
         <h2>Recent transactions</h2>
@@ -1746,10 +1928,7 @@ function renderCalendarDay(date) {
   return `
     <button class="calendar-day ${isCurrentMonth ? "" : "is-muted"} ${date === toDateInputValue(today) ? "is-today" : ""}" data-calendar-day="${date}" type="button">
       <span>${parseDate(date).getDate()}</span>
-      <div class="day-dots">
-        ${billsForDay.length ? `<i class="bill-dot"></i>` : ""}
-        ${expensesForDay.length ? `<i class="expense-dot-small"></i>` : ""}
-      </div>
+      ${renderPressureCalendarMarks(date)}
       ${totalOut ? `<small>${money.format(totalOut)}</small>` : ""}
     </button>
   `;
@@ -1760,7 +1939,7 @@ function renderCalendar() {
   const dayBills = selectedCalendarDay ? bills.filter((bill) => bill.due === selectedCalendarDay && !bill.archived) : [];
   const dayExpenses = selectedCalendarDay ? expenses.filter((expense) => expense.date === selectedCalendarDay) : [];
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar", subtitle: "See bills and spending together across the month." })}
+    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar" })}
     <section class="month-controls home-reveal" style="--delay: 20ms">
       <button class="secondary-action" data-shift-calendar="-1" type="button">Previous</button>
       <strong>${monthLabel(visibleCalendarMonth)}</strong>
@@ -1800,10 +1979,35 @@ function renderCalendar() {
   bindBillOpenButtons();
   bindBillSecondaryActions();
   bindExpenseActions();
+
+  // Swipe left/right on the calendar grid to navigate months.
+  (function attachCalendarSwipe() {
+    const grid = app.querySelector(".calendar-grid");
+    if (!grid) return;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    grid.addEventListener("touchstart", (event) => {
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    }, { passive: true });
+    grid.addEventListener("touchend", (event) => {
+      const dx = event.changedTouches[0].clientX - touchStartX;
+      const dy = event.changedTouches[0].clientY - touchStartY;
+      // Only act on predominantly horizontal swipes of at least 48px.
+      if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
+      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, dx < 0 ? 1 : -1);
+      selectedCalendarDay = null;
+      saveState(false);
+      render();
+    }, { passive: true });
+  })();
 }
 
 function renderInsights() {
   const currentMonth = monthKey(toDateInputValue(today));
+  const analytics = getMonthAnalytics(currentMonth);
+  const comparison = getPreviousMonthComparison(currentMonth);
+  const projectedSeries = getProjectedBalanceSeries(30);
   const spent = getExpenseTotal(currentMonth);
   const unpaidBills = getUnpaidBillTotal(currentMonth);
   const subscriptions = bills
@@ -1814,31 +2018,41 @@ function renderInsights() {
   const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
   const top = topExpenseCategories(currentMonth, 5);
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Decision support", title: "Insights", subtitle: "A calm read on bills, spending, and what remains." })}
+    ${renderTopAppBar({ kicker: "Decision support", title: "Insights" })}
     <section class="insight-grid home-reveal" style="--delay: 30ms">
       ${renderKpiCard("Fixed bills open", money.format(unpaidBills), "unpaid this month")}
       ${renderKpiCard("Variable spent", money.format(spent), monthLabel(currentMonth))}
       ${renderKpiCard("Subscriptions", money.format(subscriptions), "this month")}
       ${renderKpiCard("Paid rate", `${onTimeRate}%`, "bills this month", onTimeRate >= 75 ? "is-safe" : "is-alert")}
     </section>
+    ${renderInsightHighlight(analytics, comparison)}
+    <div class="section-heading budget-heading home-reveal" style="--delay: 36ms">
+      <h2>Budget</h2>
+      <span class="mini-label">tap chart to adjust</span>
+    </div>
     ${renderBudgetChart()}
-    <section class="section-block">
-      <div class="section-heading">
-        <h2>Top spending categories</h2>
-        <span class="mini-label">variable</span>
-      </div>
-      <div class="mini-bars">
-        ${top.length ? top.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(spent, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">Add expenses to unlock spending insights.</p>`}
-      </div>
-    </section>
-    <section class="cashflow-card">
-      <div>
-        <p class="mini-label">Projected balance</p>
-        <h2>${money.format((settings.cashflow.monthlyStartingBalance || 0) - unpaidBills - spent)}</h2>
-        <p class="small-note">After open bills and recorded expenses.</p>
-      </div>
-      <span class="state-pill ${getSafeToSpend(currentMonth) < 0 ? "is-overdue" : "is-paid"}">${getSafeToSpend(currentMonth) < 0 ? "watch" : "safe"}</span>
-    </section>
+    ${renderSparklineChart({
+      title: "30-day projected balance",
+      summary: `Starts from ${money.format(analytics.starting)} and steps down as scheduled bills and expenses land.`,
+      series: projectedSeries,
+      tone: analytics.safeToSpend < 0 ? "is-overdue" : "is-paid"
+    })}
+    ${renderStackedBarChart({
+      title: "Fixed vs variable",
+      summary: "Open fixed bills and recorded variable expenses for the current month.",
+      parts: [
+        { label: "Fixed", amount: analytics.openBills, color: "var(--info)" },
+        { label: "Variable", amount: analytics.variableSpent, color: "var(--danger)" }
+      ]
+    })}
+    ${renderCategoryBars({
+      title: "Top spending categories",
+      summary: top.length ? `${top[0].name} contributes the most variable spend this month.` : "Add expenses to unlock spending insights.",
+      items: top,
+      total: spent,
+      emptyText: "Add expenses to unlock spending insights."
+    })}
+    ${renderCategoryMovers(currentMonth)}
   `;
   bindScreenActions();
   bindBudgetCategorySelection();
@@ -1890,6 +2104,7 @@ function renderSettingsContent() {
           <option value="system" ${settings.theme === "system" ? "selected" : ""}>System</option>
           <option value="dark" ${settings.theme === "dark" ? "selected" : ""}>Dark</option>
           <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
+          <option value="pastel" ${settings.theme === "pastel" ? "selected" : ""}>Pastel</option>
         </select>
       </label>
     </section>
@@ -1961,28 +2176,6 @@ function renderSettingsContent() {
     </section>
     <section class="settings-section">
       <div class="section-heading compact">
-        <h3>iPhone notifications</h3>
-        <span class="mini-label">6 AM</span>
-      </div>
-      <p class="settings-copy">Daily Home Screen summary for unpaid bills due in 5 days or less. Due-tomorrow bills get priority wording.</p>
-      <div class="notification-status">
-        <strong>${pushSupportStatus()}</strong>
-        <span>${settings.lastPushSync ? `Last synced ${dateFormat.format(new Date(settings.lastPushSync))}` : "Not synced yet"}</span>
-      </div>
-      <form id="pushForm" class="control-form">
-        <label>
-          <span>Notification setup code</span>
-          <input id="notificationToken" autocomplete="off" value="${settings.notificationToken || ""}" placeholder="Private setup code">
-        </label>
-        <div class="control-actions">
-          <button class="primary-action small" id="enablePush" type="submit">Enable</button>
-          <button class="secondary-action" id="syncPush" type="button">Sync now</button>
-        </div>
-        <button class="danger-action" id="disablePush" type="button">Disable notifications</button>
-      </form>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
         <h3>Data & backup</h3>
         <span class="mini-label">local</span>
       </div>
@@ -2047,11 +2240,90 @@ function renderSettingsContent() {
   setupCashflowControls();
   setupMonthlyHistory();
   setupReminderSettings();
-  setupPushControls();
   setupBackupControls();
   setupStarterClearControls();
   setupArchivedControls();
   setupBudgetControls();
+}
+
+function sheetMotionDuration() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? 0 : SHEET_TRANSITION_MS;
+}
+
+function clearSheetTimer(element) {
+  const timer = sheetTimers.get(element);
+  if (timer) {
+    window.clearTimeout(timer);
+    sheetTimers.delete(element);
+  }
+}
+
+function visibleSheetCount() {
+  return [sheet, settingsSheet, actionSheet, expenseSheet]
+    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
+    .length;
+}
+
+function showBackdrop() {
+  clearSheetTimer(backdrop);
+  backdrop.hidden = false;
+  backdrop.classList.remove("is-closing");
+  window.requestAnimationFrame(() => backdrop.classList.add("is-open"));
+}
+
+function hideBackdropIfIdle() {
+  if (visibleSheetCount()) return;
+  clearSheetTimer(backdrop);
+  backdrop.classList.remove("is-open");
+  backdrop.classList.add("is-closing");
+  const timer = window.setTimeout(() => {
+    backdrop.hidden = true;
+    backdrop.classList.remove("is-closing");
+    sheetTimers.delete(backdrop);
+  }, sheetMotionDuration());
+  sheetTimers.set(backdrop, timer);
+}
+
+function resolveFocusTarget(target) {
+  return typeof target === "function" ? target() : target;
+}
+
+function openModalSheet(element, { focusTarget = null } = {}) {
+  clearSheetTimer(element);
+  showBackdrop();
+  element.hidden = false;
+  element.classList.remove("is-closing", "is-open");
+  element.classList.add("is-opening");
+
+  window.requestAnimationFrame(() => {
+    element.classList.add("is-open");
+    const timer = window.setTimeout(() => {
+      element.classList.remove("is-opening");
+      sheetTimers.delete(element);
+      resolveFocusTarget(focusTarget)?.focus?.({ preventScroll: true });
+    }, sheetMotionDuration());
+    sheetTimers.set(element, timer);
+  });
+}
+
+function closeModalSheet(element, { afterClose = null, restoreFocus = true } = {}) {
+  if (element.hidden && !element.classList.contains("is-open")) {
+    afterClose?.();
+    hideBackdropIfIdle();
+    return;
+  }
+  clearSheetTimer(element);
+  element.classList.remove("is-opening", "is-open");
+  element.classList.add("is-closing");
+  const timer = window.setTimeout(() => {
+    element.hidden = true;
+    element.classList.remove("is-closing");
+    sheetTimers.delete(element);
+    afterClose?.();
+    hideBackdropIfIdle();
+    if (restoreFocus) lastTrigger?.focus?.({ preventScroll: true });
+  }, sheetMotionDuration());
+  sheetTimers.set(element, timer);
 }
 
 function openSheet(billId = null) {
@@ -2079,21 +2351,20 @@ function openSheet(billId = null) {
     billPaid.checked = false;
   }
   updatePropertyTaxPlanVisibility();
-  sheet.hidden = false;
-  backdrop.hidden = false;
-  billName.focus();
+  openModalSheet(sheet, { focusTarget: billName });
 }
 
 function closeSheet() {
-  sheet.hidden = true;
-  if (settingsSheet.hidden && actionSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
-  billForm.reset();
-  editingBillId = null;
-  deleteBillButton.hidden = true;
-  paidRow.hidden = true;
-  document.querySelector("#sheetTitle").textContent = "Add a bill";
-  billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
-  lastTrigger?.focus?.();
+  closeModalSheet(sheet, {
+    afterClose: () => {
+      billForm.reset();
+      editingBillId = null;
+      deleteBillButton.hidden = true;
+      paidRow.hidden = true;
+      document.querySelector("#sheetTitle").textContent = "Add a bill";
+      billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
+    }
+  });
 }
 
 function syncExpenseCategoryOptions(preferred = expenseCategory.value) {
@@ -2111,29 +2382,23 @@ function openExpenseSheet({ keepValues = false } = {}) {
     expenseDate.value = selectedCalendarDay || toDateInputValue(today);
   }
   syncExpenseCategoryOptions(selectedExpenseCategory === "All" ? undefined : selectedExpenseCategory);
-  expenseSheet.hidden = false;
-  backdrop.hidden = false;
-  expenseAmount.focus();
+  openModalSheet(expenseSheet, { focusTarget: expenseAmount });
 }
 
 function closeExpenseSheet() {
-  expenseSheet.hidden = true;
-  if (sheet.hidden && settingsSheet.hidden && actionSheet.hidden) backdrop.hidden = true;
-  expenseForm.reset();
-  lastTrigger?.focus?.();
+  closeModalSheet(expenseSheet, {
+    afterClose: () => expenseForm.reset()
+  });
 }
 
 function openSettingsSheet() {
   lastTrigger = document.activeElement;
   renderSettingsContent();
-  settingsSheet.hidden = false;
-  backdrop.hidden = false;
+  openModalSheet(settingsSheet);
 }
 
 function closeSettingsSheet() {
-  settingsSheet.hidden = true;
-  if (sheet.hidden && actionSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
-  lastTrigger?.focus?.();
+  closeModalSheet(settingsSheet);
 }
 
 function openSnoozeSheet(billId) {
@@ -2156,9 +2421,7 @@ function openSnoozeSheet(billId) {
       <button class="primary-action small" type="submit">Apply date</button>
     </form>
   `;
-  actionSheet.hidden = false;
-  backdrop.hidden = false;
-  actionSheet.querySelector("[data-snooze-offset]")?.focus();
+  openModalSheet(actionSheet, { focusTarget: () => actionSheet.querySelector("[data-snooze-offset]") });
   actionSheet.querySelectorAll("[data-snooze-offset]").forEach((button) => {
     button.addEventListener("click", () => {
       const nextDate = parseDate(bill.due);
@@ -2252,9 +2515,7 @@ function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
       <button class="secondary-action" type="submit">Add category</button>
     </form>
   `;
-  actionSheet.hidden = false;
-  backdrop.hidden = false;
-  document.querySelector("#budgetCategoryPlanned")?.focus();
+  openModalSheet(actionSheet, { focusTarget: () => document.querySelector("#budgetCategoryPlanned") });
 
   document.querySelector("#budgetCategorySheetForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2288,12 +2549,14 @@ function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
 }
 
 function closeActionSheet(restoreFocus = true) {
-  actionSheet.hidden = true;
-  actionBillId = null;
-  actionSheetTitle.textContent = "Quick action";
-  actionSheetContent.innerHTML = "";
-  if (sheet.hidden && settingsSheet.hidden && expenseSheet.hidden) backdrop.hidden = true;
-  if (restoreFocus) lastTrigger?.focus?.();
+  closeModalSheet(actionSheet, {
+    restoreFocus,
+    afterClose: () => {
+      actionBillId = null;
+      actionSheetTitle.textContent = "Quick action";
+      actionSheetContent.innerHTML = "";
+    }
+  });
 }
 
 function closeAllSheets() {
@@ -2301,7 +2564,7 @@ function closeAllSheets() {
   if (!settingsSheet.hidden) closeSettingsSheet();
   if (!actionSheet.hidden) closeActionSheet(false);
   if (!expenseSheet.hidden) closeExpenseSheet();
-  backdrop.hidden = true;
+  hideBackdropIfIdle();
 }
 
 function activeSheet() {
@@ -2323,11 +2586,14 @@ function updatePropertyTaxPlanVisibility() {
 }
 
 function toggleThemePreference() {
-  const nextTheme = resolvedTheme() === "dark" ? "light" : "dark";
+  const themes = ["dark", "light", "pastel"];
+  const current = resolvedTheme();
+  const nextTheme = themes[(themes.indexOf(current) + 1) % themes.length];
   settings.theme = nextTheme;
   applyTheme();
   saveState(false);
-  showToast(`${nextTheme === "dark" ? "Dark" : "Light"} theme applied.`);
+  const themeLabels = { dark: "Dark", light: "Light", pastel: "Pastel" };
+  showToast(`${themeLabels[nextTheme] ?? nextTheme} theme applied.`);
 }
 
 function bindScreenActions() {
@@ -2523,6 +2789,7 @@ function applyImportedState(state) {
   settings = { initialized: true, reminderDays: 3, ...(state.settings || {}) };
   settings.theme = validTheme(settings.theme);
   settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+  removeBackendSettings();
   expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
   expenseCategories = normalizeExpenseCategories(state.expenseCategories);
   selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
@@ -2605,6 +2872,7 @@ function setupAppearanceControls() {
   const themePreference = document.querySelector("#themePreference");
   themePreference.addEventListener("change", () => {
     settings.theme = validTheme(themePreference.value);
+    // update theme-color meta for pastel
     applyTheme();
     saveState(false);
     showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
@@ -2654,53 +2922,8 @@ function setupReminderSettings() {
   });
 }
 
-async function enablePushNotifications(token) {
-  if (!token.trim()) throw new Error("Enter your notification setup code.");
-  if (!isSupabasePushConfigured()) throw new Error("Supabase push config is not filled in yet.");
-  if (pushSupportStatus() === "Unsupported on this browser") throw new Error("This browser does not support Web Push.");
-  if (!isStandaloneApp()) throw new Error("Add UpNextBudgeting to your iPhone Home Screen, then open it from there.");
-  const registration = await navigator.serviceWorker.ready;
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("Notification permission was not granted.");
-  const existing = await registration.pushManager.getSubscription();
-  const subscription = existing || await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: base64UrlToUint8Array(SUPABASE_CONFIG.vapidPublicKey)
-  });
-  await callPushFunction({
-    action: "subscribe",
-    token,
-    subscription: subscription.toJSON(),
-    snapshot: pushSnapshot()
-  });
-  settings.notificationToken = token;
-  settings.pushEnabled = true;
-  settings.pushEndpoint = subscription.endpoint;
-  settings.pushStatus = "Notifications enabled";
-  settings.lastPushSync = new Date().toISOString();
-  saveState(false);
-}
-
-async function disablePushNotifications() {
-  const registration = await navigator.serviceWorker.ready.catch(() => null);
-  const subscription = registration ? await registration.pushManager.getSubscription() : null;
-  if (subscription) {
-    await callPushFunction({
-      action: "disable",
-      token: settings.notificationToken,
-      endpoint: subscription.endpoint
-    }).catch(() => {});
-    await subscription.unsubscribe().catch(() => {});
-  }
-  settings.pushEnabled = false;
-  settings.pushEndpoint = "";
-  settings.pushStatus = "Ready";
-  await clearAppBadge();
-  saveState(false);
-}
-
 async function updateAppBadge() {
-  const count = getPushReminderItems().length;
+  const count = getReminderBadgeItems().length;
   try {
     if (count && "setAppBadge" in navigator) await navigator.setAppBadge(count);
     if (!count && "clearAppBadge" in navigator) await navigator.clearAppBadge();
@@ -2715,49 +2938,6 @@ async function clearAppBadge() {
   } catch (error) {
     console.warn("Could not clear app badge", error);
   }
-}
-
-function setupPushControls() {
-  const pushForm = document.querySelector("#pushForm");
-  const tokenInput = document.querySelector("#notificationToken");
-  const syncPushButton = document.querySelector("#syncPush");
-  const disablePushButton = document.querySelector("#disablePush");
-
-  pushForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    settings.pushStatus = "Setting up...";
-    renderSettingsContent();
-    try {
-      await enablePushNotifications(tokenInput.value.trim());
-      showToast("Notifications enabled.");
-    } catch (error) {
-      settings.pushStatus = error.message || "Notification setup failed";
-      saveState(false);
-      showToast(settings.pushStatus);
-    }
-    renderSettingsContent();
-  });
-
-  syncPushButton.addEventListener("click", async () => {
-    settings.notificationToken = tokenInput.value.trim() || settings.notificationToken;
-    settings.pushStatus = "Syncing...";
-    renderSettingsContent();
-    try {
-      await syncPushSnapshot();
-      showToast("Notification data synced.");
-    } catch (error) {
-      settings.pushStatus = error.message || "Notification sync failed";
-      saveState(false);
-      showToast(settings.pushStatus);
-    }
-    renderSettingsContent();
-  });
-
-  disablePushButton.addEventListener("click", async () => {
-    await disablePushNotifications();
-    renderSettingsContent();
-    showToast("Notifications disabled.");
-  });
 }
 
 function setupBackupControls() {
