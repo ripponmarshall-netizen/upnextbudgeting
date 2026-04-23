@@ -1756,3 +1756,77 @@ button:disabled {
     vertical-align: top;
   }
 }
+/* === PASTEL THEME PASS (Concept One) === */
+:root {
+  --bg: #fcf8ff;
+  --surface: #ffffff;
+  --surface-2: #faf7ff;
+  --surface-3: #f3ecff;
+  --surface-4: #ebe2fb;
+
+  --text: #2d2940;
+  --muted: #6f6984;
+  --soft-muted: #948daa;
+
+  --line: rgba(107, 92, 141, 0.10);
+  --line-strong: rgba(107, 92, 141, 0.18);
+
+  --shadow: 0 18px 40px rgba(105, 88, 143, 0.12);
+  --shadow-soft: 0 10px 26px rgba(105, 88, 143, 0.08);
+
+  --brand: #b79cff;
+  --brand-soft: #f1eaff;
+  --brand-border: rgba(183, 156, 255, 0.34);
+
+  --danger: #d97f97;
+  --warning: #d5a04a;
+  --success: #59b88d;
+  --info: #80afe8;
+
+  --radius: 22px;
+  --radius-small: 14px;
+
+  color-scheme: light;
+}
+
+/* Background */
+html {
+  background:
+    radial-gradient(circle at top right, rgba(183,156,255,0.14), transparent 30%),
+    radial-gradient(circle at top left, rgba(128,175,232,0.10), transparent 28%),
+    var(--bg);
+}
+body { background: transparent; color: var(--text); }
+
+/* Cards */
+.wallet-card,
+.kpi-card,
+.bill-list-card,
+.expense-row,
+.chart-panel,
+.quick-sheet {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(183,156,255,0.12);
+  border-radius: 22px;
+  box-shadow: 0 10px 26px rgba(105,88,143,0.08);
+}
+
+/* Buttons */
+.primary-action {
+  background: linear-gradient(135deg, #b79cff, #9fd6ff);
+  color: white;
+  border: none;
+}
+
+/* Tab bar */
+.tabbar {
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(18px);
+  border-radius: 24px;
+  box-shadow: 0 18px 36px rgba(105,88,143,0.16);
+}
+
+.tab.is-active {
+  background: linear-gradient(135deg, #f3ecff, #eef6ff);
+  color: #7b63cb;
+}
