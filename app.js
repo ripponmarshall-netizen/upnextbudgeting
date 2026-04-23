@@ -425,12 +425,13 @@ function getPushReminderItems() {
 }
 
 function validTheme(value) {
-  return ["system", "dark", "light"].includes(value) ? value : "system";
+  return ["system", "dark", "light", "pastel"].includes(value) ? value : "system";
 }
 
 function resolvedTheme() {
   const theme = validTheme(settings.theme);
   if (theme !== "system") return theme;
+  // pastel is an explicit choice, system falls back to dark/light
   const media = window.matchMedia?.("(prefers-color-scheme: light)");
   return media?.matches ? "light" : "dark";
 }
@@ -440,7 +441,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePreference = settings.theme;
-  themeColorMeta?.setAttribute("content", theme === "light" ? "#ffffff" : "#111315");
+  themeColorMeta?.setAttribute("content", (theme === "light" || theme === "pastel") ? "#fcf8ff" : "#111315");
 }
 
 function showToast(message, options = {}) {
@@ -1239,7 +1240,7 @@ function renderHome() {
   const propertyTax = unpaid.find((bill) => bill.name.toLowerCase().includes("property tax"));
 
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall.", subtitle: "Stay ahead of bills, track spending, and know what is safe to spend." })}
+    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall." })}
 
     <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
       <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
@@ -1627,7 +1628,7 @@ function renderBills() {
   ];
   const items = filteredBills();
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills", subtitle: "Manage recurring and expected obligations without losing the due-next clarity." })}
+    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills" })}
     <section class="screen-controls home-reveal" style="--delay: 20ms">
       <div class="chip-row" aria-label="Bill filters">
         ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
@@ -1683,7 +1684,7 @@ function renderExpenses() {
   const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
   const topCategories = topExpenseCategories(currentMonth, 3);
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses", subtitle: "Fast capture for the day-to-day spending that changes your safe-to-spend number." })}
+    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses" })}
     <section class="quick-actions home-reveal" style="--delay: 20ms">
       <button class="primary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
       <button class="secondary-action" data-open-bill-sheet type="button">${icon("tax")} Add bill</button>
@@ -1765,7 +1766,7 @@ function renderCalendar() {
   const dayBills = selectedCalendarDay ? bills.filter((bill) => bill.due === selectedCalendarDay && !bill.archived) : [];
   const dayExpenses = selectedCalendarDay ? expenses.filter((expense) => expense.date === selectedCalendarDay) : [];
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar", subtitle: "See bills and spending together across the month." })}
+    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar" })}
     <section class="month-controls home-reveal" style="--delay: 20ms">
       <button class="secondary-action" data-shift-calendar="-1" type="button">Previous</button>
       <strong>${monthLabel(visibleCalendarMonth)}</strong>
@@ -1841,7 +1842,7 @@ function renderInsights() {
   const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
   const top = topExpenseCategories(currentMonth, 5);
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Decision support", title: "Insights", subtitle: "A calm read on bills, spending, and what remains." })}
+    ${renderTopAppBar({ kicker: "Decision support", title: "Insights" })}
     <section class="insight-grid home-reveal" style="--delay: 30ms">
       ${renderKpiCard("Fixed bills open", money.format(unpaidBills), "unpaid this month")}
       ${renderKpiCard("Variable spent", money.format(spent), monthLabel(currentMonth))}
@@ -1917,6 +1918,7 @@ function renderSettingsContent() {
           <option value="system" ${settings.theme === "system" ? "selected" : ""}>System</option>
           <option value="dark" ${settings.theme === "dark" ? "selected" : ""}>Dark</option>
           <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
+          <option value="pastel" ${settings.theme === "pastel" ? "selected" : ""}>Pastel</option>
         </select>
       </label>
     </section>
@@ -2350,11 +2352,14 @@ function updatePropertyTaxPlanVisibility() {
 }
 
 function toggleThemePreference() {
-  const nextTheme = resolvedTheme() === "dark" ? "light" : "dark";
+  const themes = ["dark", "light", "pastel"];
+  const current = resolvedTheme();
+  const nextTheme = themes[(themes.indexOf(current) + 1) % themes.length];
   settings.theme = nextTheme;
   applyTheme();
   saveState(false);
-  showToast(`${nextTheme === "dark" ? "Dark" : "Light"} theme applied.`);
+  const themeLabels = { dark: "Dark", light: "Light", pastel: "Pastel" };
+  showToast(`${themeLabels[nextTheme] ?? nextTheme} theme applied.`);
 }
 
 function bindScreenActions() {
@@ -2632,6 +2637,7 @@ function setupAppearanceControls() {
   const themePreference = document.querySelector("#themePreference");
   themePreference.addEventListener("change", () => {
     settings.theme = validTheme(themePreference.value);
+    // update theme-color meta for pastel
     applyTheme();
     saveState(false);
     showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
