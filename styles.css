@@ -1830,3 +1830,374 @@ body { background: transparent; color: var(--text); }
   background: linear-gradient(135deg, #f3ecff, #eef6ff);
   color: #7b63cb;
 }
+/* === SECOND PASS: hero + spacing + charts + motion === */
+
+/* 1) Better spacing rhythm */
+:root {
+  --radius-xl: 28px;
+  --card-pad: 18px;
+  --card-pad-lg: 22px;
+  --section-gap: 18px;
+  --stack-gap: 14px;
+}
+
+.screen {
+  padding-top: 24px;
+}
+
+.section-block {
+  gap: var(--section-gap);
+  margin-top: 22px;
+}
+
+.wallet-stack,
+.search-box,
+.bill-list,
+.expense-list,
+.date-groups,
+.timeline-list,
+.detail-grid {
+  gap: var(--stack-gap);
+}
+
+.kpi-grid,
+.expense-summary-grid,
+.insight-grid {
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.bill-list-card,
+.info-card,
+.settings-section,
+.empty-panel,
+.recurring-prompt,
+.notification-status,
+.history-item,
+.archived-item,
+.day-drawer,
+.screen-controls,
+.chart-panel,
+.budget-summary,
+.quick-sheet,
+.timeline-item,
+.expense-row {
+  padding: var(--card-pad);
+}
+
+/* 2) Hero card redesign */
+.wallet-card {
+  padding: var(--card-pad-lg);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.wallet-card::after,
+.cashflow-card::after,
+.detail-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -40px -40px auto;
+  width: 140px;
+  height: 140px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255,255,255,0.30), transparent 68%);
+  pointer-events: none;
+}
+
+.wallet-card:first-child,
+.cashflow-card {
+  background:
+    radial-gradient(circle at 85% 20%, rgba(183,156,255,0.22), transparent 24%),
+    radial-gradient(circle at 15% 0%, rgba(128,175,232,0.12), transparent 20%),
+    linear-gradient(135deg, #ffffff 0%, #f8f2ff 58%, #edf6ff 100%);
+  border-color: rgba(183, 156, 255, 0.18);
+  box-shadow:
+    0 18px 42px rgba(105, 88, 143, 0.12),
+    inset 0 1px 0 rgba(255,255,255,0.65);
+}
+
+.wallet-card:first-child .wallet-amount,
+.cashflow-card h2 {
+  font-size: clamp(2rem, 8vw, 2.8rem);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+}
+
+.wallet-card:first-child .wallet-inline-meta > div,
+.cashflow-card .mini-label,
+.cashflow-card .text-action {
+  background: rgba(255,255,255,0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.wallet-inline-meta > div,
+.detail-inline-meta > div,
+.budget-summary > div {
+  border-radius: 18px;
+}
+
+.wallet-title h3,
+.detail-topbar-copy h1 {
+  letter-spacing: -0.02em;
+}
+
+.metric-pill {
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,243,255,0.96));
+  box-shadow: 0 8px 20px rgba(105, 88, 143, 0.06);
+}
+
+.metric-pill strong {
+  font-size: 1.05rem;
+}
+
+/* 3) Chart polish */
+.chart-panel {
+  padding: 24px 20px 20px;
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(249,245,255,0.94));
+}
+
+.chart-wrap {
+  width: min(336px, 100%);
+}
+
+.chart-ring {
+  stroke: #ede6f8;
+  stroke-width: 19;
+}
+
+.chart-segment-track {
+  stroke: color-mix(in srgb, var(--accent) 16%, #ede6f8);
+  stroke-width: 19;
+  opacity: 1;
+}
+
+.chart-segment-fill {
+  stroke: var(--accent);
+  stroke-width: 19;
+  filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--accent) 16%, transparent));
+}
+
+.chart-center {
+  gap: 6px;
+}
+
+.chart-center strong {
+  font-size: 1.48rem;
+  letter-spacing: -0.02em;
+}
+
+.chart-center span,
+.chart-center small {
+  color: var(--muted);
+}
+
+.mini-bars {
+  gap: 12px;
+}
+
+.mini-bars article {
+  gap: 10px;
+}
+
+.mini-bars article i {
+  height: 9px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--accent) var(--value), #ebe6f6 0);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.55);
+}
+
+/* 4) Motion polish */
+.wallet-card,
+.kpi-card,
+.bill-list-card,
+.expense-row,
+.chart-panel,
+.quick-sheet,
+.metric-pill,
+.tab,
+.primary-action,
+.secondary-action,
+.icon-button,
+.filter-chip,
+.calendar-day,
+.timeline-item {
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wallet-card:hover,
+.kpi-card:hover,
+.bill-list-card:hover,
+.expense-row:hover,
+.chart-panel:hover,
+.metric-pill:hover,
+.timeline-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(105, 88, 143, 0.10);
+}
+
+.primary-action:hover,
+.secondary-action:hover,
+.icon-button:hover,
+.filter-chip:hover,
+.tab:hover {
+  transform: translateY(-1px);
+}
+
+.calendar-day:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(105, 88, 143, 0.08);
+}
+
+.tab.is-active {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65);
+}
+
+.quick-sheet[hidden] {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.quick-sheet:not([hidden]) {
+  animation: sheetIn 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.home-reveal {
+  animation: revealUpSoft 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+@keyframes revealUpSoft {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Better topbar rhythm */
+.topbar {
+  margin-bottom: 22px;
+}
+
+.brand-line {
+  gap: 14px;
+}
+
+.welcome-line {
+  margin-top: 8px;
+  font-size: 1.02rem;
+  line-height: 1.32;
+}
+
+.kicker,
+.eyebrow,
+.mini-label,
+.microcopy {
+  letter-spacing: 0.03em;
+}
+
+/* CTA feels stronger */
+.primary-action,
+.mark-button {
+  min-height: 46px;
+  padding: 0 16px;
+  font-weight: 780;
+}
+
+.secondary-action {
+  min-height: 46px;
+}
+
+/* Lists feel more breathable */
+.bill-card-main {
+  gap: 14px;
+}
+
+.bill-card-meta,
+.expense-row span:not(.expense-dot),
+.timeline-item p {
+  line-height: 1.45;
+}
+
+.expense-row {
+  border-radius: 20px;
+}
+
+.timeline-item {
+  border-radius: 20px;
+}
+
+/* Chart + summary cards align more cleanly */
+.budget-summary {
+  gap: 12px;
+  border-radius: 24px;
+}
+
+.budget-summary > div strong {
+  font-size: 1.04rem;
+}
+
+/* Mobile tightening */
+@media (max-width: 420px) {
+  .wallet-card:first-child .wallet-amount,
+  .cashflow-card h2 {
+    font-size: 2.15rem;
+  }
+
+  .chart-center strong {
+    font-size: 1.34rem;
+  }
+
+  .chart-wrap {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wallet-card,
+  .kpi-card,
+  .bill-list-card,
+  .expense-row,
+  .chart-panel,
+  .quick-sheet,
+  .metric-pill,
+  .tab,
+  .primary-action,
+  .secondary-action,
+  .icon-button,
+  .filter-chip,
+  .calendar-day,
+  .timeline-item,
+  .home-reveal {
+    transition: none;
+    animation: none !important;
+    transform: none !important;
+  }
+}
