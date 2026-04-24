@@ -1445,9 +1445,9 @@ function renderBillListCard(bill, index = 0) {
         <span>${longDateFormat.format(parseDate(bill.due))}</span>
       </div>
       <div class="bill-card-actions">
-        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${paidLabel}" title="${paidLabel}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
         <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
         <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
+        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${paidLabel}" title="${paidLabel}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
       </div>
     </article>
   `;

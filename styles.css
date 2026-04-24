@@ -1055,6 +1055,11 @@ body.compose-active .app-shell {
 
 .bill-card-actions {
   align-items: center;
+  justify-content: flex-start;
+}
+
+.bill-card-actions .mark-button-icon {
+  margin-left: auto;
 }
 
 .expense-row {
