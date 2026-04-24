@@ -20,52 +20,49 @@
   <body>
     <div class="app-shell">
       <main id="app" class="screen" aria-live="polite"></main>
-
-      <nav class="tabbar" id="tabbar" aria-label="Primary">
-        <button class="tab is-active" data-tab="home" type="button">
-          <span class="tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h10M5 16.5h7"/><path d="M17 14.5l2 2 3-3"/></svg>
-          </span>
-          <span>Home</span>
-        </button>
-        <button class="tab" data-tab="bills" type="button">
-          <span class="tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M7 3.5h10l2 3.5v13.5H5V7l2-3.5Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
-          </span>
-          <span>Bills</span>
-        </button>
-        <button class="tab" data-tab="expenses" type="button">
-          <span class="tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M5 7.5h14v12H5z"/><path d="M8 11h8M8 15h5"/><path d="M17 4.5v3"/></svg>
-          </span>
-          <span>Expenses</span>
-        </button>
-        <button class="tab" data-tab="calendar" type="button">
-          <span class="tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M6.5 4.5v3M17.5 4.5v3"/><rect x="4" y="6.5" width="16" height="13" rx="2"/><path d="M4 10h16M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01"/></svg>
-          </span>
-          <span>Calendar</span>
-        </button>
-        <button class="tab" data-tab="insights" type="button">
-          <span class="tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M5 17.5V10M12 17.5V6.5M19 17.5v-4"/><path d="M4 20h16"/><rect x="3.5" y="8" width="3" height="9.5" rx="1"/><rect x="10.5" y="4.5" width="3" height="13" rx="1"/><rect x="17.5" y="11.5" width="3" height="6" rx="1"/></svg>
-          </span>
-          <span>Insights</span>
-        </button>
-      </nav>
     </div>
+
+    <nav class="tabbar" id="tabbar" aria-label="Primary">
+      <button class="tab is-active" data-tab="home" type="button">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h10M5 16.5h7"/><path d="M17 14.5l2 2 3-3"/></svg>
+        </span>
+        <span>Home</span>
+      </button>
+      <button class="tab" data-tab="spending" type="button">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 7.5h14v12H5z"/><path d="M8 11h8M8 15h5"/><path d="M17 4.5v3"/><path d="M7 3.5h10l1.2 2"/></svg>
+        </span>
+        <span>Spending</span>
+      </button>
+      <button class="tab" data-tab="calendar" type="button">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M6.5 4.5v3M17.5 4.5v3"/><rect x="4" y="6.5" width="16" height="13" rx="2"/><path d="M4 10h16M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01"/></svg>
+        </span>
+        <span>Calendar</span>
+      </button>
+      <button class="tab" data-tab="insights" type="button">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 17.5V10M12 17.5V6.5M19 17.5v-4"/><path d="M4 20h16"/><rect x="3.5" y="8" width="3" height="9.5" rx="1"/><rect x="10.5" y="4.5" width="3" height="13" rx="1"/><rect x="17.5" y="11.5" width="3" height="6" rx="1"/></svg>
+        </span>
+        <span>Insights</span>
+      </button>
+    </nav>
 
     <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>
-    <section class="quick-sheet" id="quickSheet" aria-labelledby="sheetTitle" aria-modal="true" role="dialog" hidden>
+    <section class="quick-sheet compose-sheet" id="quickSheet" aria-labelledby="sheetTitle" aria-modal="true" role="dialog" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>
-      <div class="sheet-top">
-        <div>
+      <div class="sheet-top compose-top">
+        <button class="icon-button compose-dismiss" id="closeSheet" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+        <div class="compose-title">
           <p class="eyebrow">New reminder</p>
           <h2 id="sheetTitle">Add a bill</h2>
         </div>
-        <button class="icon-button" id="closeSheet" type="button" aria-label="Close">
-          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        <button class="icon-button compose-confirm" type="submit" form="billForm" aria-label="Save bill">
+          <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>
         </button>
       </div>
       <form id="billForm" class="bill-form">
@@ -108,7 +105,7 @@
           <input id="billPaid" name="paid" type="checkbox">
           <span>Already paid</span>
         </label>
-        <button class="primary-action" type="submit">Add to Upcoming</button>
+        <button class="primary-action compose-primary-inline" type="submit">Add to Upcoming</button>
         <button class="danger-action" id="deleteBill" type="button" hidden>Delete bill</button>
       </form>
       <div class="preset-area">
@@ -143,15 +140,18 @@
       </div>
       <div id="actionSheetContent"></div>
     </section>
-    <section class="quick-sheet expense-sheet" id="expenseSheet" aria-labelledby="expenseSheetTitle" aria-modal="true" role="dialog" hidden>
+    <section class="quick-sheet expense-sheet compose-sheet" id="expenseSheet" aria-labelledby="expenseSheetTitle" aria-modal="true" role="dialog" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>
-      <div class="sheet-top">
-        <div>
+      <div class="sheet-top compose-top">
+        <button class="icon-button light compose-dismiss" id="closeExpenseSheet" type="button" aria-label="Close expense form">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+        <div class="compose-title">
           <p class="eyebrow">Fast capture</p>
           <h2 id="expenseSheetTitle">Add expense</h2>
         </div>
-        <button class="icon-button light" id="closeExpenseSheet" type="button" aria-label="Close expense form">
-          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        <button class="icon-button light compose-confirm" type="submit" form="expenseForm" data-expense-submit="close" aria-label="Save expense">
+          <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>
         </button>
       </div>
       <form id="expenseForm" class="expense-form">
@@ -178,13 +178,13 @@
           </label>
         </div>
         <div class="control-actions">
-          <button class="primary-action" type="submit" data-expense-submit="close">Save expense</button>
+          <button class="primary-action compose-primary-inline" type="submit" data-expense-submit="close">Save expense</button>
           <button class="secondary-action" type="submit" data-expense-submit="again">Save & add another</button>
         </div>
       </form>
     </section>
     <section id="printExport" class="print-export" aria-hidden="true"></section>
 
-    <script src="app.js?v=analytics-1" type="module"></script>
+    <script src="app.js?v=ios-polish-1" type="module"></script>
   </body>
 </html>

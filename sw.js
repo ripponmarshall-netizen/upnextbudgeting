@@ -1,10 +1,10 @@
-const CACHE_NAME = "upnextbudgeting-shell-v19";
+const CACHE_NAME = "upnextbudgeting-shell-v21";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./app.js?v=analytics-1",
+  "./app.js?v=ios-polish-1",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/apple-touch-icon.png",

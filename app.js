@@ -236,8 +236,15 @@ const sheetTimers = new WeakMap();
 function initialTab() {
   const params = new URLSearchParams(window.location.search);
   const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
+  if (requested === "bills" || requested === "expenses") return "spending";
   const normalized = requested === "budget" ? "insights" : requested;
   return [...tabs].some((tab) => tab.dataset.tab === normalized) ? normalized : "home";
+}
+
+function initialSpendingMode() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
+  return requested === "expenses" ? "expenses" : "bills";
 }
 
 let activeTab = initialTab();
@@ -247,6 +254,9 @@ let pendingRecurringBillId = null;
 let selectedBudgetCategory = categories[0].name;
 let selectedHistoryMonth = monthKey(toDateInputValue(today));
 let visibleCalendarMonth = monthKey(toDateInputValue(today));
+let spendingMode = initialSpendingMode();
+let spendingBillFiltersOpen = false;
+let spendingExpenseFiltersOpen = false;
 let selectedExpenseCategory = "All";
 let selectedCalendarDay = null;
 let billFilter = "all";
@@ -935,12 +945,16 @@ function openBillDetail(billId) {
   if (!bill) return;
   lastTrigger = document.activeElement;
   activeBillId = billId;
+  document.body.classList.add("detail-zooming");
   render();
+  window.setTimeout(() => document.body.classList.remove("detail-zooming"), sheetMotionDuration());
 }
 
 function closeBillDetail(restoreFocus = true) {
   activeBillId = null;
+  document.body.classList.add("detail-closing");
   render();
+  window.setTimeout(() => document.body.classList.remove("detail-closing"), sheetMotionDuration());
   if (restoreFocus) {
     window.setTimeout(() => lastTrigger?.focus?.(), 0);
   }
@@ -1220,17 +1234,14 @@ function renderTopAppBar({ kicker, title, subtitle = "" }) {
   return `
     <header class="topbar app-topbar home-reveal" style="--delay: 0ms">
       <div class="brand-line">
-        <img class="brandmark" src="assets/icon.svg" alt="">
+        <button class="brandmark-button" data-open-settings type="button" aria-label="Open settings">
+          <img class="brandmark" src="assets/icon.svg" alt="">
+        </button>
         <div class="hero-copy">
           <p class="kicker">${kicker}</p>
           <h1>${title}</h1>
           ${subtitle ? `<p class="hero-note">${subtitle}</p>` : ""}
         </div>
-      </div>
-      <div class="top-actions">
-        <span class="profile-token" aria-hidden="true"><span>M</span></span>
-        <button class="icon-button light" data-toggle-theme type="button" aria-label="Toggle theme">${icon("wellness")}</button>
-        <button class="icon-button light" data-open-settings type="button" aria-label="Open settings">${icon("gear")}</button>
       </div>
     </header>
   `;
@@ -1480,7 +1491,7 @@ function renderHome() {
   const propertyTax = unpaid.find((bill) => bill.name.toLowerCase().includes("property tax"));
 
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: monthName(), title: "Welcome back, Marshall." })}
+    ${renderTopAppBar({ kicker: monthName(), title: "UpNextBudgeting" })}
 
     <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
       <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
@@ -1793,7 +1804,17 @@ function filteredBills() {
   return sortBills(filtered);
 }
 
-function renderBills() {
+function renderSpendingToggle() {
+  return `
+    <section class="spending-switch home-reveal" style="--delay: 20ms" aria-label="Spending view">
+      <span class="spending-switch-indicator ${spendingMode === "expenses" ? "is-expenses" : ""}" aria-hidden="true"></span>
+      <button class="${spendingMode === "bills" ? "is-active" : ""}" data-spending-mode="bills" type="button">Bills</button>
+      <button class="${spendingMode === "expenses" ? "is-active" : ""}" data-spending-mode="expenses" type="button">Expenses</button>
+    </section>
+  `;
+}
+
+function renderSpendingBillsContent() {
   const filters = [
     ["all", "All"],
     ["overdue", "Overdue"],
@@ -1802,42 +1823,58 @@ function renderBills() {
     ["recurring", "Recurring"]
   ];
   const items = filteredBills();
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Bill workspace", title: "Bills" })}
-    <section class="screen-controls home-reveal" style="--delay: 20ms">
-      <div class="chip-row" aria-label="Bill filters">
-        ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
-      </div>
-      <label class="search-box">
-        <span class="mini-label">Search</span>
-        <input id="billSearch" value="${escapeAttribute(billSearch)}" placeholder="JPS, rent, tax...">
-      </label>
-      <label class="search-box">
-        <span class="mini-label">Sort</span>
-        <select id="billSort">
-          <option value="due" ${billSort === "due" ? "selected" : ""}>Due date</option>
-          <option value="amount" ${billSort === "amount" ? "selected" : ""}>Amount</option>
-          <option value="name" ${billSort === "name" ? "selected" : ""}>Name</option>
-        </select>
-      </label>
+  return `
+    <section class="screen-controls spending-controls home-reveal" style="--delay: 60ms">
+      <button class="filter-disclosure" data-toggle-bill-filters type="button" aria-expanded="${spendingBillFiltersOpen}">
+        <span>
+          <strong>Filters</strong>
+          <small>${filters.find(([value]) => value === billFilter)?.[1] || "All"} · ${billSort === "due" ? "Due date" : billSort === "amount" ? "Amount" : "Name"}${billSearch ? ` · ${billSearch}` : ""}</small>
+        </span>
+        ${icon("chevron")}
+      </button>
+      ${spendingBillFiltersOpen ? `
+        <div class="filter-panel is-open">
+          <div class="chip-row" aria-label="Bill filters">
+            ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
+          </div>
+          <label class="search-box">
+            <span class="mini-label">Search</span>
+            <input id="billSearch" value="${escapeAttribute(billSearch)}" placeholder="JPS, rent, tax...">
+          </label>
+          <label class="search-box">
+            <span class="mini-label">Sort</span>
+            <select id="billSort">
+              <option value="due" ${billSort === "due" ? "selected" : ""}>Due date</option>
+              <option value="amount" ${billSort === "amount" ? "selected" : ""}>Amount</option>
+              <option value="name" ${billSort === "name" ? "selected" : ""}>Name</option>
+            </select>
+          </label>
+        </div>
+      ` : ""}
     </section>
     ${renderUpcomingPressureStrip()}
     <section class="bill-list">
       ${items.length ? items.map(renderBillListCard).join("") : `<article class="empty-panel"><p class="mini-label">No matches</p><h2>No bills found.</h2><p class="small-note">Adjust filters or add a new bill.</p></article>`}
     </section>
   `;
-  bindScreenActions();
+}
+
+function bindSpendingBills() {
+  document.querySelector("[data-toggle-bill-filters]")?.addEventListener("click", () => {
+    spendingBillFiltersOpen = !spendingBillFiltersOpen;
+    render();
+  });
   document.querySelectorAll("[data-bill-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       billFilter = button.dataset.billFilter;
       render();
     });
   });
-  document.querySelector("#billSearch").addEventListener("input", (event) => {
+  document.querySelector("#billSearch")?.addEventListener("input", (event) => {
     billSearch = event.target.value;
     renderBills();
   });
-  document.querySelector("#billSort").addEventListener("change", (event) => {
+  document.querySelector("#billSort")?.addEventListener("change", (event) => {
     billSort = event.target.value;
     render();
   });
@@ -1846,32 +1883,44 @@ function renderBills() {
   bindBillSecondaryActions();
 }
 
+function renderBills() {
+  spendingMode = "bills";
+  activeTab = "spending";
+  renderSpending();
+}
+
 function renderExpenseCategoryChips() {
   return ["All", ...expenseCategories].map((category) => `
     <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${category}</button>
   `).join("");
 }
 
-function renderExpenses() {
+function renderSpendingExpensesContent() {
   const currentMonth = monthKey(toDateInputValue(today));
   const monthExpenses = getMonthExpenses(currentMonth)
     .filter((expense) => selectedExpenseCategory === "All" || expense.category === selectedExpenseCategory);
   const grouped = expensesByDate(monthExpenses);
   const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
   const topCategories = topExpenseCategories(currentMonth, 3);
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Variable spending", title: "Expenses" })}
-    <section class="quick-actions home-reveal" style="--delay: 20ms">
-      <button class="primary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
-      <button class="secondary-action" data-open-bill-sheet type="button">${icon("tax")} Add bill</button>
-    </section>
-    <section class="expense-summary-grid home-reveal" style="--delay: 40ms">
+  return `
+    <section class="expense-summary-grid home-reveal" style="--delay: 60ms">
       ${renderKpiCard("Spent this month", money.format(total), selectedExpenseCategory)}
       ${renderKpiCard("Transactions", monthExpenses.length, "recorded")}
       ${renderKpiCard("Safe to spend", money.format(getSafeToSpend(currentMonth)), "after bills and buffer", getSafeToSpend(currentMonth) < 0 ? "is-alert" : "is-safe")}
     </section>
-    <section class="screen-controls home-reveal" style="--delay: 60ms">
-      <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
+    <section class="screen-controls spending-controls home-reveal" style="--delay: 72ms">
+      <button class="filter-disclosure" data-toggle-expense-filters type="button" aria-expanded="${spendingExpenseFiltersOpen}">
+        <span>
+          <strong>Category</strong>
+          <small>${selectedExpenseCategory}</small>
+        </span>
+        ${icon("chevron")}
+      </button>
+      ${spendingExpenseFiltersOpen ? `
+        <div class="filter-panel is-open">
+          <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
+        </div>
+      ` : ""}
     </section>
     ${renderSpendingRhythmChart(currentMonth)}
     ${renderCategoryBars({
@@ -1897,14 +1946,58 @@ function renderExpenses() {
       </div>
     </section>
   `;
-  bindScreenActions();
+}
+
+function bindSpendingExpenses() {
+  document.querySelector("[data-toggle-expense-filters]")?.addEventListener("click", () => {
+    spendingExpenseFiltersOpen = !spendingExpenseFiltersOpen;
+    render();
+  });
   document.querySelectorAll("[data-expense-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedExpenseCategory = decodeCategoryDataset(button.dataset.expenseFilter);
+      spendingExpenseFiltersOpen = false;
       render();
     });
   });
   bindExpenseActions();
+}
+
+function renderExpenses() {
+  spendingMode = "expenses";
+  activeTab = "spending";
+  renderSpending();
+}
+
+function renderSpending() {
+  const isBills = spendingMode === "bills";
+  app.innerHTML = `
+    ${renderTopAppBar({
+      kicker: "Bills & expenses",
+      title: "Spending",
+      subtitle: isBills ? "Open bills, due dates, and committed cash." : "Variable spending, rhythm, and category movement."
+    })}
+    ${renderSpendingToggle()}
+    <section class="quick-actions spending-actions home-reveal" style="--delay: 40ms">
+      <button class="primary-action" ${isBills ? "data-open-bill-sheet" : "data-open-expense-sheet"} type="button">
+        ${icon("plus")} ${isBills ? "Add bill" : "Add expense"}
+      </button>
+    </section>
+    ${isBills ? renderSpendingBillsContent() : renderSpendingExpensesContent()}
+  `;
+
+  bindScreenActions();
+  document.querySelectorAll("[data-spending-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      spendingMode = button.dataset.spendingMode === "expenses" ? "expenses" : "bills";
+      render();
+    });
+  });
+  if (isBills) {
+    bindSpendingBills();
+  } else {
+    bindSpendingExpenses();
+  }
 }
 
 function getCalendarDays(key) {
@@ -2094,8 +2187,15 @@ function renderSettingsContent() {
   settingsContent.innerHTML = `
     <section class="settings-section">
       <div class="section-heading compact">
-        <h3>Appearance</h3>
-        <span class="mini-label">theme</span>
+        <h3>Profile & Appearance</h3>
+        <span class="mini-label">local</span>
+      </div>
+      <div class="settings-profile-card">
+        <span class="profile-token settings-profile-token" aria-hidden="true"><span>M</span></span>
+        <div>
+          <strong>Marshall</strong>
+          <p class="settings-copy">Decorative local profile. No account or sync layer.</p>
+        </div>
       </div>
       <p class="settings-copy">Choose a matte light or dark appearance, or follow your device.</p>
       <label>
@@ -2266,6 +2366,7 @@ function visibleSheetCount() {
 
 function showBackdrop() {
   clearSheetTimer(backdrop);
+  document.body.classList.add("sheet-zoom-active");
   backdrop.hidden = false;
   backdrop.classList.remove("is-closing");
   window.requestAnimationFrame(() => backdrop.classList.add("is-open"));
@@ -2279,6 +2380,7 @@ function hideBackdropIfIdle() {
   const timer = window.setTimeout(() => {
     backdrop.hidden = true;
     backdrop.classList.remove("is-closing");
+    document.body.classList.remove("sheet-zoom-active");
     sheetTimers.delete(backdrop);
   }, sheetMotionDuration());
   sheetTimers.set(backdrop, timer);
@@ -2326,10 +2428,32 @@ function closeModalSheet(element, { afterClose = null, restoreFocus = true } = {
   sheetTimers.set(element, timer);
 }
 
+function visibleComposeCount() {
+  return [sheet, expenseSheet]
+    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
+    .length;
+}
+
+function openComposeModal(element, { focusTarget = null } = {}) {
+  document.body.classList.add("compose-active");
+  openModalSheet(element, { focusTarget });
+}
+
+function closeComposeModal(element, { afterClose = null, restoreFocus = true } = {}) {
+  closeModalSheet(element, {
+    restoreFocus,
+    afterClose: () => {
+      afterClose?.();
+      if (!visibleComposeCount()) document.body.classList.remove("compose-active");
+    }
+  });
+}
+
 function openSheet(billId = null) {
   lastTrigger = document.activeElement;
   editingBillId = billId;
   const bill = getBillById(billId);
+  sheet.querySelector(".eyebrow").textContent = bill ? "Edit reminder" : "New reminder";
   document.querySelector("#sheetTitle").textContent = bill ? "Edit bill" : "Add a bill";
   billForm.querySelector(".primary-action").textContent = bill ? "Save changes" : "Add to Upcoming";
   deleteBillButton.hidden = !bill;
@@ -2351,16 +2475,17 @@ function openSheet(billId = null) {
     billPaid.checked = false;
   }
   updatePropertyTaxPlanVisibility();
-  openModalSheet(sheet, { focusTarget: billName });
+  openComposeModal(sheet, { focusTarget: billName });
 }
 
 function closeSheet() {
-  closeModalSheet(sheet, {
+  closeComposeModal(sheet, {
     afterClose: () => {
       billForm.reset();
       editingBillId = null;
       deleteBillButton.hidden = true;
       paidRow.hidden = true;
+      sheet.querySelector(".eyebrow").textContent = "New reminder";
       document.querySelector("#sheetTitle").textContent = "Add a bill";
       billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
     }
@@ -2382,11 +2507,11 @@ function openExpenseSheet({ keepValues = false } = {}) {
     expenseDate.value = selectedCalendarDay || toDateInputValue(today);
   }
   syncExpenseCategoryOptions(selectedExpenseCategory === "All" ? undefined : selectedExpenseCategory);
-  openModalSheet(expenseSheet, { focusTarget: expenseAmount });
+  openComposeModal(expenseSheet, { focusTarget: expenseAmount });
 }
 
 function closeExpenseSheet() {
-  closeModalSheet(expenseSheet, {
+  closeComposeModal(expenseSheet, {
     afterClose: () => expenseForm.reset()
   });
 }
@@ -3190,7 +3315,6 @@ function setupForm() {
     }
     saveState();
     closeSheet();
-    activeTab = "home";
     render();
     if (!settingsSheet.hidden) renderSettingsContent();
     showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
@@ -3230,10 +3354,8 @@ function setupForm() {
 function render() {
   if (activeBillId) {
     renderBillDetail();
-  } else if (activeTab === "bills") {
-    renderBills();
-  } else if (activeTab === "expenses") {
-    renderExpenses();
+  } else if (activeTab === "spending") {
+    renderSpending();
   } else if (activeTab === "calendar") {
     renderCalendar();
   } else if (activeTab === "insights") {
@@ -3242,7 +3364,10 @@ function render() {
     renderHome();
   }
   tabs.forEach((tab) => tab.classList.toggle("is-active", !activeBillId && tab.dataset.tab === activeTab));
-  if (tabbar) tabbar.hidden = Boolean(activeBillId);
+  if (tabbar) {
+    tabbar.hidden = Boolean(activeBillId);
+    tabbar.dataset.activeTab = activeTab;
+  }
   updateAppBadge();
 }
 
