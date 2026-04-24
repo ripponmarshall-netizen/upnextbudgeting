@@ -37,7 +37,9 @@ const icons = {
   school: `<svg viewBox="0 0 24 24"><path d="m3.5 8.5 8.5-4 8.5 4-8.5 4-8.5-4Z"/><path d="M6.5 10v4.5c1.7 1.4 3.5 2 5.5 2s3.8-.6 5.5-2V10"/></svg>`,
   medical: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="4.5" y="4.5" width="15" height="15" rx="3"/></svg>`,
   groceries: `<svg viewBox="0 0 24 24"><path d="M7 8h12l-1.5 11h-10L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0"/><path d="M5 8h2"/></svg>`,
-  category: `<svg viewBox="0 0 24 24"><path d="M4.5 5.5h6v6h-6zM13.5 5.5h6v6h-6zM4.5 14.5h6v6h-6zM13.5 14.5h6v6h-6z"/></svg>`
+  category: `<svg viewBox="0 0 24 24"><path d="M4.5 5.5h6v6h-6zM13.5 5.5h6v6h-6zM4.5 14.5h6v6h-6zM13.5 14.5h6v6h-6z"/></svg>`,
+  check: `<svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg>`
 };
 
 function icon(name) {
@@ -1201,33 +1203,7 @@ function renderRecurringPrompt() {
 }
 
 function renderWalletCard(bill, index) {
-  const category = getCategory(bill.category);
-  return `
-    <article class="wallet-card home-reveal ${statusClass(bill)}" style="--stack-index:${index}; --accent:${category.color}; --delay:${Math.min(70 + index * 35, 320)}ms" data-open-bill="${bill.id}" tabindex="0" role="button" aria-label="Open ${bill.name}">
-      <div class="wallet-card-top">
-        <div class="wallet-title">
-          <p class="eyebrow">${bill.category}</p>
-          <h3>${bill.name}</h3>
-        </div>
-        <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
-      </div>
-      <p class="wallet-amount">${money.format(bill.amount)}</p>
-      <div class="wallet-inline-meta">
-        <div>
-          <p class="mini-label">Due</p>
-          <strong>${dateFormat.format(parseDate(bill.due))}</strong>
-        </div>
-        <div>
-          <p class="mini-label">Repeat</p>
-          <strong>${repeatLabels[bill.repeat] || repeatLabels.none}</strong>
-        </div>
-      </div>
-      <div class="wallet-card-bottom">
-        <p class="small-note">${statusText(bill)}</p>
-        <button class="mark-button" data-paid="${bill.id}" type="button">Mark paid</button>
-      </div>
-    </article>
-  `;
+  return renderBillListCard(bill, index);
 }
 
 function renderTopAppBar({ kicker, title, subtitle = "" }) {
@@ -1446,13 +1422,14 @@ function renderExpenseRow(expense) {
         <span>${expense.category} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${expense.paymentSource}` : ""}</span>
       </div>
       <strong>${money.format(expense.amount)}</strong>
-      <button class="text-action danger-text" data-delete-expense="${expense.id}" type="button">Remove</button>
+      <button class="icon-button light expense-delete-button" data-delete-expense="${expense.id}" type="button" aria-label="Remove ${expense.merchant}" title="Remove expense">${icon("trash")}</button>
     </article>
   `;
 }
 
 function renderBillListCard(bill, index = 0) {
   const category = getCategory(bill.category);
+  const paidLabel = bill.paid ? `${bill.name} paid` : `Mark ${bill.name} paid`;
   return `
     <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay:${Math.min(40 + index * 24, 260)}ms">
       <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${bill.name}">
@@ -1468,7 +1445,7 @@ function renderBillListCard(bill, index = 0) {
         <span>${longDateFormat.format(parseDate(bill.due))}</span>
       </div>
       <div class="bill-card-actions">
-        <button class="mark-button" data-paid="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>${bill.paid ? "Paid" : "Mark paid"}</button>
+        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${paidLabel}" title="${paidLabel}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
         <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
         <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
       </div>
@@ -1488,7 +1465,6 @@ function renderHome() {
   const spent = getExpenseTotal(currentMonth);
   const safe = getSafeToSpend(currentMonth);
   const recentExpenses = getRecentExpenses(4);
-  const propertyTax = unpaid.find((bill) => bill.name.toLowerCase().includes("property tax"));
 
   app.innerHTML = `
     ${renderTopAppBar({ kicker: monthName(), title: "UpNextBudgeting" })}
@@ -1528,7 +1504,6 @@ function renderHome() {
         <h2>Needs attention</h2>
         <span class="mini-label">${unpaid.length} open</span>
       </div>
-      ${propertyTax ? `<article class="property-note home-reveal" style="--delay: 105ms"><strong>Property tax stays visible</strong><span>Due April 1 yearly in Jamaica. April 30 remains the first-payment warning date.</span></article>` : ""}
       <div class="wallet-stack" aria-label="Upcoming bills">
       ${unpaid.length ? unpaid.map((bill, index) => renderWalletCard(bill, index)).join("") : `
         <article class="empty-panel home-reveal" style="--delay: 70ms">
@@ -1543,7 +1518,6 @@ function renderHome() {
     <section class="section-block">
       <div class="section-heading home-reveal" style="--delay: 140ms">
         <h2>Recent expenses</h2>
-        <button class="text-action" data-open-expense-sheet type="button">Add expense</button>
       </div>
       <div class="expense-list compact">
         ${recentExpenses.length ? recentExpenses.map(renderExpenseRow).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>Track day-to-day spending here.</h2><p class="small-note">Fast capture keeps cashflow honest without turning this into accounting.</p></article>`}
@@ -1558,6 +1532,7 @@ function renderHome() {
   document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
   bindPaidButtons();
   bindBillOpenButtons();
+  bindBillSecondaryActions();
   bindExpenseActions();
 }
 
@@ -2045,7 +2020,7 @@ function renderCalendar() {
     <section class="day-drawer home-reveal" style="--delay: 70ms">
       <div class="section-heading">
         <h2>${selectedCalendarDay ? longDateFormat.format(parseDate(selectedCalendarDay)) : "Select a day"}</h2>
-        <button class="text-action" data-open-expense-sheet type="button">Add expense</button>
+        <button class="primary-action small drawer-add-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
       </div>
       ${selectedCalendarDay ? `
         <div class="bill-list compact">${dayBills.map(renderBillListCard).join("") || `<p class="settings-copy">No bills due.</p>`}</div>
