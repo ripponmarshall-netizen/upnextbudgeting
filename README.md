@@ -32,30 +32,7 @@ The app should become available at:
 https://YOUR_USERNAME.github.io/UpNextBudgeting/
 ```
 
-## Supabase Notifications
 
-The app includes optional iPhone Home Screen Web Push support using Supabase Edge Functions.
-
-Frontend public config lives in `app.js`:
-
-```js
-const SUPABASE_CONFIG = {
-  url: "https://YOUR_PROJECT_REF.supabase.co",
-  anonKey: "YOUR_SUPABASE_ANON_KEY",
-  vapidPublicKey: "YOUR_VAPID_PUBLIC_KEY"
-};
-```
-
-Set these in Supabase secrets:
-
-```text
-VAPID_PUBLIC_KEY=your_public_key
-VAPID_PRIVATE_KEY=your_private_key
-VAPID_SUBJECT=mailto:your-email@example.com
-UPNEXT_NOTIFICATION_TOKEN=your_private_setup_code
-```
-
-Never commit the VAPID private key or Supabase service role key.
 
 ## Notes
 
