@@ -73,7 +73,7 @@
         <div class="form-row">
           <label>
             <span>Amount</span>
-            <input id="billAmount" name="amount" inputmode="numeric" required placeholder="18500">
+            <input id="billAmount" class="money-input" name="amount" inputmode="decimal" required placeholder="18,500.00">
           </label>
           <label>
             <span>Due</span>
@@ -157,7 +157,7 @@
       <form id="expenseForm" class="expense-form">
         <label class="amount-entry">
           <span>Amount</span>
-          <input id="expenseAmount" name="amount" inputmode="numeric" required placeholder="2500">
+          <input id="expenseAmount" class="money-input" name="amount" inputmode="decimal" required placeholder="2,500.00">
         </label>
         <label>
           <span>Category</span>
@@ -185,6 +185,6 @@
     </section>
     <section id="printExport" class="print-export" aria-hidden="true"></section>
 
-    <script src="app.js?v=thumb-actions-1" type="module"></script>
+    <script src="app.js?v=money-format-1" type="module"></script>
   </body>
 </html>

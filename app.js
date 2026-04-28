@@ -280,7 +280,13 @@ let settings = {
 const money = new Intl.NumberFormat("en-JM", {
   style: "currency",
   currency: "JMD",
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
+const moneyInputFormat = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const dateFormat = new Intl.DateTimeFormat("en-JM", {
@@ -619,8 +625,42 @@ function dismissToast(toast) {
   window.setTimeout(() => toast.remove(), 220);
 }
 
+function parseMoneyInput(value) {
+  const text = String(value ?? "").trim();
+  if (text.startsWith("-")) return 0;
+  let normalized = "";
+  let hasDecimal = false;
+  for (const char of text) {
+    if (char >= "0" && char <= "9") {
+      normalized += char;
+      continue;
+    }
+    if (char === "." && !hasDecimal) {
+      normalized += char;
+      hasDecimal = true;
+    }
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed * 100) / 100);
+}
+
+function formatMoneyInput(value) {
+  return moneyInputFormat.format(parseMoneyInput(value));
+}
+
 function cleanAmount(value) {
-  return Math.max(0, Number(String(value).replace(/[^0-9.]/g, "")) || 0);
+  return parseMoneyInput(value);
+}
+
+function formatMoneyField(input) {
+  input.value = formatMoneyInput(input.value);
+}
+
+function setupMoneyInputFormatting() {
+  document.addEventListener("focusout", (event) => {
+    if (event.target.matches(".money-input")) formatMoneyField(event.target);
+  });
 }
 
 function csvCell(value) {
@@ -1460,8 +1500,6 @@ function renderHome() {
   const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
   const currentMonth = monthKey(toDateInputValue(today));
   const analytics = getMonthAnalytics(currentMonth);
-  const comparison = getPreviousMonthComparison(currentMonth);
-  const projectedSeries = getProjectedBalanceSeries(30);
   const spent = getExpenseTotal(currentMonth);
   const safe = getSafeToSpend(currentMonth);
   const recentExpenses = getRecentExpenses(4);
@@ -1471,7 +1509,7 @@ function renderHome() {
 
     <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
       <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
-      <button class="secondary-action" data-open-expense-sheet type="button">${icon("groceries")} Add expense</button>
+      <button class="secondary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
     </section>
 
     <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Monthly cashflow summary">
@@ -1489,15 +1527,6 @@ function renderHome() {
       </div>
       <span class="state-pill ${safe < 0 ? "is-overdue" : "is-paid"}">${safe < 0 ? "tight" : "steady"}</span>
     </section>
-
-    ${renderSparklineChart({
-      title: safe < 0 ? "Upcoming pressure" : "Steady after bills",
-      summary: comparison.hasPrevious
-        ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
-        : "Not enough history yet for a month-over-month trend.",
-      series: projectedSeries,
-      tone: safe < 0 ? "is-overdue" : "is-paid"
-    })}
 
     <section class="section-block">
       <div class="section-heading home-reveal" style="--delay: 90ms">
@@ -2100,8 +2129,10 @@ function renderInsights() {
     </div>
     ${renderBudgetChart()}
     ${renderSparklineChart({
-      title: "30-day projected balance",
-      summary: `Starts from ${money.format(analytics.starting)} and steps down as scheduled bills and expenses land.`,
+      title: analytics.safeToSpend < 0 ? "Upcoming pressure" : "Steady after bills",
+      summary: comparison.hasPrevious
+        ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
+        : "Not enough history yet for a month-over-month trend.",
       series: projectedSeries,
       tone: analytics.safeToSpend < 0 ? "is-overdue" : "is-paid"
     })}
@@ -2192,11 +2223,11 @@ function renderSettingsContent() {
       <form id="cashflowForm" class="control-form">
         <label>
           <span>Monthly starting balance</span>
-          <input id="monthlyStartingBalance" inputmode="numeric" value="${settings.cashflow.monthlyStartingBalance}" aria-label="Monthly starting balance">
+          <input id="monthlyStartingBalance" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}" aria-label="Monthly starting balance">
         </label>
         <label>
           <span>Safety buffer</span>
-          <input id="safeSpendBuffer" inputmode="numeric" value="${settings.cashflow.safeSpendBuffer}" aria-label="Safe to spend buffer">
+          <input id="safeSpendBuffer" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.safeSpendBuffer)}" aria-label="Safe to spend buffer">
         </label>
         <button class="primary-action small" type="submit">Save cashflow</button>
       </form>
@@ -2291,7 +2322,7 @@ function renderSettingsContent() {
         </label>
         <label>
           <span>Planned amount</span>
-          <input id="editPlanned" inputmode="numeric" value="${selected.planned}" aria-label="Planned amount for selected category">
+          <input id="editPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for selected category">
         </label>
         <div class="control-actions">
           <button class="primary-action small" type="submit">Update</button>
@@ -2305,7 +2336,7 @@ function renderSettingsContent() {
         </label>
         <label>
           <span>Amount</span>
-          <input id="newCategoryAmount" inputmode="numeric" placeholder="25000">
+          <input id="newCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
         </label>
         <button class="secondary-action add" type="submit">Add</button>
       </form>
@@ -2435,7 +2466,7 @@ function openSheet(billId = null) {
   paidRow.hidden = !bill;
   if (bill) {
     billName.value = bill.name;
-    billAmount.value = bill.amount;
+    billAmount.value = formatMoneyInput(bill.amount);
     billDate.value = bill.due;
     syncBillCategoryOptions(bill.category);
     billRepeat.value = bill.repeat || "none";
@@ -2596,7 +2627,7 @@ function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
     <form id="budgetCategorySheetForm" class="action-form">
       <label>
         <span>Planned amount</span>
-        <input id="budgetCategoryPlanned" inputmode="numeric" value="${selected.planned}" aria-label="Planned amount for ${selected.name}">
+        <input id="budgetCategoryPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for ${selected.name}">
       </label>
       <div class="control-actions">
         <button class="primary-action small" type="submit">Update</button>
@@ -2610,7 +2641,7 @@ function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
       </label>
       <label>
         <span>Planned amount</span>
-        <input id="budgetCategoryAmount" inputmode="numeric" placeholder="25000">
+        <input id="budgetCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
       </label>
       <button class="secondary-action" type="submit">Add category</button>
     </form>
@@ -3119,7 +3150,7 @@ function setupBudgetControls() {
   editCategory.addEventListener("change", () => {
     selectedBudgetCategory = editCategory.value;
     const selected = getCategory(selectedBudgetCategory);
-    editPlanned.value = selected.planned;
+    editPlanned.value = formatMoneyInput(selected.planned);
   });
 
   editCategoryForm.addEventListener("submit", (event) => {
@@ -3225,7 +3256,7 @@ function setupForm() {
     if (!button) return;
     const preset = presets.find((item) => item.name === button.dataset.preset);
     billName.value = preset.name;
-    billAmount.value = preset.amount;
+    billAmount.value = formatMoneyInput(preset.amount);
     billCategory.value = preset.category;
     billRepeat.value = inferRepeat(preset);
     if (isPropertyTaxBill(preset)) propertyTaxPlan.value = "full";
@@ -3373,6 +3404,7 @@ if ("serviceWorker" in navigator) {
 }
 
 loadState();
+setupMoneyInputFormatting();
 setupForm();
 setupExpenseForm();
 setupAccessibility();
