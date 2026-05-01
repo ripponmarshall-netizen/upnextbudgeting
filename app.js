@@ -1,3411 +1,1676 @@
-const DEMO_MODE = false;
-const DEMO_DATE = "2026-04-19";
-const STORAGE_KEY = "upnextbudgeting:v1";
-const BADGE_REMINDER_DAYS = 5;
+const APP_VERSION = "1.0.5";
+const STORAGE_KEY = "moodrabbit:v1";
 
-function getToday() {
-  if (DEMO_MODE) return new Date(`${DEMO_DATE}T12:00:00`);
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
-}
+const app = document.querySelector("#app");
+const root = document.documentElement;
+const backdrop = document.querySelector("#sheetBackdrop");
+const toastRegion = document.querySelector("#toastRegion");
+const habitSheet = document.querySelector("#habitSheet");
+const moodSheet = document.querySelector("#moodSheet");
+const settingsSheet = document.querySelector("#settingsSheet");
+const habitForm = document.querySelector("#habitForm");
+const moodForm = document.querySelector("#moodForm");
+const moodEnergy = document.querySelector("#moodEnergy");
+const moodEnergyValue = document.querySelector("#moodEnergyValue");
+const tabButtons = document.querySelectorAll(".tab");
+const themeMeta = document.querySelector("meta[name='theme-color']");
+const removeSampleDataButton = document.querySelector("#removeSampleData");
+const exportBackupButton = document.querySelector("#exportBackup");
+const importBackupButton = document.querySelector("#importBackupButton");
+const importBackupFile = document.querySelector("#importBackupFile");
+const themeModeButtons = document.querySelectorAll("[data-theme-mode]");
+const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-const today = getToday();
+const today = new Date();
+const pages = ["today", "habits", "mood", "patterns"];
+let activePage = pages.includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : "today";
+let editingHabitId = null;
+let recentlyChangedHabit = null;
+let sheetCloseTimer = null;
+let toastTimer = null;
+let toastExitTimer = null;
 
 const icons = {
   plus: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
   gear: `<svg viewBox="0 0 24 24"><path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z"/><path d="M19.3 13.8a7.9 7.9 0 0 0 .05-1.8l2-1.55-2-3.45-2.5 1a8.35 8.35 0 0 0-1.55-.9L14.9 4h-4l-.4 3.1c-.55.24-1.07.54-1.55.9l-2.5-1-2 3.45 2 1.55a7.9 7.9 0 0 0 .05 1.8l-2 1.55 2 3.45 2.5-1c.48.36 1 .66 1.55.9l.4 3.1h4l.4-3.1c.55-.24 1.07-.54 1.55-.9l2.5 1 2-3.45-2.1-1.55Z"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.4 4.8 3.2 17.3A2 2 0 0 0 4.9 20h14.2a2 2 0 0 0 1.7-2.7L13.6 4.8a1.85 1.85 0 0 0-3.2 0Z"/></svg>`,
-  chevron: `<svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>`,
-  back: `<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24"><path d="m4 20 4.5-1 9-9a2.12 2.12 0 0 0-3-3l-9 9L4 20Z"/><path d="m13 7 4 4"/></svg>`,
-  archive: `<svg viewBox="0 0 24 24"><path d="M4 7.5h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M3 7.5h18V4.75a1.25 1.25 0 0 0-1.25-1.25H4.25A1.25 1.25 0 0 0 3 4.75V7.5Z"/><path d="M10 12h4"/></svg>`,
-  restore: `<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.35-5.65"/><path d="M4 4v4h4"/></svg>`,
-  bell: `<svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2 7.5 2 7.5H4S6 15 6 9"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>`,
-  repeat: `<svg viewBox="0 0 24 24"><path d="M17 17H7a3 3 0 0 1 0-6h10"/><path d="m14 8 3-3 3 3"/><path d="M7 7h10a3 3 0 1 1 0 6H7"/><path d="m10 16-3 3-3-3"/></svg>`,
-  home: `<svg viewBox="0 0 24 24"><path d="m4 10 8-6 8 6"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-6h4v6"/></svg>`,
-  utilities: `<svg viewBox="0 0 24 24"><path d="M13 2 6 13h5l-1 9 8-13h-5l1-7Z"/></svg>`,
-  vehicle: `<svg viewBox="0 0 24 24"><path d="M5 16h14l-1.5-5.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5L5 16Z"/><path d="M7 16v2.5M17 16v2.5M7.5 13h.01M16.5 13h.01"/></svg>`,
-  life: `<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 10c0 5.65-7 10-7 10Z"/></svg>`,
-  savings: `<svg viewBox="0 0 24 24"><path d="M6 11.5c0-3 2.7-5.5 6-5.5s6 2.5 6 5.5S15.3 17 12 17s-6-2.5-6-5.5Z"/><path d="M12 17v4M8 21h8M12 8.25v6.5M9.5 11.5h5"/></svg>`,
-  tax: `<svg viewBox="0 0 24 24"><path d="M7 3.5h10l2 3.5v13.5H5V7l2-3.5Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>`,
-  phone: `<svg viewBox="0 0 24 24"><path d="M8 3.5h8a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V5A1.5 1.5 0 0 1 8 3.5Z"/><path d="M10.5 17.5h3"/></svg>`,
-  insurance: `<svg viewBox="0 0 24 24"><path d="M12 3.5 5.5 6v5.5c0 4.25 2.8 7.3 6.5 9 3.7-1.7 6.5-4.75 6.5-9V6L12 3.5Z"/><path d="m9 12 2 2 4-4"/></svg>`,
-  transport: `<svg viewBox="0 0 24 24"><path d="M6.5 5.5h11A2.5 2.5 0 0 1 20 8v7.5H4V8a2.5 2.5 0 0 1 2.5-2.5Z"/><path d="M7 18.5h.01M17 18.5h.01M4 11h16"/></svg>`,
-  subscriptions: `<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m10 9.5 5 2.5-5 2.5V9.5Z"/></svg>`,
-  wellness: `<svg viewBox="0 0 24 24"><path d="M5 14c4.5 0 7-2.5 7-7 0 4.5 2.5 7 7 7-4.5 0-7 2.5-7 7 0-4.5-2.5-7-7-7Z"/><path d="M5 6h4M15 6h4"/></svg>`,
-  loans: `<svg viewBox="0 0 24 24"><path d="M5 8.5h14v10H5z"/><path d="M7 6h10M8 12h8M8 15h5"/></svg>`,
-  school: `<svg viewBox="0 0 24 24"><path d="m3.5 8.5 8.5-4 8.5 4-8.5 4-8.5-4Z"/><path d="M6.5 10v4.5c1.7 1.4 3.5 2 5.5 2s3.8-.6 5.5-2V10"/></svg>`,
-  medical: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="4.5" y="4.5" width="15" height="15" rx="3"/></svg>`,
-  groceries: `<svg viewBox="0 0 24 24"><path d="M7 8h12l-1.5 11h-10L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0"/><path d="M5 8h2"/></svg>`,
-  category: `<svg viewBox="0 0 24 24"><path d="M4.5 5.5h6v6h-6zM13.5 5.5h6v6h-6zM4.5 14.5h6v6h-6zM13.5 14.5h6v6h-6z"/></svg>`,
+  moon: `<svg viewBox="0 0 24 24"><path d="M20 15.2A7.7 7.7 0 0 1 8.8 4a8.3 8.3 0 1 0 11.2 11.2Z"/></svg>`,
+  sun: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v2M12 18.5v2M4.8 4.8l1.4 1.4M17.8 17.8l1.4 1.4M3.5 12h2M18.5 12h2M4.8 19.2l1.4-1.4M17.8 6.2l1.4-1.4"/></svg>`,
   check: `<svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg>`
+  heart: `<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 10c0 5.65-7 10-7 10Z"/></svg>`,
+  leaf: `<svg viewBox="0 0 24 24"><path d="M5 14c5.7 0 10-3.7 12.5-9.5C20 11.8 17.2 19 9.8 19 7 19 5 17 5 14Z"/><path d="M5 19c2.4-3.7 5.6-6 9.8-7"/></svg>`,
+  note: `<svg viewBox="0 0 24 24"><path d="M6.5 4.5h9l3 3v12h-12z"/><path d="M15.5 4.5v4h4M9 12h6M9 15.5h5"/></svg>`,
+  bell: `<svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2 7.5 2 7.5H4S6 15 6 9"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>`,
+  water: `<svg viewBox="0 0 24 24"><path d="M12 3.5S6.5 10 6.5 14.2a5.5 5.5 0 0 0 11 0C17.5 10 12 3.5 12 3.5Z"/><path d="M9.4 14.5c.4 1.4 1.3 2.1 2.7 2.1"/></svg>`,
+  sleep: `<svg viewBox="0 0 24 24"><path d="M18.5 15.5A7.5 7.5 0 0 1 8.6 5.6a8 8 0 1 0 9.9 9.9Z"/><path d="M14.5 5h4l-4 4h4"/></svg>`,
+  workout: `<svg viewBox="0 0 24 24"><path d="M6.5 8v8M17.5 8v8M4 10v4M20 10v4M8 12h8"/></svg>`,
+  reading: `<svg viewBox="0 0 24 24"><path d="M5 5.5h5.5A2.5 2.5 0 0 1 13 8v11a3.5 3.5 0 0 0-3-1.5H5z"/><path d="M19 5.5h-5.5A2.5 2.5 0 0 0 11 8v11a3.5 3.5 0 0 1 3-1.5H19z"/></svg>`,
+  meditation: `<svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="2.2"/><path d="M8 13.5c1.5-1 2.8-1.5 4-1.5s2.5.5 4 1.5"/><path d="M6 18c2.2-2 4.2-3 6-3s3.8 1 6 3"/><path d="M8.5 20.5h7"/></svg>`,
+  vitamins: `<svg viewBox="0 0 24 24"><path d="M7.6 16.4 16.4 7.6a3 3 0 1 1 4.2 4.2l-8.8 8.8a3 3 0 1 1-4.2-4.2Z"/><path d="m12 12 4 4"/></svg>`,
+  coding: `<svg viewBox="0 0 24 24"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13 5.5l-2 13"/></svg>`,
+  journaling: `<svg viewBox="0 0 24 24"><path d="M7 4.5h9.5A1.5 1.5 0 0 1 18 6v13.5H7A2 2 0 0 1 5 17.5v-11a2 2 0 0 1 2-2Z"/><path d="M8 8h6M8 11.5h7M8 15h4"/></svg>`,
+  stretching: `<svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="2"/><path d="M12 8v5.5M8 11.5h8M9 20l3-6.5 3 6.5"/></svg>`,
+  walking: `<svg viewBox="0 0 24 24"><circle cx="12.5" cy="5" r="2"/><path d="M12 8 9.5 12.2l3.5 2.1 2-3.3"/><path d="M10.2 12.2 7 19M13 14.3l-1.4 5.7M14.7 11.2l3 2.8M9.8 8.8 7.4 11.4"/></svg>`,
+  happy: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10h.01M15.5 10h.01M8.7 14c.8 1.4 1.9 2.1 3.3 2.1s2.5-.7 3.3-2.1"/></svg>`,
+  calm: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10.5h.01M15.5 10.5h.01M8 14c1.4.9 2.7 1.3 4 1.3s2.6-.4 4-1.3"/></svg>`,
+  focused: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/></svg>`,
+  tired: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10.5h2M13.5 10.5h2M9 15h6"/></svg>`,
+  stressed: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8 9 2 1.5L8 12M16 9l-2 1.5 2 1.5M9 16c1.7-.8 3.3-.8 5 0"/></svg>`,
+  low: `<svg viewBox="0 0 24 24"><path d="M7 15.5h10a4 4 0 0 0-.8-7.9 5.6 5.6 0 0 0-10.5 2A3.1 3.1 0 0 0 7 15.5Z"/><path d="M9 19h6"/></svg>`,
+  motivated: `<svg viewBox="0 0 24 24"><path d="M5 14c4.5 0 7-2.5 7-7 0 4.5 2.5 7 7 7-4.5 0-7 2.5-7 7 0-4.5-2.5-7-7-7Z"/><path d="M5 6h4M15 6h4"/></svg>`,
+  anxious: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10h.01M15.5 10h.01M9 15c1.8-1 4.2-1 6 0"/><path d="M4 4.5 2.5 7M20 4.5 21.5 7"/></svg>`,
+  energized: `<svg viewBox="0 0 24 24"><path d="M13 2 6 13h5l-1 9 8-13h-5l1-7Z"/></svg>`,
+  grateful: `<svg viewBox="0 0 24 24"><path d="M12 20s-6.5-4.15-6.5-9.6A3.7 3.7 0 0 1 12 8a3.7 3.7 0 0 1 6.5 2.4C18.5 15.85 12 20 12 20Z"/><path d="M8.5 5.5h.01M15.5 5.5h.01"/></svg>`,
+  peaceful: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 11c1.3-.8 2.7-.8 4 0s2.7.8 4 0M8 14.5c1.3.8 2.7.8 4 0s2.7-.8 4 0"/></svg>`,
+  hopeful: `<svg viewBox="0 0 24 24"><path d="M5 16.5c2.2-4.5 4.5-6.8 7-6.8s4.8 2.3 7 6.8"/><path d="M12 4.5v2.5M7 7l1.7 1.7M17 7l-1.7 1.7"/><path d="M9 16.5h6"/></svg>`,
+  proud: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10h.01M15.5 10h.01M8.5 14.5c1.1 1.3 2.3 2 3.5 2s2.4-.7 3.5-2"/><path d="M9 6.5h6"/></svg>`,
+  content: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10.5h.01M15.5 10.5h.01M9 14.5h6"/></svg>`,
+  bored: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10h2M13.5 10h2M8.5 15h7"/></svg>`,
+  overwhelmed: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8 9 2 2-2 2M16 9l-2 2 2 2M8.5 16c2-1 5-1 7 0"/><path d="M4 12H2.5M21.5 12H20"/></svg>`,
+  frustrated: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8 9 3 1M16 9l-3 1M9 16h6"/><path d="M7 5.5 5.5 4M17 5.5 18.5 4"/></svg>`,
+  lonely: `<svg viewBox="0 0 24 24"><path d="M8 15.5a4 4 0 1 1 8 0v2H8z"/><circle cx="12" cy="8" r="2.5"/><path d="M4.5 19.5h15"/></svg>`,
+  excited: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 10h.01M15.5 10h.01M8 14c1 2 2.3 3 4 3s3-1 4-3"/><path d="M4.5 5.5 3 4M19.5 5.5 21 4"/></svg>`,
+  irritable: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 9.5h3M13 9.5h3M9 15.5c2-.8 4-.8 6 0"/><path d="M5.5 7.5 4 6M18.5 7.5 20 6"/></svg>`
 };
 
-function icon(name) {
-  return icons[name] || icons.category;
-}
+const habitPalette = {
+  water: "#2f736b",
+  sleep: "#5d7580",
+  workout: "#916f49",
+  reading: "#6d7650",
+  meditation: "#497b56",
+  vitamins: "#8b6d37",
+  coding: "#4e776f",
+  journaling: "#786f63",
+  stretching: "#85695b",
+  walking: "#6f7c53"
+};
 
-const starterCategories = Object.freeze([
-  { name: "Home", color: "#c4b5fd", planned: 160000, assigned: 141500 },
-  { name: "Utilities", color: "#fed7aa", planned: 36000, assigned: 25370 },
-  { name: "Phone & internet", color: "#bae6fd", planned: 22000, assigned: 15000 },
-  { name: "Vehicle", color: "#ddd6fe", planned: 28000, assigned: 17100 },
-  { name: "Insurance", color: "#fecaca", planned: 50000, assigned: 42000 },
-  { name: "Transport", color: "#bbf7d0", planned: 24000, assigned: 22000 },
-  { name: "Subscriptions", color: "#f0abfc", planned: 7000, assigned: 3050 },
-  { name: "Wellness", color: "#99f6e4", planned: 12000, assigned: 7000 },
-  { name: "Loans", color: "#fef08a", planned: 56000, assigned: 37500 },
-  { name: "School", color: "#a5f3fc", planned: 30000, assigned: 18000 },
-  { name: "Medical", color: "#fed7aa", planned: 16000, assigned: 12000 },
-  { name: "Groceries", color: "#d9f99d", planned: 46000, assigned: 42000 },
-  { name: "Savings", color: "#6ee7b7", planned: 45000, assigned: 45000 },
-  { name: "Tax planning", color: "#e9d5ff", planned: 24000, assigned: 18000 }
-]);
-
-function cloneCategory(category) {
-  return {
-    name: category.name,
-    color: category.color,
-    planned: category.planned,
-    assigned: category.assigned
-  };
-}
-
-function normalizeActivity(events) {
-  if (!Array.isArray(events)) return [];
-  return events
-    .filter((event) => event && typeof event.type === "string")
-    .map((event) => ({ ...event, at: event.at || new Date().toISOString() }));
-}
-
-function cloneBill(bill) {
-  return {
-    ...bill,
-    activity: normalizeActivity(bill.activity)
-  };
-}
-
-function cloneExpense(expense) {
-  return {
-    ...expense
-  };
-}
-
-let categories = starterCategories.map(cloneCategory);
-
-const categoryColors = [
-  "#c4b5fd",
-  "#fed7aa",
-  "#bae6fd",
-  "#ddd6fe",
-  "#fecaca",
-  "#bbf7d0",
-  "#f0abfc",
-  "#99f6e4",
-  "#fef08a",
-  "#a5f3fc",
-  "#fed7aa",
-  "#d9f99d",
-  "#6ee7b7",
-  "#e9d5ff"
+const moods = [
+  { id: "calm", label: "Calm", score: 8 },
+  { id: "happy", label: "Happy", score: 9 },
+  { id: "focused", label: "Focused", score: 8 },
+  { id: "tired", label: "Tired", score: 5 },
+  { id: "stressed", label: "Stressed", score: 4 },
+  { id: "low", label: "Low", score: 3 },
+  { id: "motivated", label: "Motivated", score: 9 },
+  { id: "anxious", label: "Anxious", score: 4 },
+  { id: "energized", label: "Energized", score: 9 },
+  { id: "grateful", label: "Grateful", score: 9 },
+  { id: "peaceful", label: "Peaceful", score: 8 },
+  { id: "hopeful", label: "Hopeful", score: 8 },
+  { id: "proud", label: "Proud", score: 9 },
+  { id: "content", label: "Content", score: 8 },
+  { id: "bored", label: "Bored", score: 5 },
+  { id: "overwhelmed", label: "Overwhelmed", score: 3 },
+  { id: "frustrated", label: "Frustrated", score: 3 },
+  { id: "lonely", label: "Lonely", score: 3 },
+  { id: "excited", label: "Excited", score: 9 },
+  { id: "irritable", label: "Irritable", score: 4 }
 ];
 
-const presets = [
-  { name: "JPS electricity", category: "Utilities", amount: 18500, note: "Monthly electricity bill." },
-  { name: "NWC water", category: "Utilities", amount: 6800, note: "Monthly or catch-up water bill." },
-  { name: "Rent", category: "Home", amount: 95000, note: "Monthly housing payment." },
-  { name: "Mortgage", category: "Home", amount: 135000, note: "Monthly home loan payment." },
-  { name: "Property tax", category: "Tax planning", amount: 18000, note: "Due April 1 yearly; full, half-yearly, or quarterly. First payments after April 30 may attract 10% penalty." },
-  { name: "Vehicle insurance", category: "Insurance", amount: 42000, note: "Keep current before licensing." },
-  { name: "Vehicle fitness", category: "Vehicle", amount: 4500, note: "Validity can vary by vehicle type and age." },
-  { name: "Vehicle registration", category: "Vehicle", amount: 12600, note: "Registration depends on valid insurance and fitness; licensing periods can vary." },
-  { name: "Internet", category: "Phone & internet", amount: 9500, note: "Monthly home internet." },
-  { name: "Phone", category: "Phone & internet", amount: 5500, note: "Mobile plan or top-up." },
-  { name: "Taxi / transport", category: "Transport", amount: 22000, note: "Route taxi, bus, rides, fuel, or parking." },
-  { name: "Netflix", category: "Subscriptions", amount: 1850, note: "Streaming subscription." },
-  { name: "Spotify", category: "Subscriptions", amount: 1200, note: "Music subscription." },
-  { name: "Gym / fitness", category: "Wellness", amount: 7000, note: "Membership or classes." },
-  { name: "Student loan / SLB", category: "Loans", amount: 14500, note: "Monthly loan payment." },
-  { name: "Personal loan", category: "Loans", amount: 23000, note: "Bank or private loan." },
-  { name: "Credit union loan", category: "Loans", amount: 18000, note: "Credit union repayment." },
-  { name: "School costs", category: "School", amount: 30000, note: "Fees, books, uniforms, lunch money." },
-  { name: "Medical", category: "Medical", amount: 12000, note: "Pharmacy, doctor visit, insurance gaps." },
-  { name: "Groceries", category: "Groceries", amount: 42000, note: "Weekly food planning." },
-  { name: "Savings", category: "Savings", amount: 30000, note: "Pay yourself first." },
-  { name: "GCT / tax planning", category: "Tax planning", amount: 15000, note: "For business-related reminders; standard GCT is currently 15% for many taxable items." }
-];
-
-const starterBills = Object.freeze([
-  { id: 101, name: "Rent", category: "Home", amount: 95000, due: "2026-01-05", paid: true },
-  { id: 102, name: "JPS electricity", category: "Utilities", amount: 17200, due: "2026-01-22", paid: true },
-  { id: 103, name: "NWC water", category: "Utilities", amount: 6400, due: "2026-01-25", paid: true },
-  { id: 104, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-01-28", paid: true },
-  { id: 105, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-01-20", paid: true },
-  { id: 106, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-01-23", paid: true },
-  { id: 107, name: "Groceries", category: "Groceries", amount: 41000, due: "2026-01-31", paid: true },
-  { id: 108, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-01-18", paid: true },
-  { id: 109, name: "Taxi / transport", category: "Transport", amount: 21500, due: "2026-01-30", paid: true },
-  { id: 110, name: "Rent", category: "Home", amount: 95000, due: "2026-02-05", paid: true },
-  { id: 111, name: "JPS electricity", category: "Utilities", amount: 18100, due: "2026-02-22", paid: true },
-  { id: 112, name: "NWC water", category: "Utilities", amount: 6700, due: "2026-02-25", paid: true },
-  { id: 113, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-02-28", paid: true },
-  { id: 114, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-02-20", paid: true },
-  { id: 115, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-02-23", paid: true },
-  { id: 116, name: "Groceries", category: "Groceries", amount: 42500, due: "2026-02-28", paid: true },
-  { id: 117, name: "Vehicle insurance", category: "Insurance", amount: 42000, due: "2026-02-09", paid: true },
-  { id: 118, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-02-18", paid: true },
-  { id: 119, name: "Rent", category: "Home", amount: 95000, due: "2026-03-05", paid: true },
-  { id: 120, name: "JPS electricity", category: "Utilities", amount: 17950, due: "2026-03-22", paid: true },
-  { id: 121, name: "NWC water", category: "Utilities", amount: 6500, due: "2026-03-25", paid: true },
-  { id: 122, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-03-28", paid: true },
-  { id: 123, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-03-20", paid: true },
-  { id: 124, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-03-23", paid: true },
-  { id: 125, name: "Groceries", category: "Groceries", amount: 43000, due: "2026-03-31", paid: true },
-  { id: 126, name: "Medical", category: "Medical", amount: 12000, due: "2026-03-15", paid: true },
-  { id: 127, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-03-18", paid: true },
-  { id: 1, name: "Property tax", category: "Tax planning", amount: 18000, due: "2026-04-01", paid: false },
-  { id: 2, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-04-20", paid: false },
-  { id: 3, name: "JPS electricity", category: "Utilities", amount: 18470, due: "2026-04-22", paid: false },
-  { id: 4, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-04-23", paid: false },
-  { id: 5, name: "NWC water", category: "Utilities", amount: 6900, due: "2026-04-25", paid: false },
-  { id: 6, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-04-28", paid: false },
-  { id: 7, name: "Gym / fitness", category: "Wellness", amount: 7000, due: "2026-04-30", paid: false },
-  { id: 8, name: "Vehicle insurance", category: "Insurance", amount: 42000, due: "2026-05-09", paid: false },
-  { id: 9, name: "Vehicle fitness", category: "Vehicle", amount: 4500, due: "2026-05-12", paid: false },
-  { id: 10, name: "Vehicle registration", category: "Vehicle", amount: 12600, due: "2026-05-14", paid: false },
-  { id: 11, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-04-29", paid: false },
-  { id: 12, name: "Rent", category: "Home", amount: 95000, due: "2026-04-05", paid: true }
-]);
-
-let bills = starterBills.map(cloneBill);
-const starterExpenses = Object.freeze([
-  { id: 3001, amount: 8200, category: "Groceries", merchant: "Hi-Lo groceries", note: "Weekly shop", date: "2026-04-18", paymentSource: "Debit card" },
-  { id: 3002, amount: 1800, category: "Transport", merchant: "Taxi", note: "Town errands", date: "2026-04-19", paymentSource: "Cash" },
-  { id: 3003, amount: 2600, category: "Medical", merchant: "Pharmacy", note: "Prescription refill", date: "2026-04-20", paymentSource: "Debit card" },
-  { id: 3004, amount: 4200, category: "Groceries", merchant: "Market run", note: "Produce", date: "2026-04-21", paymentSource: "Cash" },
-  { id: 3005, amount: 1500, category: "Wellness", merchant: "Juice bar", note: "Post-gym", date: "2026-04-22", paymentSource: "Debit card" }
-]);
-let expenses = starterExpenses.map(cloneExpense);
-let expenseCategories = starterCategories.map((category) => category.name);
-const starterBillIds = new Set(starterBills.map((bill) => bill.id));
-const starterCategoryNames = new Set(starterCategories.map((category) => category.name));
-
-const repeatLabels = {
-  none: "Does not repeat",
-  monthly: "Monthly",
-  quarterly: "Quarterly",
-  yearly: "Yearly"
+const starterState = {
+  theme: "light",
+  themeMode: "auto",
+  selectedMood: "calm",
+  energy: 7,
+  energyLogs: [],
+  habits: [
+    { id: 1, name: "Morning walk", category: "Body", icon: "walking", frequency: "Daily", streak: 12, status: "done", due: "7:00 AM", last: "Today" },
+    { id: 2, name: "Water balance", category: "Care", icon: "water", frequency: "Daily", streak: 8, status: "due", due: "All day", last: "2 of 6 logged" },
+    { id: 3, name: "Sleep wind-down", category: "Rest", icon: "sleep", frequency: "Daily", streak: 3, status: "missed", due: "10:30 PM", last: "Missed yesterday" },
+    { id: 4, name: "Reading", category: "Mind", icon: "reading", frequency: "3x weekly", streak: 5, status: "due-later", due: "Evening", last: "Due later" },
+    { id: 5, name: "Vitamins", category: "Care", icon: "vitamins", frequency: "Daily", streak: 15, status: "done", due: "8:30 AM", last: "Today" }
+  ],
+  entries: [
+    { id: 101, type: "habit", icon: "walking", title: "Morning walk completed", meta: "Body - 12 day streak", time: "7:21 AM" },
+    { id: 102, type: "mood", icon: "calm", title: "Mood logged as calm", meta: "Energy 7/10 - clear start", time: "8:05 AM" },
+    { id: 103, type: "habit", icon: "journaling", title: "Journaled before bed", meta: "Mind - reflection note", time: "Yesterday" },
+    { id: 104, type: "habit", icon: "sleep", title: "Sleep wind-down missed", meta: "Rest - 3 misses this week", time: "Yesterday" }
+  ],
+  moodLogs: [
+    { mood: "calm", energy: 7, date: "Today", note: "Clear start after walking." },
+    { mood: "focused", energy: 8, date: "Yesterday", note: "Good work block after lunch." },
+    { mood: "tired", energy: 5, date: "Tue", note: "Late bedtime." },
+    { mood: "happy", energy: 8, date: "Mon", note: "Finished reading." }
+  ]
 };
 
-const themeColorMeta = document.querySelector("meta[name='theme-color']");
-const app = document.querySelector("#app");
-const tabbar = document.querySelector("#tabbar");
-const tabs = document.querySelectorAll(".tab");
-const sheet = document.querySelector("#quickSheet");
-const settingsSheet = document.querySelector("#settingsSheet");
-const actionSheet = document.querySelector("#actionSheet");
-const settingsContent = document.querySelector("#settingsContent");
-const actionSheetTitle = document.querySelector("#actionSheetTitle");
-const actionSheetContent = document.querySelector("#actionSheetContent");
-const expenseSheet = document.querySelector("#expenseSheet");
-const expenseForm = document.querySelector("#expenseForm");
-const expenseAmount = document.querySelector("#expenseAmount");
-const expenseCategory = document.querySelector("#expenseCategory");
-const expenseMerchant = document.querySelector("#expenseMerchant");
-const expenseDate = document.querySelector("#expenseDate");
-const expenseSource = document.querySelector("#expenseSource");
-const printExport = document.querySelector("#printExport");
-const toastRegion = document.querySelector("#toastRegion");
-const backdrop = document.querySelector("#sheetBackdrop");
-const billForm = document.querySelector("#billForm");
-const presetRail = document.querySelector("#presetRail");
-const billName = document.querySelector("#billName");
-const billAmount = document.querySelector("#billAmount");
-const billDate = document.querySelector("#billDate");
-const billCategory = document.querySelector("#billCategory");
-const billRepeat = document.querySelector("#billRepeat");
-const propertyTaxPlanRow = document.querySelector("#propertyTaxPlanRow");
-const propertyTaxPlan = document.querySelector("#propertyTaxPlan");
-const billPaid = document.querySelector("#billPaid");
-const paidRow = document.querySelector("#paidRow");
-const deleteBillButton = document.querySelector("#deleteBill");
-const MAX_TOASTS = 3;
-const SHEET_TRANSITION_MS = 260;
-const toastTimers = new WeakMap();
-const sheetTimers = new WeakMap();
-
-function initialTab() {
-  const params = new URLSearchParams(window.location.search);
-  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
-  if (requested === "bills" || requested === "expenses") return "spending";
-  const normalized = requested === "budget" ? "insights" : requested;
-  return [...tabs].some((tab) => tab.dataset.tab === normalized) ? normalized : "home";
-}
-
-function initialSpendingMode() {
-  const params = new URLSearchParams(window.location.search);
-  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
-  return requested === "expenses" ? "expenses" : "bills";
-}
-
-let activeTab = initialTab();
-let activeBillId = null;
-let editingBillId = null;
-let pendingRecurringBillId = null;
-let selectedBudgetCategory = categories[0].name;
-let selectedHistoryMonth = monthKey(toDateInputValue(today));
-let visibleCalendarMonth = monthKey(toDateInputValue(today));
-let spendingMode = initialSpendingMode();
-let spendingBillFiltersOpen = false;
-let spendingExpenseFiltersOpen = false;
-let selectedExpenseCategory = "All";
-let selectedCalendarDay = null;
-let billFilter = "all";
-let billSearch = "";
-let billSort = "due";
-let lastTrigger = null;
-let actionBillId = null;
-let settings = {
-  initialized: true,
-  reminderDays: 3,
-  theme: "system",
-  cashflow: {
-    monthlyStartingBalance: 260000,
-    safeSpendBuffer: 20000,
-    paymentSources: ["Cash", "Debit card", "Credit card", "Bank transfer"]
-  }
-};
-
-const money = new Intl.NumberFormat("en-JM", {
-  style: "currency",
-  currency: "JMD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
-
-const moneyInputFormat = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
-
-const dateFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "short",
-  day: "numeric"
-});
-
-const longDateFormat = new Intl.DateTimeFormat("en-JM", {
-  weekday: "short",
-  month: "short",
-  day: "numeric"
-});
-
-const monthFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "long",
-  year: "numeric"
-});
-
-const timelineFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
-
-function parseDate(value) {
-  return new Date(`${value}T12:00:00`);
-}
-
-function toDateInputValue(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function monthKey(value) {
-  return value.slice(0, 7);
-}
-
-function monthLabel(key) {
-  return monthFormat.format(new Date(`${key}-01T12:00:00`));
-}
-
-function slugify(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "item";
-}
-
-function makeSeriesKey(source) {
-  return `${slugify(source?.name)}::${slugify(source?.category || "general")}`;
-}
-
-function shiftMonth(key, offset) {
-  const date = new Date(`${key}-01T12:00:00`);
-  date.setMonth(date.getMonth() + offset);
-  return toDateInputValue(date).slice(0, 7);
-}
-
-function getAvailableMonths() {
-  const months = [...new Set([
-    ...bills.map((bill) => monthKey(bill.due)),
-    ...expenses.map((expense) => monthKey(expense.date))
-  ])].sort();
-  return months.length ? months : [monthKey(toDateInputValue(today))];
-}
-
-function getMonthBills(key) {
-  return sortBills(bills.filter((bill) => monthKey(bill.due) === key));
-}
-
-function getMonthSummary(key) {
-  const items = getMonthBills(key);
-  const total = items.reduce((sum, bill) => sum + bill.amount, 0);
-  const paid = items.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const unpaidItems = items.filter((bill) => !bill.paid && !bill.archived);
-  const overdueItems = unpaidItems.filter((bill) => daysUntil(bill.due) < 0);
-  return { items, total, paid, unpaidItems, overdueItems };
-}
-
-function getMonthExpenses(key = monthKey(toDateInputValue(today))) {
-  return [...expenses]
-    .filter((expense) => monthKey(expense.date) === key)
-    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id);
-}
-
-function getExpenseTotal(key = monthKey(toDateInputValue(today)), category = "All") {
-  return getMonthExpenses(key)
-    .filter((expense) => category === "All" || expense.category === category)
-    .reduce((sum, expense) => sum + expense.amount, 0);
-}
-
-function getUnpaidBillTotal(key = monthKey(toDateInputValue(today))) {
-  return bills
-    .filter((bill) => !bill.paid && !bill.archived && monthKey(bill.due) === key)
-    .reduce((sum, bill) => sum + bill.amount, 0);
-}
-
-function getSafeToSpend(key = monthKey(toDateInputValue(today))) {
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const buffer = settings.cashflow?.safeSpendBuffer || 0;
-  return starting - getUnpaidBillTotal(key) - getExpenseTotal(key) - buffer;
-}
-
-function getRecentExpenses(limit = 5) {
-  return [...expenses]
-    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id)
-    .slice(0, limit);
-}
-
-function expensesByDate(items) {
-  return items.reduce((groups, expense) => {
-    groups[expense.date] = groups[expense.date] || [];
-    groups[expense.date].push(expense);
-    return groups;
-  }, {});
-}
-
-function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4) {
-  const totals = getMonthExpenses(key).reduce((map, expense) => {
-    map[expense.category] = (map[expense.category] || 0) + expense.amount;
-    return map;
-  }, {});
-  return Object.entries(totals)
-    .map(([name, amount]) => ({ name, amount, color: getCategory(name)?.color || "#4d8dff" }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, limit);
-}
-
-function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
-  const monthBills = getMonthBills(key).filter((bill) => !bill.archived);
-  const monthExpenses = getMonthExpenses(key);
-  const fixedBills = monthBills.reduce((sum, bill) => sum + bill.amount, 0);
-  const paidBills = monthBills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const openBills = monthBills.filter((bill) => !bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const variableSpent = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const buffer = settings.cashflow?.safeSpendBuffer || 0;
-  const projected = starting - openBills - variableSpent;
-  const safeToSpend = projected - buffer;
-  const topCategory = topExpenseCategories(key, 1)[0] || null;
-  const propertyTaxDue = monthBills.some(isPropertyTaxBill);
-  return {
-    key,
-    fixedBills,
-    paidBills,
-    openBills,
-    variableSpent,
-    starting,
-    buffer,
-    projected,
-    safeToSpend,
-    topCategory,
-    propertyTaxDue,
-    billCount: monthBills.length,
-    expenseCount: monthExpenses.length
-  };
-}
-
-function getPreviousMonthComparison(key = monthKey(toDateInputValue(today))) {
-  const previousKey = shiftMonth(key, -1);
-  const hasPrevious = getAvailableMonths().includes(previousKey);
-  const current = getMonthAnalytics(key);
-  const previous = hasPrevious ? getMonthAnalytics(previousKey) : null;
-  const expenseDelta = previous ? current.variableSpent - previous.variableSpent : 0;
-  const fixedDelta = previous ? current.fixedBills - previous.fixedBills : 0;
-  const safeDelta = previous ? current.safeToSpend - previous.safeToSpend : 0;
-  return { current, previous, previousKey, hasPrevious, expenseDelta, fixedDelta, safeDelta };
-}
-
-function getDailyOutflow(date) {
-  const dayBills = bills
-    .filter((bill) => bill.due === date && !bill.archived)
-    .reduce((sum, bill) => sum + bill.amount, 0);
-  const dayExpenses = expenses
-    .filter((expense) => expense.date === date)
-    .reduce((sum, expense) => sum + expense.amount, 0);
-  return dayBills + dayExpenses;
-}
-
-function getProjectedBalanceSeries(days = 30) {
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  let projected = starting;
-  return Array.from({ length: days }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    const valueDate = toDateInputValue(date);
-    if (index === 0) {
-      projected = starting
-        - expenses.filter((expense) => parseDate(expense.date) <= parseDate(valueDate) && monthKey(expense.date) === monthKey(valueDate)).reduce((sum, expense) => sum + expense.amount, 0)
-        - bills.filter((bill) => !bill.archived && !bill.paid && parseDate(bill.due) <= parseDate(valueDate) && monthKey(bill.due) === monthKey(valueDate)).reduce((sum, bill) => sum + bill.amount, 0);
-    } else {
-      projected -= getDailyOutflow(valueDate);
-    }
-    return { date: valueDate, value: projected };
-  });
-}
-
-function getSpendingRhythm(key = monthKey(toDateInputValue(today))) {
-  const weeks = [
-    { label: "W1", amount: 0 },
-    { label: "W2", amount: 0 },
-    { label: "W3", amount: 0 },
-    { label: "W4", amount: 0 },
-    { label: "W5", amount: 0 }
-  ];
-  getMonthExpenses(key).forEach((expense) => {
-    const day = parseDate(expense.date).getDate();
-    const index = Math.min(4, Math.floor((day - 1) / 7));
-    weeks[index].amount += expense.amount;
-  });
-  return weeks;
-}
-
-function getUpcomingPressure() {
-  const openBills = bills.filter((bill) => !bill.paid && !bill.archived);
-  return [7, 14, 30].map((days) => ({
-    days,
-    label: `${days} days`,
-    amount: openBills
-      .filter((bill) => {
-        const due = daysUntil(bill.due);
-        return due >= 0 && due <= days;
-      })
-      .reduce((sum, bill) => sum + bill.amount, 0)
-  }));
-}
-
-function getCategoryMovers(key = monthKey(toDateInputValue(today)), limit = 3) {
-  const previousKey = shiftMonth(key, -1);
-  const hasPrevious = getAvailableMonths().includes(previousKey);
-  const currentTotals = topExpenseCategories(key, 24).reduce((map, item) => {
-    map[item.name] = item.amount;
-    return map;
-  }, {});
-  const previousTotals = hasPrevious ? topExpenseCategories(previousKey, 24).reduce((map, item) => {
-    map[item.name] = item.amount;
-    return map;
-  }, {}) : {};
-  return Object.keys({ ...currentTotals, ...previousTotals })
-    .map((name) => ({
-      name,
-      amount: currentTotals[name] || 0,
-      previous: previousTotals[name] || 0,
-      delta: (currentTotals[name] || 0) - (previousTotals[name] || 0),
-      color: getCategory(name)?.color || "#4d8dff",
-      hasPrevious
-    }))
-    .filter((item) => item.amount || item.previous)
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, limit);
-}
-
-function getVisibleBills() {
-  return sortBills(bills.filter((bill) => !bill.archived && !bill.paid));
-}
-
-function getArchivedBills() {
-  return [...bills]
-    .filter((bill) => bill.archived)
-    .sort((a, b) => new Date(b.archivedAt || `${b.due}T12:00:00`) - new Date(a.archivedAt || `${a.due}T12:00:00`));
-}
-
-function getReminderBadgeItems() {
-  return sortBills(bills.filter((bill) => {
-    if (bill.paid || bill.archived) return false;
-    const days = daysUntil(bill.due);
-    return days >= 0 && days <= BADGE_REMINDER_DAYS;
-  }));
-}
-
-function validTheme(value) {
-  return ["system", "dark", "light", "pastel"].includes(value) ? value : "system";
-}
-
-function resolvedTheme() {
-  const theme = validTheme(settings.theme);
-  if (theme !== "system") return theme;
-  // pastel is an explicit choice, system falls back to dark/light
-  const media = window.matchMedia?.("(prefers-color-scheme: light)");
-  return media?.matches ? "light" : "dark";
-}
-
-function applyTheme() {
-  settings.theme = validTheme(settings.theme);
-  const theme = resolvedTheme();
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.themePreference = settings.theme;
-  themeColorMeta?.setAttribute("content", (theme === "light" || theme === "pastel") ? "#fcf8ff" : "#111315");
-}
-
-function showToast(message, options = {}) {
-  Array.from(toastRegion.children)
-    .slice(0, Math.max(0, toastRegion.children.length - MAX_TOASTS + 1))
-    .forEach((item) => dismissToast(item));
-
-  const toast = document.createElement("section");
-  toast.className = "toast";
-  toast.setAttribute("role", "status");
-  const body = document.createElement("span");
-  body.textContent = message;
-  toast.append(body);
-  if (typeof options.undo === "function") {
-    const undoButton = document.createElement("button");
-    undoButton.type = "button";
-    undoButton.textContent = options.undoLabel || "Undo";
-    undoButton.addEventListener("click", () => {
-      options.undo();
-      dismissToast(toast);
-    });
-    toast.append(undoButton);
-  }
-  toastRegion.append(toast);
-  const revealTimer = window.setTimeout(() => toast.classList.add("is-visible"), 20);
-  const dismissTimer = window.setTimeout(() => dismissToast(toast), options.duration || 5200);
-  toastTimers.set(toast, { revealTimer, dismissTimer });
-}
-
-function dismissToast(toast) {
-  if (!toast || toast.classList.contains("is-leaving")) return;
-  const timers = toastTimers.get(toast);
-  if (timers) {
-    window.clearTimeout(timers.revealTimer);
-    window.clearTimeout(timers.dismissTimer);
-    toastTimers.delete(toast);
-  }
-  toast.classList.remove("is-visible");
-  toast.classList.add("is-leaving");
-  window.setTimeout(() => toast.remove(), 220);
-}
-
-function parseMoneyInput(value) {
-  const text = String(value ?? "").trim();
-  if (text.startsWith("-")) return 0;
-  let normalized = "";
-  let hasDecimal = false;
-  for (const char of text) {
-    if (char >= "0" && char <= "9") {
-      normalized += char;
-      continue;
-    }
-    if (char === "." && !hasDecimal) {
-      normalized += char;
-      hasDecimal = true;
-    }
-  }
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.round(parsed * 100) / 100);
-}
-
-function formatMoneyInput(value) {
-  return moneyInputFormat.format(parseMoneyInput(value));
-}
-
-function cleanAmount(value) {
-  return parseMoneyInput(value);
-}
-
-function formatMoneyField(input) {
-  input.value = formatMoneyInput(input.value);
-}
-
-function setupMoneyInputFormatting() {
-  document.addEventListener("focusout", (event) => {
-    if (event.target.matches(".money-input")) formatMoneyField(event.target);
-  });
-}
-
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-function createActivity(type, extra = {}) {
-  return {
-    type,
-    at: extra.at || nowIso(),
-    ...extra
-  };
-}
-
-function appendActivity(bill, type, extra = {}) {
-  bill.activity = [...normalizeActivity(bill.activity), createActivity(type, extra)];
-}
-
-function inferRepeat(bill) {
-  const normalized = `${bill.name} ${bill.category}`.toLowerCase();
-  if (normalized.includes("property tax") || normalized.includes("insurance") || normalized.includes("fitness") || normalized.includes("registration")) return "yearly";
-  if (normalized.includes("groceries") || normalized.includes("transport")) return "none";
-  if (normalized.includes("rent") || normalized.includes("jps") || normalized.includes("nwc") || normalized.includes("internet") || normalized.includes("netflix") || normalized.includes("spotify") || normalized.includes("gym") || normalized.includes("loan") || normalized.includes("slb")) return "monthly";
-  return bill.repeat || "none";
-}
-
-function isPropertyTaxBill(source) {
-  return `${source?.name || ""} ${source?.category || ""}`.toLowerCase().includes("property tax");
-}
-
-function advanceDueDate(value, repeat) {
-  const next = parseDate(value);
-  if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
-  if (repeat === "quarterly") next.setMonth(next.getMonth() + 3);
-  if (repeat === "yearly") next.setFullYear(next.getFullYear() + 1);
-  return toDateInputValue(next);
-}
-
-function normalizeBill(bill) {
-  const due = bill.due || toDateInputValue(today);
-  const paid = Boolean(bill.paid);
-  return {
-    id: bill.id || Date.now() + Math.floor(Math.random() * 100000),
-    name: bill.name || "Untitled bill",
-    category: bill.category || categories[0]?.name || "Home",
-    amount: cleanAmount(bill.amount),
-    due,
-    paid,
-    repeat: ["none", "monthly", "quarterly", "yearly"].includes(bill.repeat) ? bill.repeat : inferRepeat(bill),
-    propertyTaxPlan: ["full", "half-yearly", "quarterly"].includes(bill.propertyTaxPlan) ? bill.propertyTaxPlan : "full",
-    seriesKey: bill.seriesKey || makeSeriesKey(bill),
-    archived: Boolean(bill.archived),
-    archivedAt: bill.archivedAt || null,
-    completedAt: paid ? bill.completedAt || `${due}T12:00:00` : null,
-    activity: normalizeActivity(bill.activity)
-  };
-}
-
-function normalizeExpense(expense) {
-  const createdAt = expense.createdAt || nowIso();
-  return {
-    id: expense.id || Date.now() + Math.floor(Math.random() * 100000),
-    amount: cleanAmount(expense.amount),
-    category: expense.category || defaultCategory().name,
-    merchant: expense.merchant || expense.note || "Expense",
-    note: expense.note || "",
-    date: expense.date || toDateInputValue(today),
-    paymentSource: expense.paymentSource || settings.cashflow?.paymentSources?.[0] || "Cash",
-    createdAt,
-    updatedAt: expense.updatedAt || createdAt
-  };
-}
-
-function normalizeExpenseCategories(items) {
-  const names = [...new Set([...(Array.isArray(items) ? items : []), ...categories.map((category) => category.name)])]
-    .filter(Boolean);
-  return names.length ? names : ["General"];
-}
-
-function normalizeCashflowSettings(source = {}) {
-  const sources = Array.isArray(source.paymentSources) && source.paymentSources.length
-    ? source.paymentSources
-    : ["Cash", "Debit card", "Credit card", "Bank transfer"];
-  return {
-    monthlyStartingBalance: cleanAmount(source.monthlyStartingBalance ?? 260000),
-    safeSpendBuffer: cleanAmount(source.safeSpendBuffer ?? 20000),
-    paymentSources: sources
-  };
-}
-
-function createNextBillFrom(bill) {
-  const repeat = bill.repeat || "none";
-  if (repeat === "none") return null;
-  return normalizeBill({
-    id: Date.now() + Math.floor(Math.random() * 1000),
-    name: bill.name,
-    category: bill.category,
-    amount: bill.amount,
-    due: advanceDueDate(bill.due, repeat),
-    paid: false,
-    repeat,
-    propertyTaxPlan: bill.propertyTaxPlan || "full",
-    seriesKey: bill.seriesKey,
-    archived: false,
-    archivedAt: null,
-    completedAt: null,
-    activity: [createActivity("created", { note: "Next bill created from recurrence." })]
-  });
-}
-
-function isValidState(state) {
-  return state &&
-    Array.isArray(state.bills) &&
-    Array.isArray(state.categories) &&
-    state.bills.every((bill) => bill && typeof bill.name === "string" && typeof bill.due === "string") &&
-    state.categories.every((category) => category && typeof category.name === "string") &&
-    (!state.expenses || Array.isArray(state.expenses));
-}
-
-function appState() {
-  return {
-    version: 3,
-    savedAt: new Date().toISOString(),
-    bills,
-    categories,
-    expenses,
-    expenseCategories,
-    settings,
-    selectedBudgetCategory,
-    selectedExpenseCategory,
-    selectedHistoryMonth,
-    visibleCalendarMonth,
-    metadata: {
-      starterDataLoaded: true
-    }
-  };
-}
-
-function removeBackendSettings() {
-  [
-    "notificationToken",
-    "pushEnabled",
-    "pushEndpoint",
-    "pushStatus",
-    "lastPushSync"
-  ].forEach((key) => delete settings[key]);
-}
-
-function localReminderStatus() {
-  const count = getReminderBadgeItems().length;
-  if (!count) return "No due-soon bills in the local badge window.";
-  return `${count} due-soon bill${count === 1 ? "" : "s"} tracked locally for badge-ready browsers.`;
-}
-
-function saveState() {
-  removeBackendSettings();
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
-  } catch (error) {
-    console.warn("Could not save UpNextBudgeting state", error);
-  }
-}
+const starterHabitIds = new Set(starterState.habits.map((habit) => habit.id));
+const starterEntryIds = new Set(starterState.entries.map((entry) => entry.id));
+const starterMoodCount = starterState.moodLogs.length;
+const timestampIdFloor = 1000000000000;
+
+let state = loadState();
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      bills = bills.map(normalizeBill);
-      expenses = expenses.map(normalizeExpense);
-      expenseCategories = normalizeExpenseCategories(expenseCategories);
-      settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-      removeBackendSettings();
-      saveState();
-      applyTheme();
-      return;
-    }
-    const state = JSON.parse(raw);
-    if (!isValidState(state)) throw new Error("Invalid saved state");
-    categories = state.categories.map((category, index) => ({
-      name: category.name,
-      color: category.color || categoryColors[index % categoryColors.length],
-      planned: cleanAmount(category.planned),
-      assigned: cleanAmount(category.assigned)
-    }));
-    bills = state.bills.map(normalizeBill);
-    settings = { ...settings, ...(state.settings || {}) };
-    settings.theme = validTheme(settings.theme);
-    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-    removeBackendSettings();
-    expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : starterExpenses.map(normalizeExpense);
-    expenseCategories = normalizeExpenseCategories(state.expenseCategories);
-    selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
-    selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
-    selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
-    visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
-    ensureCategorySafety();
-  } catch (error) {
-    console.warn("Could not load saved UpNextBudgeting state", error);
-    bills = bills.map(normalizeBill);
-    expenses = expenses.map(normalizeExpense);
-    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-    removeBackendSettings();
-    ensureCategorySafety();
-    saveState();
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return saved ? { ...starterState, ...saved } : structuredClone(starterState);
+  } catch {
+    return structuredClone(starterState);
   }
-  applyTheme();
 }
 
-function daysUntil(value) {
-  const ms = parseDate(value) - today;
-  return Math.round(ms / 86400000);
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function getCategory(name) {
-  return categories.find((category) => category.name === name) || categories[0];
+function mergeById(currentItems, importedItems, type) {
+  const currentIds = new Set(currentItems.map((item) => String(item.id)));
+  const normalized = importedItems
+    .filter((item) => item && item.id !== undefined && item.id !== null)
+    .map((item) => normalizeImportedRecord(item, type))
+    .filter((item) => !currentIds.has(String(item.id)));
+
+  return [...currentItems, ...normalized];
 }
 
-function defaultCategory() {
-  return categories.find((category) => category.name === "Home") || categories[0] || {
-    name: "General",
-    color: "#4d8dff",
-    planned: 0,
-    assigned: 0
+function normalizeImportedRecord(record, type) {
+  const normalized = { ...record };
+  const starterIds = type === "habit" ? starterHabitIds : starterEntryIds;
+  const looksUserCreated = normalized.source === "user"
+    || Boolean(normalized.createdAt)
+    || isTimestampLikeId(normalized.id)
+    || !starterIds.has(normalized.id);
+
+  if (looksUserCreated && !normalized.source) {
+    normalized.source = "user";
+  }
+
+  return normalized;
+}
+
+function moodLogKey(log) {
+  if (log.id !== undefined && log.id !== null) return `id:${log.id}`;
+  if (log.createdAt) return `created:${log.createdAt}`;
+  return `log:${log.mood || ""}|${log.energy || ""}|${log.date || ""}|${log.note || ""}`;
+}
+
+function normalizeImportedMoodLog(log) {
+  const normalized = { ...log };
+  const looksUserCreated = normalized.source === "user" || Boolean(normalized.createdAt) || isTimestampLikeId(normalized.id);
+
+  if (looksUserCreated && !normalized.source) {
+    normalized.source = "user";
+  }
+
+  return normalized;
+}
+
+function mergeMoodLogs(currentLogs, importedLogs) {
+  const currentKeys = new Set(currentLogs.map(moodLogKey));
+  const normalized = importedLogs
+    .filter((log) => log && typeof log === "object")
+    .map(normalizeImportedMoodLog)
+    .filter((log) => !currentKeys.has(moodLogKey(log)));
+
+  return [...currentLogs, ...normalized];
+}
+
+function createBackupPayload() {
+  return {
+    app: "MoodRabbit",
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    storageKey: STORAGE_KEY,
+    state
   };
 }
 
-function ensureCategorySafety() {
-  if (!categories.length) {
-    categories = [{ name: "General", color: "#4d8dff", planned: 0, assigned: 0 }];
+function exportBackup() {
+  const payload = JSON.stringify(createBackupPayload(), null, 2);
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const dateStamp = new Date().toISOString().slice(0, 10);
+
+  anchor.href = url;
+  anchor.download = `moodrabbit-backup-${dateStamp}.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  showToast("Backup exported");
+}
+
+function parseBackup(text) {
+  const parsed = JSON.parse(text);
+  const importedState = parsed?.state || parsed;
+
+  if (!importedState || typeof importedState !== "object") {
+    throw new Error("Backup is missing app state.");
   }
-  const fallback = defaultCategory().name;
-  bills = bills.map((bill) => categories.some((category) => category.name === bill.category) ? bill : { ...bill, category: fallback });
-  expenses = expenses.map((expense) => categories.some((category) => category.name === expense.category) ? expense : { ...expense, category: fallback });
-  expenseCategories = normalizeExpenseCategories(expenseCategories);
-  selectedBudgetCategory = categories.some((category) => category.name === selectedBudgetCategory) ? selectedBudgetCategory : fallback;
-  selectedExpenseCategory = selectedExpenseCategory === "All" || expenseCategories.includes(selectedExpenseCategory) ? selectedExpenseCategory : "All";
+
+  return {
+    theme: importedState.theme,
+    themeMode: importedState.themeMode,
+    selectedMood: importedState.selectedMood,
+    energy: importedState.energy,
+    energyLogs: Array.isArray(importedState.energyLogs) ? importedState.energyLogs : [],
+    habits: Array.isArray(importedState.habits) ? importedState.habits : [],
+    entries: Array.isArray(importedState.entries) ? importedState.entries : [],
+    moodLogs: Array.isArray(importedState.moodLogs) ? importedState.moodLogs : []
+  };
 }
 
-function categoryIconName(name) {
-  const normalized = name.toLowerCase();
-  if (normalized.includes("home")) return "home";
-  if (normalized.includes("util")) return "utilities";
-  if (normalized.includes("phone") || normalized.includes("internet")) return "phone";
-  if (normalized.includes("vehicle")) return "vehicle";
-  if (normalized.includes("insurance")) return "insurance";
-  if (normalized.includes("transport")) return "transport";
-  if (normalized.includes("subscription")) return "subscriptions";
-  if (normalized.includes("wellness")) return "wellness";
-  if (normalized.includes("loan")) return "loans";
-  if (normalized.includes("school")) return "school";
-  if (normalized.includes("medical")) return "medical";
-  if (normalized.includes("grocer")) return "groceries";
-  if (normalized.includes("saving")) return "savings";
-  if (normalized.includes("tax")) return "tax";
-  if (normalized.includes("life")) return "life";
-  return "category";
+function mergeImportedState(importedState) {
+  let added = 0;
+  const nextHabits = mergeById(state.habits, importedState.habits, "habit");
+  const nextEntries = mergeById(state.entries, importedState.entries, "entry");
+  const nextMoodLogs = mergeMoodLogs(state.moodLogs, importedState.moodLogs);
+  const nextEnergyLogs = mergeMoodLogs(state.energyLogs || [], importedState.energyLogs || []);
+
+  added += nextHabits.length - state.habits.length;
+  added += nextEntries.length - state.entries.length;
+  added += nextMoodLogs.length - state.moodLogs.length;
+  added += nextEnergyLogs.length - (state.energyLogs || []).length;
+
+  state = {
+    ...state,
+    habits: nextHabits,
+    entries: nextEntries,
+    moodLogs: nextMoodLogs,
+    energyLogs: nextEnergyLogs
+  };
+
+  if (importedState.theme === "light" || importedState.theme === "dark") {
+    state.theme = importedState.theme;
+  }
+
+  if (["auto", "light", "dark"].includes(importedState.themeMode)) {
+    state.themeMode = importedState.themeMode;
+    state.theme = getResolvedTheme();
+  }
+
+  if (moods.some((mood) => mood.id === importedState.selectedMood)) {
+    state.selectedMood = importedState.selectedMood;
+  }
+
+  if (Number.isFinite(Number(importedState.energy))) {
+    state.energy = Math.min(10, Math.max(1, Number(importedState.energy)));
+  }
+
+  return added;
 }
 
-function sortBills(items) {
-  return [...items].sort((a, b) => {
-    if (a.archived !== b.archived) return a.archived ? 1 : -1;
-    if (a.paid !== b.paid) return a.paid ? 1 : -1;
-    const aOverdue = !a.paid && daysUntil(a.due) < 0;
-    const bOverdue = !b.paid && daysUntil(b.due) < 0;
-    if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-    return parseDate(a.due) - parseDate(b.due);
+function importBackupFileContents(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    try {
+      const importedState = parseBackup(String(reader.result || ""));
+      const added = mergeImportedState(importedState);
+      saveState();
+      closeSheets();
+      renderApp();
+      showToast(added ? `Imported ${added} records` : "Backup already imported");
+    } catch {
+      showToast("Could not import backup");
+    } finally {
+      importBackupFile.value = "";
+    }
+  });
+  reader.addEventListener("error", () => {
+    showToast("Could not read backup");
+    importBackupFile.value = "";
+  });
+  reader.readAsText(file);
+}
+
+function removeSampleData() {
+  const confirmed = window.confirm("Remove starter sample data from this device? Your own habits, moods, and entries will be kept.");
+  if (!confirmed) return;
+
+  state = {
+    ...state,
+    habits: state.habits.filter(isUserHabit),
+    entries: getUserEntries(),
+    moodLogs: getUserMoodLogs(),
+    energyLogs: getUserEnergyLogs()
+  };
+  saveState();
+  closeSheets();
+  renderApp();
+  showToast("Sample data removed");
+}
+
+function isTimestampLikeId(id) {
+  return Number(id) >= timestampIdFloor;
+}
+
+function isUserHabit(habit) {
+  return habit?.source === "user" || Boolean(habit?.createdAt) || isTimestampLikeId(habit?.id) || !starterHabitIds.has(habit?.id);
+}
+
+function getUserEntries() {
+  const extraEntryCount = Math.max(0, state.entries.length - starterState.entries.length);
+  return state.entries.filter((entry, index) => {
+    return entry?.source === "user"
+      || Boolean(entry?.createdAt)
+      || isTimestampLikeId(entry?.id)
+      || !starterEntryIds.has(entry?.id)
+      || index < extraEntryCount;
   });
 }
 
-function statusText(bill) {
-  if (bill.paid) return "Paid";
-  const days = daysUntil(bill.due);
-  if (days < 0) return `${Math.abs(days)} days overdue`;
-  if (days === 0) return "Due today";
-  if (days === 1) return "Due tomorrow";
-  return `Due in ${days} days`;
+function getUserMoodLogs() {
+  const extraMoodCount = Math.max(0, state.moodLogs.length - starterMoodCount);
+  return state.moodLogs.filter((log, index) => {
+    return log?.source === "user" || Boolean(log?.createdAt) || index < extraMoodCount;
+  });
 }
 
-function recordStatusText(bill) {
-  if (bill.archived && !bill.paid) return "Archived";
-  return statusText(bill);
+function getUserEnergyLogs() {
+  return (state.energyLogs || []).filter((log) => log?.source === "user" || Boolean(log?.createdAt));
 }
 
-function statusClass(bill) {
-  if (bill.archived && !bill.paid) return "is-archived";
-  if (bill.paid) return "is-paid";
-  const days = daysUntil(bill.due);
-  if (days < 0) return "is-overdue";
-  if (days <= 1) return "is-tomorrow";
-  if (days <= settings.reminderDays) return "is-soon";
-  return "is-scheduled";
+function getEnergyAverage() {
+  const logs = [...getUserEnergyLogs(), ...getUserMoodLogs()];
+  return logs.length
+    ? Math.round(logs.reduce((sum, log) => sum + Number(log.energy || 0), 0) / logs.length)
+    : Number(state.energy || 0);
 }
 
-function statusTone(bill) {
-  const state = statusClass(bill);
-  if (state === "is-overdue") return "danger";
-  if (state === "is-tomorrow" || state === "is-soon") return "warning";
-  if (state === "is-paid") return "success";
-  if (state === "is-archived") return "neutral";
-  return "info";
+function getMoodLogKey(log) {
+  return log?.createdAt || String(log?.id || `${log?.mood || ""}-${log?.date || ""}-${log?.note || ""}`);
+}
+
+function getHabitById(id) {
+  return state.habits.find((habit) => String(habit.id) === String(id));
+}
+
+function getMoodLabel(id) {
+  return moods.find((mood) => mood.id === id)?.label || "Mood";
+}
+
+function getMoodScore(id) {
+  return moods.find((mood) => mood.id === id)?.score || 0;
+}
+
+function getThemeMode() {
+  if (["auto", "light", "dark"].includes(state.themeMode)) return state.themeMode;
+  if (state.theme === "dark" || state.theme === "light") return state.theme;
+  return "auto";
+}
+
+function getResolvedTheme() {
+  const mode = getThemeMode();
+  return mode === "auto" ? (systemThemeQuery.matches ? "dark" : "light") : mode;
+}
+
+function updateThemeModeControls() {
+  const mode = getThemeMode();
+  themeModeButtons.forEach((button) => {
+    const isActive = button.dataset.themeMode === mode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function setThemeMode(mode) {
+  if (!["auto", "light", "dark"].includes(mode)) return;
+  state.themeMode = mode;
+  state.theme = getResolvedTheme();
+  saveState();
+  renderApp();
+  updateThemeModeControls();
+  showToast(mode === "auto" ? "Auto night mode on" : `${mode === "dark" ? "Dark" : "Light"} mode on`);
+}
+
+function icon(name) {
+  return icons[name] || icons.leaf;
+}
+
+function formatDateContext(date) {
+  return new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(date);
 }
 
 function monthName(date = today) {
-  return new Intl.DateTimeFormat("en-JM", { month: "long", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en", { month: "long" }).format(date);
 }
 
-function replaceOrInsertBill(record) {
-  const normalized = normalizeBill(record);
-  const index = bills.findIndex((bill) => bill.id === normalized.id);
-  if (index >= 0) {
-    bills[index] = normalized;
-  } else {
-    bills.push(normalized);
-  }
+function statusClass(status) {
+  if (status === "done") return "is-done";
+  if (status === "missed") return "is-missed";
+  return "";
 }
 
-function getBillById(billId) {
-  return bills.find((bill) => bill.id === billId);
-}
-
-function openBillDetail(billId) {
-  const bill = getBillById(billId);
-  if (!bill) return;
-  lastTrigger = document.activeElement;
-  activeBillId = billId;
-  document.body.classList.add("detail-zooming");
-  render();
-  window.setTimeout(() => document.body.classList.remove("detail-zooming"), sheetMotionDuration());
-}
-
-function closeBillDetail(restoreFocus = true) {
-  activeBillId = null;
-  document.body.classList.add("detail-closing");
-  render();
-  window.setTimeout(() => document.body.classList.remove("detail-closing"), sheetMotionDuration());
-  if (restoreFocus) {
-    window.setTimeout(() => lastTrigger?.focus?.(), 0);
-  }
-}
-
-function markBillPaid(billId, { quiet = false } = {}) {
-  const bill = getBillById(billId);
-  if (!bill || bill.paid) return;
-  const snapshot = cloneBill(bill);
-  const previousPending = pendingRecurringBillId;
-  bill.paid = true;
-  bill.completedAt = nowIso();
-  appendActivity(bill, "paid", { note: "Marked paid from the app." });
-  pendingRecurringBillId = bill.repeat && bill.repeat !== "none" ? bill.id : null;
-  saveState();
-  render();
-  if (!quiet) {
-    showToast(`${bill.name} marked paid.`, {
-      undo: () => {
-        replaceOrInsertBill(snapshot);
-        pendingRecurringBillId = previousPending;
-        saveState();
-        render();
-        showToast(`${bill.name} marked unpaid.`);
-      }
-    });
-  }
-}
-
-function archiveBill(billId) {
-  const bill = getBillById(billId);
-  if (!bill || bill.archived) return;
-  const snapshot = cloneBill(bill);
-  bill.archived = true;
-  bill.archivedAt = nowIso();
-  appendActivity(bill, "archived", { note: "Archived from bill detail." });
-  if (activeBillId === billId) activeBillId = null;
-  if (pendingRecurringBillId === billId) pendingRecurringBillId = null;
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(`${bill.name} archived.`, {
-    undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      if (!settingsSheet.hidden) renderSettingsContent();
-      showToast(`${bill.name} restored.`);
-    }
-  });
-}
-
-function restoreArchivedBill(billId) {
-  const bill = getBillById(billId);
-  if (!bill || !bill.archived) return;
-  const snapshot = cloneBill(bill);
-  bill.archived = false;
-  bill.archivedAt = null;
-  appendActivity(bill, "restored", { note: "Restored from archive." });
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(`${bill.name} restored.`, {
-    undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      if (!settingsSheet.hidden) renderSettingsContent();
-      showToast(`${bill.name} archived again.`);
-    }
-  });
-}
-
-function snoozeBill(billId, nextDue) {
-  const bill = getBillById(billId);
-  if (!bill || bill.paid || bill.archived || !nextDue || nextDue === bill.due) return;
-  const snapshot = cloneBill(bill);
-  const previousDue = bill.due;
-  bill.due = nextDue;
-  appendActivity(bill, "snoozed", {
-    from: previousDue,
-    to: nextDue,
-    note: `Snoozed from ${dateFormat.format(parseDate(previousDue))} to ${dateFormat.format(parseDate(nextDue))}.`
-  });
-  saveState();
-  closeActionSheet(false);
-  render();
-  showToast(`${bill.name} moved to ${dateFormat.format(parseDate(nextDue))}.`, {
-    undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      showToast(`${bill.name} due date restored.`);
-    }
-  });
-}
-
-function createNextRecurringBill() {
-  const bill = getBillById(pendingRecurringBillId);
-  const nextBill = bill ? createNextBillFrom(bill) : null;
-  if (nextBill) bills.push(nextBill);
-  pendingRecurringBillId = null;
-  saveState();
-  render();
-  if (nextBill) {
-    showToast(`Next ${nextBill.name} created.`, {
-      undo: () => {
-        bills = bills.filter((item) => item.id !== nextBill.id);
-        saveState();
-        render();
-        showToast("Next bill removed.");
-      }
-    });
-  }
-}
-
-function dismissRecurringPrompt() {
-  pendingRecurringBillId = null;
-  saveState();
-  render();
-  showToast("Recurring prompt skipped.");
-}
-
-function getRelatedBills(seriesKey) {
-  return [...bills]
-    .filter((bill) => bill.seriesKey === seriesKey)
-    .sort((a, b) => parseDate(b.due) - parseDate(a.due));
-}
-
-function activityToTimelineEntry(item, event) {
-  if (event.type === "created") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Bill created",
-      detail: event.note || `${item.name} was added to your plan.`
-    };
-  }
-  if (event.type === "edited") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Bill updated",
-      detail: event.note || `${item.name} details were changed.`
-    };
-  }
-  if (event.type === "paid") {
-    return {
-      at: event.at,
-      tone: "success",
-      title: "Marked paid",
-      detail: `${money.format(item.amount)} cleared.`
-    };
-  }
-  if (event.type === "unpaid") {
-    return {
-      at: event.at,
-      tone: "warning",
-      title: "Marked unpaid",
-      detail: "Returned to active planning."
-    };
-  }
-  if (event.type === "snoozed") {
-    return {
-      at: event.at,
-      tone: "warning",
-      title: "Due date moved",
-      detail: `${dateFormat.format(parseDate(event.from))} to ${dateFormat.format(parseDate(event.to))}`
-    };
-  }
-  if (event.type === "archived") {
-    return {
-      at: event.at,
-      tone: "neutral",
-      title: "Archived",
-      detail: "Removed from daily triage."
-    };
-  }
-  if (event.type === "restored") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Restored",
-      detail: "Returned to active planning."
-    };
-  }
-  return {
-    at: event.at,
-    tone: "info",
-    title: event.type,
-    detail: event.note || item.name
+function statusPill(status) {
+  const labels = {
+    done: ["Done today", "is-success"],
+    missed: ["Missed", "is-danger"],
+    due: ["Due today", "is-warning"],
+    "due-later": ["Due later", ""]
   };
+  const [label, klass] = labels[status] || ["Open", ""];
+  return `<span class="state-pill ${klass}">${label}</span>`;
 }
 
-function getBillTimeline(bill) {
-  const entries = [];
-  getRelatedBills(bill.seriesKey).forEach((item) => {
-    entries.push({
-      at: `${item.due}T12:00:00`,
-      tone: "info",
-      title: "Scheduled",
-      detail: `${dateFormat.format(parseDate(item.due))} · ${money.format(item.amount)}`
-    });
-    const activityTypes = new Set(normalizeActivity(item.activity).map((event) => event.type));
-    if (item.paid && !activityTypes.has("paid")) {
-      entries.push({
-        at: item.completedAt || `${item.due}T12:00:00`,
-        tone: "success",
-        title: "Marked paid",
-        detail: `${money.format(item.amount)} cleared.`
-      });
+function renderBadge(name, label = "", accent = "var(--brand)") {
+  return `<span class="icon-badge" style="--accent: ${accent}" aria-label="${label}">${icon(name)}</span>`;
+}
+
+function renderTopbar(page = activePage) {
+  const pageMeta = {
+    today: {
+      title: "MoodRabbit Tracker",
+      copy: "Track habits, log moods, and notice the quiet patterns that shape your day.",
+      icon: "leaf"
+    },
+    habits: {
+      title: "Habit streaks",
+      copy: "See what is due, what is done, and which routines need a little care.",
+      icon: "walking"
+    },
+    mood: {
+      title: "Mood check-in",
+      copy: "Log today’s emotion and energy with calm, consistent visual notes.",
+      icon: "calm"
+    },
+    patterns: {
+      title: "Patterns",
+      copy: "Review weekly consistency and the wellbeing signals worth noticing.",
+      icon: "focused"
     }
-    if (item.archived && !activityTypes.has("archived")) {
-      entries.push({
-        at: item.archivedAt || `${item.due}T12:00:00`,
-        tone: "neutral",
-        title: "Archived",
-        detail: "Removed from daily triage."
-      });
-    }
-    normalizeActivity(item.activity).forEach((event) => {
-      entries.push(activityToTimelineEntry(item, event));
-    });
-  });
-  return entries.sort((a, b) => new Date(b.at) - new Date(a.at));
-}
+  }[page] || {
+    title: "MoodRabbit Tracker",
+    copy: "Track habits, log moods, and notice the quiet patterns that shape your day.",
+    icon: "leaf"
+  };
 
-function renderRecurringPrompt() {
-  const bill = getBillById(pendingRecurringBillId);
-  if (!bill) return "";
   return `
-    <section class="recurring-prompt home-reveal" style="--delay: 160ms" aria-label="Recurring bill follow-up">
-      <div>
-        <p class="mini-label">Repeats ${bill.repeat}</p>
-        <strong>Create next ${bill.name}?</strong>
-        <p class="small-note">Next due date would be ${dateFormat.format(parseDate(advanceDueDate(bill.due, bill.repeat)))}.</p>
-      </div>
-      <div class="prompt-actions">
-        <button class="primary-action small" id="createNextBill" type="button">Create next</button>
-        <button class="secondary-action" id="dismissRecurring" type="button">Skip</button>
-      </div>
-    </section>
-  `;
-}
-
-function renderWalletCard(bill, index) {
-  return renderBillListCard(bill, index);
-}
-
-function renderTopAppBar({ kicker, title, subtitle = "" }) {
-  return `
-    <header class="topbar app-topbar home-reveal" style="--delay: 0ms">
+    <header class="topbar" id="today">
       <div class="brand-line">
-        <button class="brandmark-button" data-open-settings type="button" aria-label="Open settings">
-          <img class="brandmark" src="assets/icon.svg" alt="">
-        </button>
-        <div class="hero-copy">
-          <p class="kicker">${kicker}</p>
-          <h1>${title}</h1>
-          ${subtitle ? `<p class="hero-note">${subtitle}</p>` : ""}
+        <button class="brandmark" data-open-settings type="button" aria-label="Open settings" title="Settings and theme">${renderPixelRabbit()}</button>
+        <div>
+          <p class="kicker">${monthName()} - ${formatDateContext(today)}</p>
+          <h1>${pageMeta.title}</h1>
+          <p class="hero-copy">${pageMeta.copy}</p>
         </div>
       </div>
     </header>
   `;
 }
 
-function renderKpiCard(label, value, detail = "", tone = "") {
+function renderQuickActions() {
   return `
-    <article class="kpi-card ${tone}">
-      <span>${label}</span>
-      <strong>${value}</strong>
-      ${detail ? `<small>${detail}</small>` : ""}
-    </article>
-  `;
-}
-
-function sparklinePath(series, width = 260, height = 92, padding = 10) {
-  if (!series.length) return "";
-  const values = series.map((point) => point.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(max - min, 1);
-  return series.map((point, index) => {
-    const x = padding + (index / Math.max(series.length - 1, 1)) * (width - padding * 2);
-    const y = height - padding - ((point.value - min) / range) * (height - padding * 2);
-    return `${index ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-}
-
-function renderSparklineChart({ title, summary, series, tone = "is-safe" }) {
-  const path = sparklinePath(series);
-  const first = series[0]?.value || 0;
-  const last = series[series.length - 1]?.value || 0;
-  const delta = last - first;
-  const deltaLabel = `${delta >= 0 ? "up" : "down"} ${money.format(Math.abs(delta))}`;
-  return `
-    <section class="analytics-card money-health-card home-reveal ${tone}" style="--delay: 78ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Money health</p>
-          <h2>${title}</h2>
-        </div>
-        <span class="state-pill ${tone}">${deltaLabel}</span>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <svg class="sparkline-chart" viewBox="0 0 260 92" role="img" aria-label="${escapeAttribute(`${title}. ${summary}. Projected balance changes ${deltaLabel} over 30 days.`)}">
-        <path class="sparkline-grid" d="M 10 24 H 250 M 10 68 H 250"></path>
-        <path class="sparkline-fill" d="${path} L 250 82 L 10 82 Z"></path>
-        <path class="sparkline-line" d="${path}"></path>
-      </svg>
+    <section class="quick-actions" aria-label="Quick actions">
+      <button class="primary-action" data-open-habit type="button">${icon("plus")} Add habit</button>
+      <button class="secondary-action" data-open-mood type="button">${icon("heart")} Log mood</button>
     </section>
   `;
 }
 
-function renderStackedBarChart({ title, summary, parts }) {
-  const total = parts.reduce((sum, part) => sum + part.amount, 0);
+function renderPageAction(type) {
+  const actions = {
+    habit: {
+      label: "Add habit",
+      action: "data-open-habit",
+      iconName: "plus"
+    },
+    mood: {
+      label: "Log mood",
+      action: "data-open-mood",
+      iconName: "heart"
+    }
+  };
+  const pageAction = actions[type] || actions.mood;
+
   return `
-    <section class="analytics-card home-reveal" style="--delay: 52ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Composition</p>
-          <h2>${title}</h2>
-        </div>
-        <strong>${money.format(total)}</strong>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <div class="stacked-bar" role="img" aria-label="${escapeAttribute(`${title}. Total ${money.format(total)}.`)}">
-        ${parts.map((part) => `<i style="--value:${total ? (part.amount / total) * 100 : 0}%; --accent:${part.color}" title="${escapeAttribute(`${part.label}: ${money.format(part.amount)}`)}"></i>`).join("")}
-      </div>
-      <div class="chart-legend">
-        ${parts.map((part) => `<span><i style="--accent:${part.color}"></i>${part.label} ${money.format(part.amount)}</span>`).join("")}
-      </div>
+    <section class="page-action-row" aria-label="Page action">
+      <button class="primary-action page-action" ${pageAction.action} type="button">${icon(pageAction.iconName)} ${pageAction.label}</button>
     </section>
   `;
 }
 
-function renderCategoryBars({ title, summary, items, total, emptyText = "Add expenses to unlock this view." }) {
+function renderKpis() {
+  const due = state.habits.filter((habit) => habit.status !== "done").length;
+  const done = state.habits.filter((habit) => habit.status === "done").length;
+  const bestStreak = state.habits.length ? Math.max(...state.habits.map((habit) => habit.streak || 0)) : 0;
+  const consistency = state.habits.length ? Math.round((done / state.habits.length) * 100) : 0;
+  const recentMoodLogs = getUserMoodLogs().slice(0, 4);
+  const energyLogCount = getUserEnergyLogs().length + getUserMoodLogs().length;
+  const moodTrend = recentMoodLogs.length >= 2
+    ? (() => {
+        const latest = getMoodScore(recentMoodLogs[0].mood);
+        const previousAverage = recentMoodLogs.slice(1).reduce((sum, log) => sum + getMoodScore(log.mood), 0) / (recentMoodLogs.length - 1);
+        if (latest > previousAverage + 0.5) return "Rising";
+        if (latest < previousAverage - 0.5) return "Lower";
+        return "Steady";
+      })()
+    : "New";
+  const energyAverage = energyLogCount
+    ? `${getEnergyAverage()}/10`
+    : "--";
+  const cards = [
+    ["Habits due today", due, "open routines"],
+    ["Completed today", done, `${state.habits.length} tracked`],
+    ["Current streak", `${bestStreak}d`, "best active habit"],
+    ["Weekly consistency", `${consistency}%`, "done today"],
+    ["Mood trend", moodTrend, `${recentMoodLogs.length || 0} recent logs`],
+    ["Energy average", energyAverage, "this week"]
+  ];
+
   return `
-    <section class="analytics-card home-reveal" style="--delay: 66ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Categories</p>
-          <h2>${title}</h2>
-        </div>
-        <span class="mini-label">${items.length} shown</span>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <div class="premium-bars">
-        ${items.length ? items.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${emptyText}</p>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderSpendingRhythmChart(key = monthKey(toDateInputValue(today))) {
-  const rhythm = getSpendingRhythm(key);
-  const total = rhythm.reduce((sum, item) => sum + item.amount, 0);
-  const max = Math.max(...rhythm.map((item) => item.amount), 1);
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 52ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Rhythm</p>
-          <h2>Weekly spending rhythm</h2>
-        </div>
-        <strong>${money.format(total)}</strong>
-      </div>
-      <p class="settings-copy">Variable expenses grouped by week so spikes are easier to spot.</p>
-      <div class="rhythm-chart" role="img" aria-label="${escapeAttribute(`Weekly spending rhythm for ${monthLabel(key)}. Total ${money.format(total)}.`)}">
-        ${rhythm.map((item) => `<article style="--value:${Math.max(4, Math.round((item.amount / max) * 100))}%"><i></i><span>${item.label}</span><strong>${money.format(item.amount)}</strong></article>`).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderCategoryMovers(key = monthKey(toDateInputValue(today))) {
-  const movers = getCategoryMovers(key, 3);
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 58ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Trend</p>
-          <h2>Category movers</h2>
-        </div>
-        <span class="mini-label">${monthLabel(key)}</span>
-      </div>
-      <p class="settings-copy">${movers[0]?.hasPrevious ? "Largest category changes compared with last month." : "Not enough history yet for category movement."}</p>
-      <div class="mover-list">
-        ${movers.length ? movers.map((item) => `<article style="--accent:${item.color}">
-          <span>${item.name}</span>
-          <strong>${item.hasPrevious ? `${item.delta >= 0 ? "up" : "down"} ${money.format(Math.abs(item.delta))}` : money.format(item.amount)}</strong>
-        </article>`).join("") : `<p class="settings-copy">Add expenses to see category movement.</p>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderUpcomingPressureStrip() {
-  const pressure = getUpcomingPressure();
-  const max = Math.max(...pressure.map((item) => item.amount), 1);
-  return `
-    <section class="analytics-card pressure-strip home-reveal" style="--delay: 34ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Upcoming pressure</p>
-          <h2>Committed bills</h2>
-        </div>
-        <span class="mini-label">open only</span>
-      </div>
-      <p class="settings-copy">How much cash is already committed by due date window.</p>
-      <div class="pressure-bars" role="img" aria-label="Upcoming bill pressure for 7, 14, and 30 days.">
-        ${pressure.map((item) => `<article style="--value:${Math.max(6, Math.round((item.amount / max) * 100))}%"><span>${item.label}</span><i></i><strong>${money.format(item.amount)}</strong></article>`).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderPressureCalendarMarks(date) {
-  const amount = getDailyOutflow(date);
-  const maxOutflow = Math.max(...getCalendarDays(visibleCalendarMonth).map(getDailyOutflow), 1);
-  const ratio = amount / maxOutflow;
-  const level = !amount ? "none" : ratio > 0.66 ? "high" : ratio > 0.33 ? "medium" : "low";
-  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
-  const expensesForDay = expenses.filter((expense) => expense.date === date);
-  return `
-    <div class="day-dots" aria-hidden="true">
-      ${billsForDay.length ? `<i class="bill-dot"></i>` : ""}
-      ${expensesForDay.length ? `<i class="expense-dot-small"></i>` : ""}
-    </div>
-    ${amount ? `<i class="pressure-mark is-${level}" style="--pressure:${Math.max(18, Math.round(ratio * 100))}%"></i>` : ""}
-  `;
-}
-
-function renderInsightHighlight(analytics, comparison = getPreviousMonthComparison(analytics.key)) {
-  const safe = analytics.safeToSpend >= 0;
-  const top = analytics.topCategory ? `${analytics.topCategory.name} is the largest variable category.` : "No variable category is leading yet.";
-  const comparisonText = comparison.hasPrevious
-    ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
-    : "Not enough history yet for a month-over-month trend.";
-  return `
-    <section class="insight-highlight ${safe ? "is-safe" : "is-alert"} home-reveal" style="--delay: 44ms">
-      <div>
-        <p class="mini-label">Highlight</p>
-        <h2>${safe ? "Safe buffer intact" : "Upcoming pressure"}</h2>
-        <p>${safe ? "Projected balance stays above your safety buffer." : "Open bills and spending are pushing below the safety buffer."}</p>
-      </div>
-      <div class="highlight-notes">
-        <span>${top}</span>
-        <span>${comparisonText}</span>
-        ${analytics.propertyTaxDue ? `<span>Property tax is active in this month’s plan.</span>` : ""}
-      </div>
-    </section>
-  `;
-}
-
-function renderExpenseRow(expense) {
-  const category = getCategory(expense.category);
-  return `
-    <article class="expense-row" style="--accent:${category.color}">
-      <span class="expense-dot" aria-hidden="true"></span>
-      <div>
-        <strong>${expense.merchant}</strong>
-        <span>${expense.category} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${expense.paymentSource}` : ""}</span>
-      </div>
-      <strong>${money.format(expense.amount)}</strong>
-      <button class="icon-button light expense-delete-button" data-delete-expense="${expense.id}" type="button" aria-label="Remove ${expense.merchant}" title="Remove expense">${icon("trash")}</button>
-    </article>
-  `;
-}
-
-function renderBillListCard(bill, index = 0) {
-  const category = getCategory(bill.category);
-  const paidLabel = bill.paid ? `${bill.name} paid` : `Mark ${bill.name} paid`;
-  return `
-    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay:${Math.min(40 + index * 24, 260)}ms">
-      <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${bill.name}">
-        <span class="budget-row-icon">${icon(categoryIconName(bill.category))}</span>
-        <span class="budget-row-copy">
-          <strong>${bill.name}</strong>
-          <small>${bill.category} · ${repeatLabels[bill.repeat] || repeatLabels.none}</small>
-        </span>
-        <span class="bill-card-amount">${money.format(bill.amount)}</span>
-      </button>
-      <div class="bill-card-meta">
-        <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
-        <span>${longDateFormat.format(parseDate(bill.due))}</span>
-      </div>
-      <div class="bill-card-actions">
-        <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
-        <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
-        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${paidLabel}" title="${paidLabel}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
-      </div>
-    </article>
-  `;
-}
-
-function renderHome() {
-  const unpaid = getVisibleBills();
-  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
-  const dueSevenCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= 7).length;
-  const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
-  const currentMonth = monthKey(toDateInputValue(today));
-  const analytics = getMonthAnalytics(currentMonth);
-  const spent = getExpenseTotal(currentMonth);
-  const safe = getSafeToSpend(currentMonth);
-  const recentExpenses = getRecentExpenses(4);
-
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: monthName(), title: "UpNextBudgeting" })}
-
-    <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
-      <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
-      <button class="secondary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
-    </section>
-
-    <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Monthly cashflow summary">
-      ${renderKpiCard("Overdue", overdueCount, "bills need action", overdueCount ? "is-alert" : "")}
-      ${renderKpiCard("Due in 7 days", dueSevenCount, `${dueThisMonth} this month`)}
-      ${renderKpiCard("Spent", money.format(spent), monthName())}
-      ${renderKpiCard("Safe to spend", money.format(safe), `${money.format(settings.cashflow.safeSpendBuffer)} buffer`, safe < 0 ? "is-alert" : "is-safe")}
-    </section>
-
-    <section class="cashflow-card home-reveal" style="--delay: 70ms">
-      <div>
-        <p class="mini-label">Projected after bills</p>
-        <h2>${money.format(analytics.projected)}</h2>
-        <p class="small-note">Starting balance minus open bills and recorded expenses.</p>
-      </div>
-      <span class="state-pill ${safe < 0 ? "is-overdue" : "is-paid"}">${safe < 0 ? "tight" : "steady"}</span>
-    </section>
-
-    <section class="section-block">
-      <div class="section-heading home-reveal" style="--delay: 90ms">
-        <h2>Needs attention</h2>
-        <span class="mini-label">${unpaid.length} open</span>
-      </div>
-      <div class="wallet-stack" aria-label="Upcoming bills">
-      ${unpaid.length ? unpaid.map((bill, index) => renderWalletCard(bill, index)).join("") : `
-        <article class="empty-panel home-reveal" style="--delay: 70ms">
-          <p class="mini-label">Clear</p>
-          <h2>You are caught up.</h2>
-          <p class="small-note">Add a bill to keep your next due date visible.</p>
+    <section class="kpi-grid" aria-label="Wellbeing summary">
+      ${cards.map(([label, value, meta]) => `
+        <article class="kpi-card">
+          <p class="mini-label">${label}</p>
+          <div>
+            <strong>${value}</strong>
+            <span>${meta}</span>
+          </div>
         </article>
-      `}
-      </div>
+      `).join("")}
     </section>
-
-    <section class="section-block">
-      <div class="section-heading home-reveal" style="--delay: 140ms">
-        <h2>Recent expenses</h2>
-      </div>
-      <div class="expense-list compact">
-        ${recentExpenses.length ? recentExpenses.map(renderExpenseRow).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>Track day-to-day spending here.</h2><p class="small-note">Fast capture keeps cashflow honest without turning this into accounting.</p></article>`}
-      </div>
-    </section>
-
-    ${renderRecurringPrompt()}
   `;
-
-  bindScreenActions();
-  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
-  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
-  bindExpenseActions();
 }
 
-function renderUpcoming() {
-  renderHome();
-}
+function renderAttention() {
+  const missedHabits = state.habits.filter((habit) => habit.status === "missed");
+  const dueHabits = state.habits.filter((habit) => habit.status === "due" || habit.status === "due-later");
+  const lowMood = getUserMoodLogs().find((log) => Number(log.energy || 0) <= 4 || ["low", "stressed", "anxious"].includes(log.mood));
+  const items = [
+    ...missedHabits.slice(0, 1).map((habit) => ({
+      icon: habit.icon,
+      title: `${habit.name} needs attention`,
+      meta: `${habit.category} routine was marked missed.`,
+      tone: "is-danger",
+      accent: habitPalette[habit.icon] || "var(--brand)"
+    })),
+    ...dueHabits.slice(0, 1).map((habit) => ({
+      icon: habit.icon,
+      title: `${habit.name} is still open`,
+      meta: `${habit.frequency} target due ${String(habit.due || "today").toLowerCase()}.`,
+      tone: "is-warning",
+      accent: habitPalette[habit.icon] || "var(--brand)"
+    })),
+    ...(lowMood ? [{
+      icon: lowMood.mood || "low",
+      title: "Low mood signal",
+      meta: `${getMoodLabel(lowMood.mood)} with ${lowMood.energy}/10 energy.`,
+      tone: "is-warning",
+      accent: "#9a7464"
+    }] : [])
+  ];
 
-function renderTimelineItem(entry) {
   return `
-    <article class="timeline-item ${entry.tone}">
-      <span class="timeline-dot" aria-hidden="true"></span>
-      <div>
-        <strong>${entry.title}</strong>
-        <p>${entry.detail}</p>
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <h2>Needs attention</h2>
+          <p>Gentle nudges for routines and mood patterns.</p>
+        </div>
+        <span class="mini-label">${items.length} items</span>
       </div>
-      <time>${timelineFormat.format(new Date(entry.at))}</time>
-    </article>
+      <div class="attention-grid">
+        ${items.length ? items.map((item) => `
+          <article class="attention-card">
+            ${renderBadge(item.icon, item.title, item.accent)}
+            <div>
+              <strong>${item.title}</strong>
+              <p>${item.meta}</p>
+            </div>
+            <span class="state-pill ${item.tone}">Review</span>
+          </article>
+        `).join("") : `
+          <article class="attention-card">
+            ${renderBadge("check", "Clear", "var(--brand)")}
+            <div>
+              <strong>Nothing needs attention</strong>
+              <p>Add a habit or log a mood to start tracking your day.</p>
+            </div>
+            <span class="state-pill is-success">Clear</span>
+          </article>
+        `}
+      </div>
+    </section>
   `;
 }
 
-function renderBillDetail() {
-  const bill = getBillById(activeBillId);
-  if (!bill) {
-    activeBillId = null;
-    render();
-    return;
+function getRabbitCoachMessage() {
+  const missedHabit = state.habits.find((habit) => habit.status === "missed");
+  if (missedHabit) {
+    return {
+      tone: "Gentle reset",
+      title: `${missedHabit.name} can restart small.`,
+      text: `Try one low-friction step for ${String(missedHabit.due || "today").toLowerCase()}. Progress still counts when it is quiet.`
+    };
   }
-  const category = getCategory(bill.category);
-  const timeline = getBillTimeline(bill).slice(0, 12);
-  const isPropertyTax = isPropertyTaxBill(bill);
 
-  app.innerHTML = `
-    <section class="detail-screen">
-      <header class="topbar detail-topbar home-reveal" style="--delay: 0ms">
-        <button class="icon-button light" id="closeDetail" type="button" aria-label="Back to bills">${icon("back")}</button>
-        <div class="detail-topbar-copy">
-          <p class="kicker">${bill.category}</p>
-          <h1>${bill.name}</h1>
-        </div>
-        <button class="icon-button light" id="detailEdit" type="button" aria-label="Edit bill">${icon("edit")}</button>
-      </header>
+  const dueHabit = state.habits.find((habit) => habit.status === "due" || habit.status === "due-later");
+  if (dueHabit) {
+    return {
+      tone: "Next best step",
+      title: `${dueHabit.name} is your next easy win.`,
+      text: `${dueHabit.frequency} target due ${String(dueHabit.due || "today").toLowerCase()}. Keep it simple and mark it when done.`
+    };
+  }
 
-      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay: 30ms">
-        <div class="detail-hero-head">
-          <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
-          <span class="mini-label">${bill.archived ? "Archived" : "Active bill"}</span>
-        </div>
-        <p class="detail-amount">${money.format(bill.amount)}</p>
-        <div class="detail-inline-meta">
-          <div>
-            <span>Due date</span>
-            <strong>${longDateFormat.format(parseDate(bill.due))}</strong>
-          </div>
-          <div>
-            <span>Repeat</span>
-            <strong>${repeatLabels[bill.repeat] || repeatLabels.none}</strong>
-          </div>
-        </div>
-      </section>
+  const latestMood = getUserMoodLogs()[0] || state.moodLogs[0];
+  if (latestMood && Number(latestMood.energy || 0) <= 4) {
+    return {
+      tone: "Energy care",
+      title: "Keep the next step gentle.",
+      text: `${getMoodLabel(latestMood.mood)} with ${latestMood.energy}/10 energy is a good signal to lower the pressure.`
+    };
+  }
 
-      <section class="detail-actions home-reveal" style="--delay: 70ms">
-        <button class="primary-action" id="detailMarkPaid" type="button" ${bill.paid ? "disabled" : ""}>${bill.paid ? "Paid" : "Mark paid"}</button>
-        <button class="secondary-action" id="detailSnooze" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
-        <button class="secondary-action" id="detailArchive" type="button" ${bill.archived ? "disabled" : ""}>Archive</button>
-      </section>
+  const done = state.habits.filter((habit) => habit.status === "done").length;
+  if (done) {
+    return {
+      tone: "Momentum",
+      title: `${done} routine${done === 1 ? "" : "s"} already complete.`,
+      text: "You are building consistency. Keep the rest of today light and realistic."
+    };
+  }
 
-      ${pendingRecurringBillId === bill.id ? renderRecurringPrompt() : ""}
-
-      <section class="detail-grid home-reveal" style="--delay: 110ms">
-        <article class="info-card">
-          <div class="info-card-head">
-            <span class="card-icon">${icon("repeat")}</span>
-            <h3>Schedule</h3>
-          </div>
-          <p class="small-note">Category</p>
-          <strong>${bill.category}</strong>
-          <p class="small-note detail-copy">${statusText(bill)}${bill.completedAt ? ` · paid ${timelineFormat.format(new Date(bill.completedAt))}` : ""}</p>
-        </article>
-        <article class="info-card">
-          <div class="info-card-head">
-            <span class="card-icon">${icon("bell")}</span>
-            <h3>Reminders</h3>
-          </div>
-          <p class="small-note">In-app window</p>
-          <strong>${settings.reminderDays} day${settings.reminderDays === 1 ? "" : "s"}</strong>
-          <p class="small-note detail-copy">${localReminderStatus()}</p>
-        </article>
-      </section>
-
-      ${isPropertyTax ? `
-        <section class="property-note detail-note home-reveal" style="--delay: 130ms">
-          <strong>Jamaica property tax planning</strong>
-          <span>Due April 1 yearly. Current plan: ${bill.propertyTaxPlan === "half-yearly" ? "half-yearly" : bill.propertyTaxPlan}. Keep April 30 visible as the first-payment warning date.</span>
-        </section>
-      ` : ""}
-
-      <section class="detail-section home-reveal" style="--delay: 150ms">
-        <div class="section-heading">
-          <h2>Timeline</h2>
-          <span class="mini-label">${getRelatedBills(bill.seriesKey).length} entries</span>
-        </div>
-        <div class="timeline-list">
-          ${timeline.map(renderTimelineItem).join("")}
-        </div>
-      </section>
-    </section>
-  `;
-
-  document.querySelector("#closeDetail").addEventListener("click", () => closeBillDetail());
-  document.querySelector("#detailEdit").addEventListener("click", () => openSheet(bill.id));
-  document.querySelector("#detailMarkPaid").addEventListener("click", () => markBillPaid(bill.id));
-  document.querySelector("#detailSnooze").addEventListener("click", () => openSnoozeSheet(bill.id));
-  document.querySelector("#detailArchive").addEventListener("click", () => archiveBill(bill.id));
-  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
-  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
-}
-
-function polarPoint(cx, cy, r, angle) {
-  const radians = (angle - 90) * (Math.PI / 180);
   return {
-    x: cx + r * Math.cos(radians),
-    y: cy + r * Math.sin(radians)
+    tone: "Start here",
+    title: "One check-in is enough to begin.",
+    text: "Add a habit or log a mood, then MoodRabbit will start finding useful patterns."
   };
 }
 
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  const span = Math.max(0.01, Math.min(359.99, endAngle - startAngle));
-  const start = polarPoint(cx, cy, r, endAngle);
-  const end = polarPoint(cx, cy, r, startAngle);
-  const largeArcFlag = span <= 180 ? 0 : 1;
-  return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+function renderPixelRabbit() {
+  return `
+    <div class="pixel-rabbit" aria-hidden="true">
+      <span class="rabbit-ear left"></span>
+      <span class="rabbit-ear right"></span>
+      <span class="rabbit-head">
+        <i class="rabbit-eye left"></i>
+        <i class="rabbit-eye right"></i>
+        <i class="rabbit-mouth"></i>
+      </span>
+      <span class="rabbit-body"></span>
+    </div>
+  `;
 }
 
-function escapeAttribute(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function renderRabbitCoach() {
+  const message = getRabbitCoachMessage();
+  return `
+    <section class="section-block coach-section" aria-label="MoodRabbit coach">
+      <article class="coach-card">
+        <div class="coach-visual">
+          ${renderPixelRabbit()}
+        </div>
+        <div class="coach-copy">
+          <p class="mini-label">${message.tone}</p>
+          <h2>${message.title}</h2>
+          <p>${message.text}</p>
+        </div>
+      </article>
+    </section>
+  `;
 }
 
-function renderBudgetChart() {
-  const totalPlanned = categories.reduce((sum, category) => sum + category.planned, 0);
-  const totalAssigned = categories.reduce((sum, category) => sum + category.assigned, 0);
-  const focus = getCategory(selectedBudgetCategory);
-  const focusAssigned = focus?.assigned || 0;
-  const focusPlanned = focus?.planned || 0;
-  const centerLabel = focus ? focus.name : "All categories";
-  const centerAssigned = focus ? focusAssigned : totalAssigned;
-  const centerPlanned = focus ? focusPlanned : totalPlanned;
-  const centerPercent = centerPlanned ? Math.round((centerAssigned / centerPlanned) * 100) : 0;
-
-  let cursor = -90;
-  const paths = categories
-    .filter((category) => category.planned > 0)
-    .map((category) => {
-      const span = totalPlanned ? (category.planned / totalPlanned) * 360 : 0;
-      const gap = categories.length > 1 ? 2.4 : 0;
-      const start = cursor + gap / 2;
-      const end = cursor + span - gap / 2;
-      cursor += span;
-      if (end <= start) return "";
-      const assignedEnd = start + (end - start) * Math.min(1, category.planned ? category.assigned / category.planned : 0);
-      const focused = category.name === selectedBudgetCategory;
-      const encodedName = encodeURIComponent(category.name);
-      return `
-        <g class="chart-segment ${focused ? "is-focused" : ""}" data-chart-category="${encodedName}" tabindex="0" focusable="true" role="button" aria-label="Show ${escapeAttribute(category.name)} budget details" style="--accent:${category.color}">
-          <path class="chart-segment-track" d="${describeArc(120, 120, 82, start, end)}"></path>
-          ${category.assigned ? `<path class="chart-segment-fill" d="${describeArc(120, 120, 82, start, assignedEnd)}"></path>` : ""}
-        </g>
-      `;
-    })
-    .join("");
-  const focusColor = focus?.color || "var(--info)";
+function renderHabitCard(habit) {
+  const accent = habitPalette[habit.icon] || "var(--brand)";
+  const feedbackClass = recentlyChangedHabit?.id === habit.id
+    ? `is-feedback-${recentlyChangedHabit.tone}`
+    : "";
+  const action = habit.status === "done"
+    ? `<button class="secondary-action icon-action" data-undo-habit="${habit.id}" type="button" aria-label="Move ${habit.name} back to due" title="Move back to due">${icon("check")}</button>`
+    : `<button class="mark-button icon-action" data-complete-habit="${habit.id}" type="button" aria-label="Complete ${habit.name}" title="Mark complete">${icon("check")}</button>`;
 
   return `
-    <section class="chart-panel home-reveal" style="--delay: 40ms">
-      <div class="chart-wrap" aria-label="Budget overview chart">
-        <svg viewBox="0 0 240 240" class="budget-chart" role="img" aria-label="Assigned versus planned budget chart">
-          <circle cx="120" cy="120" r="82" class="chart-ring"></circle>
-          ${paths}
-        </svg>
-        <div class="chart-center">
-          <span><i class="chart-center-swatch" style="--accent:${focusColor}" aria-hidden="true"></i>${centerLabel}</span>
-          <strong>${money.format(centerAssigned)}</strong>
-          <small>${centerPercent}% of ${money.format(centerPlanned || 0)}</small>
+    <article class="habit-card ${statusClass(habit.status)} ${feedbackClass}" style="--accent: ${accent}">
+      <div class="habit-card-top">
+        <div class="habit-title">
+          ${renderBadge(habit.icon, habit.name, accent)}
+          <div>
+            <h3>${habit.name}</h3>
+            <p class="habit-category">${habit.category}</p>
+          </div>
         </div>
+        ${statusPill(habit.status)}
+      </div>
+      <div class="habit-meta">
+        <div>
+          <span>Target</span>
+          <strong>${habit.frequency}</strong>
+        </div>
+        <div>
+          <span>Due</span>
+          <strong>${habit.due}</strong>
+        </div>
+        <div>
+          <span>Streak</span>
+          <strong>${habit.streak}d</strong>
+        </div>
+      </div>
+      <div class="habit-card-bottom">
+        <div class="habit-card-actions">
+          <button class="secondary-action" data-edit-habit="${habit.id}" type="button">${icon("gear")} Edit</button>
+          <button class="secondary-action danger-action" data-delete-habit="${habit.id}" type="button" title="Delete habit">Delete</button>
+          ${action}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderHabits() {
+  return `
+    <section class="section-block" id="habits">
+      <div class="section-heading">
+        <div>
+          <h2>Today's habits</h2>
+          <p>Routines due now and later.</p>
+        </div>
+        <span class="mini-label">${state.habits.length} active</span>
+      </div>
+      <div class="habit-stack">
+        ${state.habits.length ? state.habits.map(renderHabitCard).join("") : `
+          <article class="insight-card">
+            <div class="habit-title">
+              ${renderBadge("plus", "Add a habit", "var(--brand)")}
+              <div>
+                <h3>No habits yet</h3>
+                <p>Add your first routine to start building streaks.</p>
+              </div>
+            </div>
+          </article>
+        `}
       </div>
     </section>
   `;
 }
 
-function decodeCategoryDataset(value) {
-  try {
-    return decodeURIComponent(value || "");
-  } catch {
-    return value || "";
-  }
-}
-
-function focusBudgetCategory(categoryName, options = {}) {
-  const category = getCategory(categoryName);
-  if (!category) return;
-  if (options.openIfFocused && selectedBudgetCategory === category.name) {
-    openBudgetCategorySheet(category.name);
-    return;
-  }
-  selectedBudgetCategory = category.name;
-  saveState(false);
-  render();
-}
-
-function bindBudgetCategorySelection() {
-  document.querySelectorAll("[data-focus-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      focusBudgetCategory(decodeCategoryDataset(button.dataset.focusCategory), { openIfFocused: true });
-    });
-  });
-  document.querySelectorAll("[data-chart-category]").forEach((segment) => {
-    const categoryName = decodeCategoryDataset(segment.dataset.chartCategory);
-    segment.addEventListener("click", () => {
-      focusBudgetCategory(categoryName);
-    });
-    segment.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
-      event.preventDefault();
-      focusBudgetCategory(categoryName);
-    });
-  });
-}
-
-function filteredBills() {
-  const search = billSearch.trim().toLowerCase();
-  const filtered = bills.filter((bill) => {
-    if (billFilter === "overdue" && !(daysUntil(bill.due) < 0 && !bill.paid && !bill.archived)) return false;
-    if (billFilter === "due-soon" && !(daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays && !bill.paid && !bill.archived)) return false;
-    if (billFilter === "paid" && !bill.paid) return false;
-    if (billFilter === "recurring" && (!bill.repeat || bill.repeat === "none")) return false;
-    if (!search) return true;
-    return `${bill.name} ${bill.category}`.toLowerCase().includes(search);
-  });
-  if (billSort === "amount") return filtered.sort((a, b) => b.amount - a.amount);
-  if (billSort === "name") return filtered.sort((a, b) => a.name.localeCompare(b.name));
-  return sortBills(filtered);
-}
-
-function renderSpendingToggle() {
-  return `
-    <section class="spending-switch home-reveal" style="--delay: 20ms" aria-label="Spending view">
-      <span class="spending-switch-indicator ${spendingMode === "expenses" ? "is-expenses" : ""}" aria-hidden="true"></span>
-      <button class="${spendingMode === "bills" ? "is-active" : ""}" data-spending-mode="bills" type="button">Bills</button>
-      <button class="${spendingMode === "expenses" ? "is-active" : ""}" data-spending-mode="expenses" type="button">Expenses</button>
-    </section>
-  `;
-}
-
-function renderSpendingBillsContent() {
-  const filters = [
-    ["all", "All"],
-    ["overdue", "Overdue"],
-    ["due-soon", "Due soon"],
-    ["paid", "Paid"],
-    ["recurring", "Recurring"]
-  ];
-  const items = filteredBills();
-  return `
-    <section class="screen-controls spending-controls home-reveal" style="--delay: 60ms">
-      <button class="filter-disclosure" data-toggle-bill-filters type="button" aria-expanded="${spendingBillFiltersOpen}">
-        <span>
-          <strong>Filters</strong>
-          <small>${filters.find(([value]) => value === billFilter)?.[1] || "All"} · ${billSort === "due" ? "Due date" : billSort === "amount" ? "Amount" : "Name"}${billSearch ? ` · ${billSearch}` : ""}</small>
-        </span>
-        ${icon("chevron")}
-      </button>
-      ${spendingBillFiltersOpen ? `
-        <div class="filter-panel is-open">
-          <div class="chip-row" aria-label="Bill filters">
-            ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
-          </div>
-          <label class="search-box">
-            <span class="mini-label">Search</span>
-            <input id="billSearch" value="${escapeAttribute(billSearch)}" placeholder="JPS, rent, tax...">
-          </label>
-          <label class="search-box">
-            <span class="mini-label">Sort</span>
-            <select id="billSort">
-              <option value="due" ${billSort === "due" ? "selected" : ""}>Due date</option>
-              <option value="amount" ${billSort === "amount" ? "selected" : ""}>Amount</option>
-              <option value="name" ${billSort === "name" ? "selected" : ""}>Name</option>
-            </select>
-          </label>
-        </div>
-      ` : ""}
-    </section>
-    ${renderUpcomingPressureStrip()}
-    <section class="bill-list">
-      ${items.length ? items.map(renderBillListCard).join("") : `<article class="empty-panel"><p class="mini-label">No matches</p><h2>No bills found.</h2><p class="small-note">Adjust filters or add a new bill.</p></article>`}
-    </section>
-  `;
-}
-
-function bindSpendingBills() {
-  document.querySelector("[data-toggle-bill-filters]")?.addEventListener("click", () => {
-    spendingBillFiltersOpen = !spendingBillFiltersOpen;
-    render();
-  });
-  document.querySelectorAll("[data-bill-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      billFilter = button.dataset.billFilter;
-      render();
-    });
-  });
-  document.querySelector("#billSearch")?.addEventListener("input", (event) => {
-    billSearch = event.target.value;
-    renderBills();
-  });
-  document.querySelector("#billSort")?.addEventListener("change", (event) => {
-    billSort = event.target.value;
-    render();
-  });
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
-}
-
-function renderBills() {
-  spendingMode = "bills";
-  activeTab = "spending";
-  renderSpending();
-}
-
-function renderExpenseCategoryChips() {
-  return ["All", ...expenseCategories].map((category) => `
-    <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${category}</button>
+function renderMoodPicker(selected = state.selectedMood) {
+  return moods.map((mood) => `
+    <button class="mood-option ${selected === mood.id ? "is-selected" : ""}" data-select-mood="${mood.id}" type="button">
+      ${renderBadge(mood.id, mood.label, "var(--brand)")}
+      <span>${mood.label}</span>
+    </button>
   `).join("");
 }
 
-function renderSpendingExpensesContent() {
-  const currentMonth = monthKey(toDateInputValue(today));
-  const monthExpenses = getMonthExpenses(currentMonth)
-    .filter((expense) => selectedExpenseCategory === "All" || expense.category === selectedExpenseCategory);
-  const grouped = expensesByDate(monthExpenses);
-  const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
-  const topCategories = topExpenseCategories(currentMonth, 3);
+function renderMoodSection() {
+  const selected = moods.find((mood) => mood.id === state.selectedMood) || moods[0];
+  const energyAverage = getEnergyAverage();
+  const energyLogCount = getUserEnergyLogs().length + getUserMoodLogs().length;
   return `
-    <section class="expense-summary-grid home-reveal" style="--delay: 60ms">
-      ${renderKpiCard("Spent this month", money.format(total), selectedExpenseCategory)}
-      ${renderKpiCard("Transactions", monthExpenses.length, "recorded")}
-      ${renderKpiCard("Safe to spend", money.format(getSafeToSpend(currentMonth)), "after bills and buffer", getSafeToSpend(currentMonth) < 0 ? "is-alert" : "is-safe")}
-    </section>
-    <section class="screen-controls spending-controls home-reveal" style="--delay: 72ms">
-      <button class="filter-disclosure" data-toggle-expense-filters type="button" aria-expanded="${spendingExpenseFiltersOpen}">
-        <span>
-          <strong>Category</strong>
-          <small>${selectedExpenseCategory}</small>
-        </span>
-        ${icon("chevron")}
-      </button>
-      ${spendingExpenseFiltersOpen ? `
-        <div class="filter-panel is-open">
-          <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
+    <section class="section-block" id="mood">
+      <div class="section-heading">
+        <div>
+          <h2>Mood check-in</h2>
+          <p>Choose a mood and log energy.</p>
         </div>
-      ` : ""}
+        <span class="state-pill is-success">${selected.label}</span>
+      </div>
+      <article class="mood-panel">
+        <div class="mood-panel-head">
+          <div>
+            <p class="mini-label">Today</p>
+            <h3>${selected.label} with ${state.energy}/10 energy</h3>
+          </div>
+          ${renderBadge(selected.id, selected.label, "var(--brand)")}
+        </div>
+        <div class="mood-picker" id="dashboardMoodPicker">
+          ${renderMoodPicker()}
+        </div>
+        <div class="mood-lock-row">
+          <button class="primary-action mood-lock-action" data-lock-mood type="button">${icon("check")} Log ${selected.label}</button>
+        </div>
+        <div class="energy-card">
+          <div class="energy-card-head">
+            <div>
+              <p class="mini-label">Energy check-in</p>
+              <h3 data-energy-heading>${state.energy}/10 energy</h3>
+              <p>${energyLogCount ? `${energyAverage}/10 average from your logs` : "Log energy on its own when mood is not the focus."}</p>
+            </div>
+            <output class="energy-output" data-energy-output for="inlineEnergy">${state.energy}/10</output>
+          </div>
+          <div class="energy-control">
+            <input id="inlineEnergy" data-energy-input type="range" min="1" max="10" step="1" value="${state.energy}" aria-label="Energy level">
+            <div class="range-marks" aria-hidden="true">
+              <span>1</span>
+              <span>3</span>
+              <span>5</span>
+              <span>8</span>
+              <span>10</span>
+            </div>
+          </div>
+          <button class="secondary-action energy-log-action" data-log-energy type="button">${icon("check")} Log energy</button>
+        </div>
+      </article>
     </section>
-    ${renderSpendingRhythmChart(currentMonth)}
-    ${renderCategoryBars({
-      title: "Top categories",
-      summary: topCategories.length ? `${topCategories[0].name} is the largest variable category this month.` : "Add expenses to see category patterns.",
-      items: topCategories,
-      total,
-      emptyText: "Add expenses to see category patterns."
-    })}
-    ${renderCategoryMovers(currentMonth)}
+  `;
+}
+
+function renderMoodHistory() {
+  const userMoodLogs = getUserMoodLogs();
+
+  return `
     <section class="section-block">
       <div class="section-heading">
-        <h2>Recent transactions</h2>
-        <span class="mini-label">${monthExpenses.length}</span>
+        <div>
+          <h2>Mood history</h2>
+          <p>User-created mood logs you can keep or remove.</p>
+        </div>
+        <span class="mini-label">${userMoodLogs.length} logs</span>
       </div>
-      <div class="date-groups">
-        ${Object.keys(grouped).length ? Object.entries(grouped).map(([date, items]) => `
-          <section class="date-group">
-            <p class="mini-label">${longDateFormat.format(parseDate(date))}</p>
-            <div class="expense-list">${items.map(renderExpenseRow).join("")}</div>
-          </section>
-        `).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>No spending recorded yet.</h2><p class="small-note">Use Add expense to capture a transaction in seconds.</p></article>`}
+      <div class="entry-list">
+        ${userMoodLogs.length ? userMoodLogs.slice(0, 8).map((log) => {
+          const moodLabel = getMoodLabel(log.mood);
+          return `
+            <article class="entry-row">
+              ${renderBadge(log.mood || "calm", moodLabel, "var(--brand)")}
+              <div>
+                <strong>${moodLabel}</strong>
+                <p>Energy ${log.energy}/10 - ${log.note || "Mood check-in"}</p>
+              </div>
+              <button class="icon-button inline-delete" data-delete-mood-log="${encodeURIComponent(getMoodLogKey(log))}" type="button" aria-label="Delete ${moodLabel} mood log" title="Delete mood log">×</button>
+            </article>
+          `;
+        }).join("") : `
+          <article class="insight-card">
+            <div class="habit-title">
+              ${renderBadge("heart", "No mood logs", "var(--brand)")}
+              <div>
+                <h3>No user mood logs yet</h3>
+                <p>Select a mood and tap the check button to create one.</p>
+              </div>
+            </div>
+          </article>
+        `}
       </div>
     </section>
   `;
 }
 
-function bindSpendingExpenses() {
-  document.querySelector("[data-toggle-expense-filters]")?.addEventListener("click", () => {
-    spendingExpenseFiltersOpen = !spendingExpenseFiltersOpen;
-    render();
+function renderMoodTrendChart() {
+  const userMoodLogs = getUserMoodLogs();
+  if (!userMoodLogs.length) return "";
+
+  const chartLogs = userMoodLogs.slice(0, 7).reverse();
+  const width = 300;
+  const height = 104;
+  const xStart = 52;
+  const yStart = 18;
+  const chartWidth = width - 68;
+  const chartHeight = height - 38;
+  const points = chartLogs.map((log, index) => {
+    const energy = Math.min(10, Math.max(1, Number(log.energy || 1)));
+    const x = chartLogs.length === 1 ? width / 2 : xStart + (index * chartWidth) / (chartLogs.length - 1);
+    const y = yStart + chartHeight - ((energy - 1) / 9) * chartHeight;
+    return { x, y, energy, mood: getMoodLabel(log.mood) };
   });
-  document.querySelectorAll("[data-expense-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedExpenseCategory = decodeCategoryDataset(button.dataset.expenseFilter);
-      spendingExpenseFiltersOpen = false;
-      render();
-    });
-  });
-  bindExpenseActions();
-}
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const latest = userMoodLogs[0];
+  const averageEnergy = Math.round(userMoodLogs.reduce((sum, log) => sum + Number(log.energy || 0), 0) / userMoodLogs.length);
+  const summary = userMoodLogs.length > 1
+    ? `${averageEnergy}/10 average energy across ${userMoodLogs.length} user mood logs.`
+    : "Add another mood log to see a trend line.";
 
-function renderExpenses() {
-  spendingMode = "expenses";
-  activeTab = "spending";
-  renderSpending();
-}
-
-function renderSpending() {
-  const isBills = spendingMode === "bills";
-  app.innerHTML = `
-    ${renderTopAppBar({
-      kicker: "Bills & expenses",
-      title: "Spending",
-      subtitle: isBills ? "Open bills, due dates, and committed cash." : "Variable spending, rhythm, and category movement."
-    })}
-    ${renderSpendingToggle()}
-    <section class="quick-actions spending-actions home-reveal" style="--delay: 40ms">
-      <button class="primary-action" ${isBills ? "data-open-bill-sheet" : "data-open-expense-sheet"} type="button">
-        ${icon("plus")} ${isBills ? "Add bill" : "Add expense"}
-      </button>
-    </section>
-    ${isBills ? renderSpendingBillsContent() : renderSpendingExpensesContent()}
-  `;
-
-  bindScreenActions();
-  document.querySelectorAll("[data-spending-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      spendingMode = button.dataset.spendingMode === "expenses" ? "expenses" : "bills";
-      render();
-    });
-  });
-  if (isBills) {
-    bindSpendingBills();
-  } else {
-    bindSpendingExpenses();
-  }
-}
-
-function getCalendarDays(key) {
-  const first = new Date(`${key}-01T12:00:00`);
-  const startOffset = first.getDay();
-  const gridStart = new Date(first);
-  gridStart.setDate(first.getDate() - startOffset);
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(gridStart);
-    date.setDate(gridStart.getDate() + index);
-    return toDateInputValue(date);
-  });
-}
-
-function renderCalendarDay(date) {
-  const key = monthKey(date);
-  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
-  const expensesForDay = expenses.filter((expense) => expense.date === date);
-  const totalOut = billsForDay.reduce((sum, bill) => sum + bill.amount, 0) + expensesForDay.reduce((sum, expense) => sum + expense.amount, 0);
-  const isCurrentMonth = key === visibleCalendarMonth;
   return `
-    <button class="calendar-day ${isCurrentMonth ? "" : "is-muted"} ${date === toDateInputValue(today) ? "is-today" : ""}" data-calendar-day="${date}" type="button">
-      <span>${parseDate(date).getDate()}</span>
-      ${renderPressureCalendarMarks(date)}
-      ${totalOut ? `<small>${money.format(totalOut)}</small>` : ""}
-    </button>
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <h2>Mood trend</h2>
+          <p>Energy across recent check-ins.</p>
+        </div>
+        <span class="state-pill is-success">${getMoodLabel(latest.mood)}</span>
+      </div>
+      <article class="chart-card">
+        <div class="chart-summary">
+          ${renderBadge(latest.mood || "calm", getMoodLabel(latest.mood), "var(--brand)")}
+          <div>
+            <strong>${summary}</strong>
+            <p>Latest check-in: ${getMoodLabel(latest.mood)} with ${latest.energy}/10 energy.</p>
+          </div>
+        </div>
+        <svg class="mood-trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mood energy trend chart">
+          <path class="chart-grid-line" d="M 52 20 H 284M 52 52 H 284M 52 84 H 284"/>
+          <g class="chart-axis-label">
+            <rect x="8" y="12" width="28" height="18" rx="6"/>
+            <text x="22" y="24">10</text>
+          </g>
+          <g class="chart-axis-label">
+            <rect x="8" y="44" width="28" height="18" rx="6"/>
+            <text x="22" y="56">5</text>
+          </g>
+          <g class="chart-axis-label">
+            <rect x="8" y="76" width="28" height="18" rx="6"/>
+            <text x="22" y="88">1</text>
+          </g>
+          ${points.length > 1 ? `<path class="chart-line" d="${path}"/>` : ""}
+          ${points.map((point) => `
+            <circle class="chart-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4.5">
+              <title>${point.mood}, energy ${point.energy}/10</title>
+            </circle>
+          `).join("")}
+        </svg>
+        <div class="chart-axis-labels" aria-hidden="true">
+          <span>Low</span>
+          <span>Energy</span>
+          <span>High</span>
+        </div>
+      </article>
+    </section>
   `;
 }
 
-function renderCalendar() {
-  const days = getCalendarDays(visibleCalendarMonth);
-  const dayBills = selectedCalendarDay ? bills.filter((bill) => bill.due === selectedCalendarDay && !bill.archived) : [];
-  const dayExpenses = selectedCalendarDay ? expenses.filter((expense) => expense.date === selectedCalendarDay) : [];
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar" })}
-    <section class="month-controls home-reveal" style="--delay: 20ms">
-      <button class="secondary-action" data-shift-calendar="-1" type="button">Previous</button>
-      <strong>${monthLabel(visibleCalendarMonth)}</strong>
-      <button class="secondary-action" data-shift-calendar="1" type="button">Next</button>
-    </section>
-    <section class="calendar-grid home-reveal" style="--delay: 40ms">
-      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<span class="calendar-weekday">${day}</span>`).join("")}
-      ${days.map(renderCalendarDay).join("")}
-    </section>
-    <section class="day-drawer home-reveal" style="--delay: 70ms">
+function renderEntries() {
+  return `
+    <section class="section-block">
       <div class="section-heading">
-        <h2>${selectedCalendarDay ? longDateFormat.format(parseDate(selectedCalendarDay)) : "Select a day"}</h2>
-        <button class="primary-action small drawer-add-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
+        <div>
+          <h2>Recent entries</h2>
+          <p>Latest activity.</p>
+        </div>
       </div>
-      ${selectedCalendarDay ? `
-        <div class="bill-list compact">${dayBills.map(renderBillListCard).join("") || `<p class="settings-copy">No bills due.</p>`}</div>
-        <div class="expense-list compact">${dayExpenses.map(renderExpenseRow).join("") || `<p class="settings-copy">No expenses recorded.</p>`}</div>
-      ` : `<p class="settings-copy">Tap a day to see bills, expenses, and quick actions.</p>`}
+      <div class="entry-list">
+        ${state.entries.slice(0, 5).map((entry) => {
+          const accent = habitPalette[entry.icon] || "var(--brand)";
+          return `
+            <article class="entry-row">
+              ${renderBadge(entry.icon, entry.title, accent)}
+              <div>
+                <strong>${entry.title}</strong>
+                <p>${entry.meta}</p>
+              </div>
+              <span class="entry-time">${entry.time}</span>
+            </article>
+          `;
+        }).join("")}
+      </div>
     </section>
   `;
-  bindScreenActions();
-  document.querySelectorAll("[data-shift-calendar]").forEach((button) => {
-    button.addEventListener("click", () => {
-      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, Number(button.dataset.shiftCalendar));
-      selectedCalendarDay = null;
-      saveState(false);
-      render();
-    });
-  });
-  document.querySelectorAll("[data-calendar-day]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedCalendarDay = button.dataset.calendarDay;
-      render();
-    });
-  });
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
-  bindExpenseActions();
-
-  // Swipe left/right on the calendar grid to navigate months.
-  (function attachCalendarSwipe() {
-    const grid = app.querySelector(".calendar-grid");
-    if (!grid) return;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    grid.addEventListener("touchstart", (event) => {
-      touchStartX = event.touches[0].clientX;
-      touchStartY = event.touches[0].clientY;
-    }, { passive: true });
-    grid.addEventListener("touchend", (event) => {
-      const dx = event.changedTouches[0].clientX - touchStartX;
-      const dy = event.changedTouches[0].clientY - touchStartY;
-      // Only act on predominantly horizontal swipes of at least 48px.
-      if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
-      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, dx < 0 ? 1 : -1);
-      selectedCalendarDay = null;
-      saveState(false);
-      render();
-    }, { passive: true });
-  })();
 }
 
 function renderInsights() {
-  const currentMonth = monthKey(toDateInputValue(today));
-  const analytics = getMonthAnalytics(currentMonth);
-  const comparison = getPreviousMonthComparison(currentMonth);
-  const projectedSeries = getProjectedBalanceSeries(30);
-  const spent = getExpenseTotal(currentMonth);
-  const unpaidBills = getUnpaidBillTotal(currentMonth);
-  const subscriptions = bills
-    .filter((bill) => bill.category === "Subscriptions" && !bill.archived && monthKey(bill.due) === currentMonth)
-    .reduce((sum, bill) => sum + bill.amount, 0);
-  const paidThisMonth = bills.filter((bill) => bill.paid && monthKey(bill.due) === currentMonth);
-  const totalThisMonth = bills.filter((bill) => monthKey(bill.due) === currentMonth);
-  const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
-  const top = topExpenseCategories(currentMonth, 5);
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Decision support", title: "Insights" })}
-    <section class="insight-grid home-reveal" style="--delay: 30ms">
-      ${renderKpiCard("Fixed bills open", money.format(unpaidBills), "unpaid this month")}
-      ${renderKpiCard("Variable spent", money.format(spent), monthLabel(currentMonth))}
-      ${renderKpiCard("Subscriptions", money.format(subscriptions), "this month")}
-      ${renderKpiCard("Paid rate", `${onTimeRate}%`, "bills this month", onTimeRate >= 75 ? "is-safe" : "is-alert")}
-    </section>
-    ${renderInsightHighlight(analytics, comparison)}
-    <div class="section-heading budget-heading home-reveal" style="--delay: 36ms">
-      <h2>Budget</h2>
-      <span class="mini-label">tap chart to adjust</span>
-    </div>
-    ${renderBudgetChart()}
-    ${renderSparklineChart({
-      title: analytics.safeToSpend < 0 ? "Upcoming pressure" : "Steady after bills",
-      summary: comparison.hasPrevious
-        ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
-        : "Not enough history yet for a month-over-month trend.",
-      series: projectedSeries,
-      tone: analytics.safeToSpend < 0 ? "is-overdue" : "is-paid"
-    })}
-    ${renderStackedBarChart({
-      title: "Fixed vs variable",
-      summary: "Open fixed bills and recorded variable expenses for the current month.",
-      parts: [
-        { label: "Fixed", amount: analytics.openBills, color: "var(--info)" },
-        { label: "Variable", amount: analytics.variableSpent, color: "var(--danger)" }
-      ]
-    })}
-    ${renderCategoryBars({
-      title: "Top spending categories",
-      summary: top.length ? `${top[0].name} contributes the most variable spend this month.` : "Add expenses to unlock spending insights.",
-      items: top,
-      total: spent,
-      emptyText: "Add expenses to unlock spending insights."
-    })}
-    ${renderCategoryMovers(currentMonth)}
-  `;
-  bindScreenActions();
-  bindBudgetCategorySelection();
-}
+  const userEntries = getUserEntries();
+  const userMoodLogs = getUserMoodLogs();
+  const userEnergyLogs = getUserEnergyLogs();
+  const userHabits = state.habits.filter(isUserHabit);
+  const completedEntries = userEntries.filter((entry) => entry.type === "habit" && (
+    entry.action === "complete" || entry.title?.toLowerCase().includes("completed")
+  ));
+  const insights = [];
 
-function renderHistoryBill(bill) {
-  return `
-    <div class="history-item">
-      <div>
-        <strong>${bill.name}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
-      </div>
-      <div>
-        <strong>${money.format(bill.amount)}</strong>
-        <span>${recordStatusText(bill)}</span>
-      </div>
-    </div>
-  `;
-}
-
-function renderArchivedBillRow(bill) {
-  return `
-    <div class="archived-item">
-      <div>
-        <strong>${bill.name}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
-      </div>
-      <button class="secondary-action" type="button" data-restore-bill="${bill.id}">Restore</button>
-    </div>
-  `;
-}
-
-function renderSettingsContent() {
-  const selected = getCategory(selectedBudgetCategory);
-  const months = getAvailableMonths();
-  const archivedBills = getArchivedBills();
-  if (!months.includes(selectedHistoryMonth)) selectedHistoryMonth = months[months.length - 1] || monthKey(toDateInputValue(today));
-  const summary = getMonthSummary(selectedHistoryMonth);
-  settingsContent.innerHTML = `
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Profile & Appearance</h3>
-        <span class="mini-label">local</span>
-      </div>
-      <div class="settings-profile-card">
-        <span class="profile-token settings-profile-token" aria-hidden="true"><span>M</span></span>
-        <div>
-          <strong>Marshall</strong>
-          <p class="settings-copy">Decorative local profile. No account or sync layer.</p>
-        </div>
-      </div>
-      <p class="settings-copy">Choose a matte light or dark appearance, or follow your device.</p>
-      <label>
-        <span>Theme</span>
-        <select id="themePreference">
-          <option value="system" ${settings.theme === "system" ? "selected" : ""}>System</option>
-          <option value="dark" ${settings.theme === "dark" ? "selected" : ""}>Dark</option>
-          <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
-          <option value="pastel" ${settings.theme === "pastel" ? "selected" : ""}>Pastel</option>
-        </select>
-      </label>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Cashflow</h3>
-        <span class="mini-label">safe spend</span>
-      </div>
-      <p class="settings-copy">Set a monthly starting balance and a cushion to power projected balance and safe-to-spend cards.</p>
-      <form id="cashflowForm" class="control-form">
-        <label>
-          <span>Monthly starting balance</span>
-          <input id="monthlyStartingBalance" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}" aria-label="Monthly starting balance">
-        </label>
-        <label>
-          <span>Safety buffer</span>
-          <input id="safeSpendBuffer" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.safeSpendBuffer)}" aria-label="Safe to spend buffer">
-        </label>
-        <button class="primary-action small" type="submit">Save cashflow</button>
-      </form>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Monthly history</h3>
-        <span class="mini-label">export</span>
-      </div>
-      <p class="settings-copy">Choose a month, review the record, then export it.</p>
-      <label class="history-select">
-        <span>Month</span>
-        <select id="historyMonth">
-          ${months.map((key) => `<option value="${key}" ${key === selectedHistoryMonth ? "selected" : ""}>${monthLabel(key)}</option>`).join("")}
-        </select>
-      </label>
-      <div class="history-summary">
-        <article>
-          <span>Total due</span>
-          <strong>${money.format(summary.total)}</strong>
-        </article>
-        <article>
-          <span>Paid</span>
-          <strong>${money.format(summary.paid)}</strong>
-        </article>
-        <article>
-          <span>Open</span>
-          <strong>${summary.unpaidItems.length}</strong>
-        </article>
-      </div>
-      <div class="history-list">
-        ${summary.items.slice(0, 6).map(renderHistoryBill).join("") || `<p class="settings-copy">No bills recorded for this month yet.</p>`}
-      </div>
-      <div class="export-actions">
-        <button class="primary-action small" id="exportPdf" type="button">Export PDF</button>
-        <button class="secondary-action" id="exportCsv" type="button">Export CSV</button>
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Reminders</h3>
-        <span class="mini-label">in-app</span>
-      </div>
-      <p class="settings-copy">Controls the due-soon status used across Upcoming, bill details, and local reminder checks.</p>
-      <form id="reminderForm" class="control-form">
-        <label>
-          <span>Reminder window</span>
-          <input id="reminderDays" inputmode="numeric" value="${settings.reminderDays}" aria-label="Reminder window in days">
-        </label>
-        <button class="primary-action small" type="submit">Save reminder</button>
-      </form>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Data & backup</h3>
-        <span class="mini-label">local</span>
-      </div>
-      <p class="settings-copy">Export a full backup for this device, or restore a backup file later.</p>
-      <div class="backup-actions">
-        <button class="secondary-action" id="exportBackup" type="button">Export backup</button>
-        <label class="file-action">
-          <input id="restoreBackup" type="file" accept="application/json,.json">
-          <span>Restore backup</span>
-        </label>
-      </div>
-      <div class="starter-actions">
-        <button class="secondary-action" id="clearStarterBills" type="button">Clear starter bills</button>
-        <button class="secondary-action" id="clearStarterCategories" type="button">Clear starter categories</button>
-        <button class="danger-action" id="clearStarterAll" type="button">Clear starter bills & categories</button>
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Archived bills</h3>
-        <span class="mini-label">${archivedBills.length}</span>
-      </div>
-      <p class="settings-copy">Archived bills stay out of triage, but you can restore them here.</p>
-      <div class="archived-list">
-        ${archivedBills.length ? archivedBills.map(renderArchivedBillRow).join("") : `<p class="settings-copy">No archived bills right now.</p>`}
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Budget categories</h3>
-        <span class="mini-label">active</span>
-      </div>
-      <p class="settings-copy">Adjust planned amounts, add a category, or remove one from your budget plan.</p>
-      <form id="editCategoryForm" class="control-form">
-        <label>
-          <span>Category</span>
-          <select id="editCategory">${categories.map((category) => `<option ${category.name === selected.name ? "selected" : ""}>${category.name}</option>`).join("")}</select>
-        </label>
-        <label>
-          <span>Planned amount</span>
-          <input id="editPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for selected category">
-        </label>
-        <div class="control-actions">
-          <button class="primary-action small" type="submit">Update</button>
-          <button class="secondary-action" id="removeCategory" type="button">Remove</button>
-        </div>
-      </form>
-      <form id="addCategoryForm" class="add-category-form">
-        <label>
-          <span>New category</span>
-          <input id="newCategoryName" autocomplete="off" placeholder="Emergency">
-        </label>
-        <label>
-          <span>Amount</span>
-          <input id="newCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
-        </label>
-        <button class="secondary-action add" type="submit">Add</button>
-      </form>
-    </section>
-  `;
-  setupAppearanceControls();
-  setupCashflowControls();
-  setupMonthlyHistory();
-  setupReminderSettings();
-  setupBackupControls();
-  setupStarterClearControls();
-  setupArchivedControls();
-  setupBudgetControls();
-}
-
-function sheetMotionDuration() {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? 0 : SHEET_TRANSITION_MS;
-}
-
-function clearSheetTimer(element) {
-  const timer = sheetTimers.get(element);
-  if (timer) {
-    window.clearTimeout(timer);
-    sheetTimers.delete(element);
+  if (completedEntries.length) {
+    const completedCounts = completedEntries.reduce((counts, entry) => {
+      const key = entry.habitName || entry.title.replace(/\s+completed$/i, "");
+      counts.set(key, (counts.get(key) || 0) + 1);
+      return counts;
+    }, new Map());
+    const [habitName, count] = [...completedCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+    const habit = state.habits.find((item) => item.name === habitName) || state.habits.find((item) => item.id === completedEntries[0].habitId);
+    insights.push({
+      title: "Most completed",
+      text: `${habitName} has ${count} user completion${count === 1 ? "" : "s"} logged locally.`,
+      iconName: habit?.icon || completedEntries[0].icon || "check"
+    });
   }
+
+  const openUserHabits = userHabits.filter((habit) => habit.status !== "done");
+  if (openUserHabits.length) {
+    const missed = openUserHabits.find((habit) => habit.status === "missed") || openUserHabits[0];
+    insights.push({
+      title: missed.status === "missed" ? "Needs attention" : "Still due",
+      text: `${missed.name} is ${missed.status === "missed" ? "missed" : "still open"} with a ${missed.streak} day streak recorded.`,
+      iconName: missed.icon
+    });
+  }
+
+  if (userMoodLogs.length || userEnergyLogs.length) {
+    const energyLogs = [...userEnergyLogs, ...userMoodLogs];
+    const averageEnergy = Math.round(energyLogs.reduce((sum, log) => sum + Number(log.energy || 0), 0) / energyLogs.length);
+    const latestMood = userMoodLogs[0];
+    insights.push({
+      title: "Energy average",
+      text: `${averageEnergy}/10 across ${energyLogs.length} user energy check-in${energyLogs.length === 1 ? "" : "s"}${latestMood ? `; latest mood is ${getMoodLabel(latestMood.mood).toLowerCase()}.` : "."}`,
+      iconName: latestMood?.mood || "energized"
+    });
+  }
+
+  if (userMoodLogs.length >= 2) {
+    const latest = getMoodScore(userMoodLogs[0].mood);
+    const previousAverage = userMoodLogs.slice(1).reduce((sum, log) => sum + getMoodScore(log.mood), 0) / (userMoodLogs.length - 1);
+    const trend = latest > previousAverage + 0.5 ? "rising" : latest < previousAverage - 0.5 ? "lower" : "steady";
+    insights.push({
+      title: "Mood trend",
+      text: `Your user-entered mood trend is ${trend} based on ${userMoodLogs.length} mood check-ins.`,
+      iconName: userMoodLogs[0].mood || "calm"
+    });
+  }
+
+  return `
+    <section class="section-block" id="patterns">
+      <div class="section-heading">
+        <div>
+          <h2>Patterns</h2>
+          <p>Signals from your own logs.</p>
+        </div>
+      </div>
+      <div class="insight-list">
+        ${insights.length ? insights.map(({ title, text, iconName }) => `
+          <article class="insight-card">
+            <div class="habit-title">
+              ${renderBadge(iconName, title, habitPalette[iconName] || "var(--brand)")}
+              <div>
+                <h3>${title}</h3>
+                <p>${text}</p>
+              </div>
+            </div>
+          </article>
+        `).join("") : `
+          <article class="insight-card">
+            <div class="habit-title">
+              ${renderBadge("note", "Not enough user data", "var(--brand)")}
+              <div>
+                <h3>Log a mood or complete a habit</h3>
+                <p>Patterns will unlock after you add your own habit completions or mood check-ins.</p>
+              </div>
+            </div>
+          </article>
+        `}
+      </div>
+    </section>
+  `;
 }
 
-function visibleSheetCount() {
-  return [sheet, settingsSheet, actionSheet, expenseSheet]
-    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
-    .length;
+function renderWeeklyView() {
+  const userEntries = getUserEntries();
+  const userMoodLogs = getUserMoodLogs();
+  const userEnergyLogs = getUserEnergyLogs();
+  const userActivityCount = userEntries.length + userMoodLogs.length + userEnergyLogs.length;
+  const completionCount = userEntries.filter((entry) => entry.type === "habit" && (
+    entry.action === "complete" || entry.title?.toLowerCase().includes("completed")
+  )).length;
+  const energyLogs = [...userMoodLogs, ...userEnergyLogs];
+  const averageEnergy = energyLogs.length
+    ? Math.round(energyLogs.reduce((sum, log) => sum + Number(log.energy || 0), 0) / energyLogs.length)
+    : 0;
+  const score = Math.min(100, Math.round(((completionCount * 12) + (userMoodLogs.length * 10) + (userEnergyLogs.length * 6) + (averageEnergy * 4))));
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => [
+    day,
+    userActivityCount && index < Math.min(7, userActivityCount) ? "is-ok" : "is-empty"
+  ]);
+  const summary = userActivityCount
+    ? `${completionCount} habit completion${completionCount === 1 ? "" : "s"}, ${userMoodLogs.length} mood log${userMoodLogs.length === 1 ? "" : "s"}, and ${userEnergyLogs.length} energy check-in${userEnergyLogs.length === 1 ? "" : "s"} are shaping this local weekly view.`
+    : "Not enough user activity yet. Log a mood or complete a habit to build a real weekly view.";
+
+  return `
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <h2>Weekly view</h2>
+          <p>Local consistency this week.</p>
+        </div>
+        <span class="mini-label">${userActivityCount ? `${score}%` : "No data"}</span>
+      </div>
+      <article class="weekly-card">
+        <p>${summary}</p>
+        <div class="week-grid" aria-label="Weekly consistency">
+          ${days.map(([day, klass]) => `
+            <div class="week-day ${klass}">
+              <span>${day}</span>
+              <i class="week-dot" aria-hidden="true"></i>
+            </div>
+          `).join("")}
+        </div>
+      </article>
+    </section>
+  `;
 }
 
-function showBackdrop() {
-  clearSheetTimer(backdrop);
-  document.body.classList.add("sheet-zoom-active");
-  backdrop.hidden = false;
-  backdrop.classList.remove("is-closing");
-  window.requestAnimationFrame(() => backdrop.classList.add("is-open"));
+function renderTodayPage() {
+  return `
+    ${renderQuickActions()}
+    ${renderRabbitCoach()}
+    ${renderEntries()}
+  `;
 }
 
-function hideBackdropIfIdle() {
-  if (visibleSheetCount()) return;
-  clearSheetTimer(backdrop);
-  backdrop.classList.remove("is-open");
-  backdrop.classList.add("is-closing");
-  const timer = window.setTimeout(() => {
-    backdrop.hidden = true;
-    backdrop.classList.remove("is-closing");
-    document.body.classList.remove("sheet-zoom-active");
-    sheetTimers.delete(backdrop);
-  }, sheetMotionDuration());
-  sheetTimers.set(backdrop, timer);
+function renderHabitsPage() {
+  return `
+    ${renderPageAction("habit")}
+    ${renderHabits()}
+  `;
 }
 
-function resolveFocusTarget(target) {
-  return typeof target === "function" ? target() : target;
+function renderMoodPage() {
+  return `
+    ${renderMoodSection()}
+    ${renderMoodHistory()}
+  `;
 }
 
-function openModalSheet(element, { focusTarget = null } = {}) {
-  clearSheetTimer(element);
-  showBackdrop();
-  element.hidden = false;
-  element.classList.remove("is-closing", "is-open");
-  element.classList.add("is-opening");
+function renderPatternsPage() {
+  return `
+    ${renderKpis()}
+    <div class="dashboard-grid">
+      <div>
+        ${renderAttention()}
+        ${renderInsights()}
+        ${renderMoodTrendChart()}
+      </div>
+      <div>
+        ${renderWeeklyView()}
+      </div>
+    </div>
+  `;
+}
 
-  window.requestAnimationFrame(() => {
-    element.classList.add("is-open");
-    const timer = window.setTimeout(() => {
-      element.classList.remove("is-opening");
-      sheetTimers.delete(element);
-      resolveFocusTarget(focusTarget)?.focus?.({ preventScroll: true });
-    }, sheetMotionDuration());
-    sheetTimers.set(element, timer);
+function renderPageContent() {
+  if (activePage === "habits") return renderHabitsPage();
+  if (activePage === "mood") return renderMoodPage();
+  if (activePage === "patterns") return renderPatternsPage();
+  return renderTodayPage();
+}
+
+function updateActiveTab() {
+  tabButtons.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.page === activePage);
   });
 }
 
-function closeModalSheet(element, { afterClose = null, restoreFocus = true } = {}) {
-  if (element.hidden && !element.classList.contains("is-open")) {
-    afterClose?.();
-    hideBackdropIfIdle();
+function renderApp() {
+  const resolvedTheme = getResolvedTheme();
+  state.theme = resolvedTheme;
+  root.dataset.theme = resolvedTheme;
+  themeMeta?.setAttribute("content", resolvedTheme === "dark" ? "#121313" : "#f4efe5");
+  app.classList.remove("is-entering");
+  app.innerHTML = `
+    ${renderTopbar()}
+    ${renderPageContent()}
+  `;
+  updateActiveTab();
+  updateThemeModeControls();
+  bindAppEvents();
+  runPageEnterAnimation();
+}
+
+function runPageEnterAnimation() {
+  if (reducedMotionQuery.matches) return;
+  void app.offsetWidth;
+  window.requestAnimationFrame(() => {
+    app.classList.add("is-entering");
+  });
+}
+
+function bindAppEvents() {
+  app.querySelectorAll("[data-open-habit]").forEach((button) => {
+    button.addEventListener("click", () => openHabitSheet());
+  });
+  app.querySelectorAll("[data-open-mood]").forEach((button) => {
+    button.addEventListener("click", () => openMoodSheet());
+  });
+  app.querySelectorAll("[data-open-settings]").forEach((button) => {
+    button.addEventListener("click", () => openSheet(settingsSheet));
+  });
+  app.querySelectorAll("[data-complete-habit]").forEach((button) => {
+    button.addEventListener("click", () => completeHabit(Number(button.dataset.completeHabit)));
+  });
+  app.querySelectorAll("[data-undo-habit]").forEach((button) => {
+    button.addEventListener("click", () => undoHabit(Number(button.dataset.undoHabit)));
+  });
+  app.querySelectorAll("[data-edit-habit]").forEach((button) => {
+    button.addEventListener("click", () => openHabitSheet(getHabitById(button.dataset.editHabit)));
+  });
+  app.querySelectorAll("[data-delete-habit]").forEach((button) => {
+    button.addEventListener("click", () => deleteHabit(button.dataset.deleteHabit));
+  });
+  app.querySelectorAll("[data-select-mood]").forEach((button) => {
+    button.addEventListener("click", () => selectMood(button.dataset.selectMood));
+  });
+  app.querySelector("[data-lock-mood]")?.addEventListener("click", lockSelectedMood);
+  app.querySelector("[data-energy-input]")?.addEventListener("input", (event) => updateInlineEnergy(event.currentTarget));
+  app.querySelector("[data-log-energy]")?.addEventListener("click", logEnergyFromInput);
+  app.querySelectorAll("[data-delete-mood-log]").forEach((button) => {
+    button.addEventListener("click", () => deleteMoodLog(decodeURIComponent(button.dataset.deleteMoodLog)));
+  });
+}
+
+function openHabitSheet(habit = null) {
+  const title = habitSheet.querySelector("#habitSheetTitle");
+  const eyebrow = habitSheet.querySelector(".eyebrow");
+  const submit = habitForm.querySelector("button[type='submit']");
+
+  editingHabitId = habit?.id || null;
+  habitForm.reset();
+
+  if (habit) {
+    title.textContent = "Edit habit";
+    eyebrow.textContent = "Routine details";
+    submit.textContent = "Save habit";
+    habitForm.elements.name.value = habit.name || "";
+    habitForm.elements.category.value = habit.category || "Body";
+    habitForm.elements.icon.value = habit.icon || "stretching";
+    habitForm.elements.frequency.value = habit.frequency || "Daily";
+    habitForm.elements.due.value = habit.due || "Today";
+    habitForm.elements.streak.value = Number(habit.streak || 0);
+    habitForm.elements.status.value = habit.status || "due";
+  } else {
+    title.textContent = "Add habit";
+    eyebrow.textContent = "New routine";
+    submit.textContent = "Add habit";
+    habitForm.elements.category.value = "Body";
+    habitForm.elements.icon.value = "stretching";
+    habitForm.elements.frequency.value = "Daily";
+    habitForm.elements.due.value = "Today";
+    habitForm.elements.streak.value = 0;
+    habitForm.elements.status.value = "due";
+  }
+
+  openSheet(habitSheet);
+}
+
+function openMoodSheet() {
+  document.querySelector("#sheetMoodPicker").innerHTML = renderMoodPicker();
+  moodEnergy.value = state.energy;
+  updateMoodEnergyValue();
+  document.querySelectorAll("#sheetMoodPicker [data-select-mood]").forEach((button) => {
+    button.addEventListener("click", () => selectSheetMood(button.dataset.selectMood));
+  });
+  openSheet(moodSheet);
+}
+
+function selectSheetMood(mood) {
+  state.selectedMood = mood;
+  document.querySelector("#sheetMoodPicker").innerHTML = renderMoodPicker();
+  document.querySelectorAll("#sheetMoodPicker [data-select-mood]").forEach((button) => {
+    button.addEventListener("click", () => selectSheetMood(button.dataset.selectMood));
+  });
+}
+
+function updateMoodEnergyValue() {
+  moodEnergyValue.value = `${moodEnergy.value}/10`;
+}
+
+function openSheet(sheet) {
+  window.clearTimeout(sheetCloseTimer);
+  [habitSheet, moodSheet, settingsSheet].forEach((item) => {
+    if (item !== sheet) {
+      item.hidden = true;
+      item.classList.remove("is-open", "is-closing");
+    }
+  });
+  backdrop.classList.remove("is-closing");
+  sheet.classList.remove("is-closing");
+  backdrop.hidden = false;
+  sheet.hidden = false;
+  updateThemeModeControls();
+
+  if (reducedMotionQuery.matches) {
+    backdrop.classList.add("is-open");
+    sheet.classList.add("is-open");
     return;
   }
-  clearSheetTimer(element);
-  element.classList.remove("is-opening", "is-open");
-  element.classList.add("is-closing");
-  const timer = window.setTimeout(() => {
-    element.hidden = true;
-    element.classList.remove("is-closing");
-    sheetTimers.delete(element);
-    afterClose?.();
-    hideBackdropIfIdle();
-    if (restoreFocus) lastTrigger?.focus?.({ preventScroll: true });
-  }, sheetMotionDuration());
-  sheetTimers.set(element, timer);
-}
 
-function visibleComposeCount() {
-  return [sheet, expenseSheet]
-    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
-    .length;
-}
-
-function openComposeModal(element, { focusTarget = null } = {}) {
-  document.body.classList.add("compose-active");
-  openModalSheet(element, { focusTarget });
-}
-
-function closeComposeModal(element, { afterClose = null, restoreFocus = true } = {}) {
-  closeModalSheet(element, {
-    restoreFocus,
-    afterClose: () => {
-      afterClose?.();
-      if (!visibleComposeCount()) document.body.classList.remove("compose-active");
-    }
+  window.requestAnimationFrame(() => {
+    backdrop.classList.add("is-open");
+    sheet.classList.add("is-open");
   });
 }
 
-function openSheet(billId = null) {
-  lastTrigger = document.activeElement;
-  editingBillId = billId;
-  const bill = getBillById(billId);
-  sheet.querySelector(".eyebrow").textContent = bill ? "Edit reminder" : "New reminder";
-  document.querySelector("#sheetTitle").textContent = bill ? "Edit bill" : "Add a bill";
-  billForm.querySelector(".primary-action").textContent = bill ? "Save changes" : "Add to Upcoming";
-  deleteBillButton.hidden = !bill;
-  paidRow.hidden = !bill;
-  if (bill) {
-    billName.value = bill.name;
-    billAmount.value = formatMoneyInput(bill.amount);
-    billDate.value = bill.due;
-    syncBillCategoryOptions(bill.category);
-    billRepeat.value = bill.repeat || "none";
-    propertyTaxPlan.value = bill.propertyTaxPlan || "full";
-    billPaid.checked = Boolean(bill.paid);
-  } else {
-    billForm.reset();
-    syncBillCategoryOptions();
-    billDate.value = toDateInputValue(today);
-    billRepeat.value = "none";
-    propertyTaxPlan.value = "full";
-    billPaid.checked = false;
+function closeSheets() {
+  const visibleSheets = [habitSheet, moodSheet, settingsSheet].filter((sheet) => !sheet.hidden);
+
+  if (!visibleSheets.length) {
+    editingHabitId = null;
+    return;
   }
-  updatePropertyTaxPlanVisibility();
-  openComposeModal(sheet, { focusTarget: billName });
-}
 
-function closeSheet() {
-  closeComposeModal(sheet, {
-    afterClose: () => {
-      billForm.reset();
-      editingBillId = null;
-      deleteBillButton.hidden = true;
-      paidRow.hidden = true;
-      sheet.querySelector(".eyebrow").textContent = "New reminder";
-      document.querySelector("#sheetTitle").textContent = "Add a bill";
-      billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
-    }
-  });
-}
-
-function syncExpenseCategoryOptions(preferred = expenseCategory.value) {
-  expenseCategories = normalizeExpenseCategories(expenseCategories);
-  const fallback = expenseCategories[0] || defaultCategory().name;
-  expenseCategory.innerHTML = expenseCategories.map((category) => `<option>${category}</option>`).join("");
-  expenseCategory.value = expenseCategories.includes(preferred) ? preferred : fallback;
-  expenseSource.innerHTML = settings.cashflow.paymentSources.map((source) => `<option>${source}</option>`).join("");
-}
-
-function openExpenseSheet({ keepValues = false } = {}) {
-  lastTrigger = document.activeElement;
-  if (!keepValues) {
-    expenseForm.reset();
-    expenseDate.value = selectedCalendarDay || toDateInputValue(today);
+  if (reducedMotionQuery.matches) {
+    backdrop.hidden = true;
+    backdrop.classList.remove("is-open", "is-closing");
+    visibleSheets.forEach((sheet) => {
+      sheet.hidden = true;
+      sheet.classList.remove("is-open", "is-closing");
+    });
+    editingHabitId = null;
+    return;
   }
-  syncExpenseCategoryOptions(selectedExpenseCategory === "All" ? undefined : selectedExpenseCategory);
-  openComposeModal(expenseSheet, { focusTarget: expenseAmount });
-}
 
-function closeExpenseSheet() {
-  closeComposeModal(expenseSheet, {
-    afterClose: () => expenseForm.reset()
+  window.clearTimeout(sheetCloseTimer);
+  backdrop.classList.remove("is-open");
+  backdrop.classList.add("is-closing");
+  visibleSheets.forEach((sheet) => {
+    sheet.classList.remove("is-open");
+    sheet.classList.add("is-closing");
   });
-}
 
-function openSettingsSheet() {
-  lastTrigger = document.activeElement;
-  renderSettingsContent();
-  openModalSheet(settingsSheet);
-}
-
-function closeSettingsSheet() {
-  closeModalSheet(settingsSheet);
-}
-
-function openSnoozeSheet(billId) {
-  const bill = getBillById(billId);
-  if (!bill) return;
-  actionBillId = billId;
-  lastTrigger = document.activeElement;
-  actionSheetTitle.textContent = "Snooze bill";
-  actionSheetContent.innerHTML = `
-    <section class="action-group">
-      <button class="sheet-choice" type="button" data-snooze-offset="1">Tomorrow</button>
-      <button class="sheet-choice" type="button" data-snooze-offset="3">3 days</button>
-      <button class="sheet-choice" type="button" data-snooze-offset="7">1 week</button>
-    </section>
-    <form id="pickSnoozeDate" class="action-form">
-      <label>
-        <span>Pick date</span>
-        <input id="customSnoozeDate" type="date" value="${bill.due}" min="${toDateInputValue(today)}">
-      </label>
-      <button class="primary-action small" type="submit">Apply date</button>
-    </form>
-  `;
-  openModalSheet(actionSheet, { focusTarget: () => actionSheet.querySelector("[data-snooze-offset]") });
-  actionSheet.querySelectorAll("[data-snooze-offset]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextDate = parseDate(bill.due);
-      nextDate.setDate(nextDate.getDate() + Number(button.dataset.snoozeOffset));
-      snoozeBill(billId, toDateInputValue(nextDate));
+  sheetCloseTimer = window.setTimeout(() => {
+    backdrop.hidden = true;
+    backdrop.classList.remove("is-closing");
+    visibleSheets.forEach((sheet) => {
+      sheet.hidden = true;
+      sheet.classList.remove("is-closing");
     });
-  });
-  document.querySelector("#pickSnoozeDate").addEventListener("submit", (event) => {
-    event.preventDefault();
-    snoozeBill(billId, document.querySelector("#customSnoozeDate").value);
-  });
+  }, 220);
+
+  editingHabitId = null;
 }
 
-function updateCategoryPlan(name, plannedValue) {
-  const selected = getCategory(name);
-  selected.planned = cleanAmount(plannedValue);
-  selectedBudgetCategory = selected.name;
-  syncBillCategoryOptions(selected.name);
+function closeSheetsImmediately() {
+  window.clearTimeout(sheetCloseTimer);
+  backdrop.hidden = true;
+  backdrop.classList.remove("is-open", "is-closing");
+  [habitSheet, moodSheet, settingsSheet].forEach((sheet) => {
+    sheet.hidden = true;
+    sheet.classList.remove("is-open", "is-closing");
+  });
+  editingHabitId = null;
+}
+
+function toggleTheme() {
+  setThemeMode(getResolvedTheme() === "dark" ? "light" : "dark");
+}
+
+function completeHabit(id) {
+  const habit = state.habits.find((item) => item.id === id);
+  if (!habit) return;
+  const createdAt = new Date().toISOString();
+  habit.status = "done";
+  habit.streak += 1;
+  habit.last = "Completed today";
+  recentlyChangedHabit = { id: habit.id, tone: "success" };
+  state.entries.unshift({
+    id: Date.now(),
+    source: "user",
+    action: "complete",
+    habitId: habit.id,
+    habitName: habit.name,
+    createdAt,
+    type: "habit",
+    icon: habit.icon,
+    title: `${habit.name} completed`,
+    meta: `${habit.category} - ${habit.streak} day streak`,
+    time: "Just now"
+  });
   saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return selected;
+  renderApp();
+  clearHabitFeedback();
+  showToast(`${habit.name} marked complete`, "success");
 }
 
-function removeCategoryByName(name) {
-  if (categories.length <= 1) return null;
-  const snapshot = snapshotForUndo();
-  const index = categories.findIndex((category) => category.name === name);
-  if (index < 0) return null;
-  const removedName = categories[index].name;
-  categories.splice(index, 1);
-  selectedBudgetCategory = categories[Math.max(0, index - 1)]?.name || defaultCategory().name;
-  ensureCategorySafety();
-  syncBillCategoryOptions(selectedBudgetCategory);
+function undoHabit(id) {
+  const habit = state.habits.find((item) => item.id === id);
+  if (!habit) return;
+  habit.status = "due";
+  habit.streak = Math.max(0, habit.streak - 1);
+  habit.last = "Due today";
+  recentlyChangedHabit = { id: habit.id, tone: "neutral" };
   saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return { snapshot, removedName };
+  renderApp();
+  clearHabitFeedback();
+  showToast(`${habit.name} moved back to due`, "neutral");
 }
 
-function addCategoryByName(name, plannedValue) {
-  const trimmed = name.trim();
-  if (!trimmed) return { error: "Enter a category name." };
-  if (categories.some((category) => category.name.toLowerCase() === trimmed.toLowerCase())) {
-    return { error: `${trimmed} already exists.` };
-  }
-  categories.push({
-    name: trimmed,
-    color: categoryColors[categories.length % categoryColors.length],
-    planned: cleanAmount(plannedValue),
-    assigned: 0
+function deleteHabit(id) {
+  const habit = getHabitById(id);
+  if (!habit) return;
+
+  const confirmed = window.confirm(`Delete ${habit.name}? This removes the habit and its local habit entries, but keeps mood logs.`);
+  if (!confirmed) return;
+
+  state.habits = state.habits.filter((item) => String(item.id) !== String(id));
+  state.entries = state.entries.filter((entry) => {
+    const entryTitle = String(entry.title || "").toLowerCase();
+    const habitName = String(habit.name || "").toLowerCase();
+    return String(entry.habitId) !== String(id)
+      && entry.habitName !== habit.name
+      && !entryTitle.startsWith(habitName);
   });
-  if (!expenseCategories.includes(trimmed)) expenseCategories.push(trimmed);
-  selectedBudgetCategory = trimmed;
-  syncBillCategoryOptions(trimmed);
   saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return { name: trimmed };
+  renderApp();
+  showToast(`${habit.name} deleted`);
 }
 
-function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
-  const selected = getCategory(categoryName);
-  if (!selected) return;
-  selectedBudgetCategory = selected.name;
-  lastTrigger = document.activeElement;
-  actionSheetTitle.textContent = selected.name;
-  actionSheetContent.innerHTML = `
-    <section class="action-panel-copy">
-      <p class="settings-copy">Adjust the current category without leaving Budget.</p>
-    </section>
-    <form id="budgetCategorySheetForm" class="action-form">
-      <label>
-        <span>Planned amount</span>
-        <input id="budgetCategoryPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for ${selected.name}">
-      </label>
-      <div class="control-actions">
-        <button class="primary-action small" type="submit">Update</button>
-        <button class="secondary-action" id="budgetCategoryRemove" type="button">Remove</button>
-      </div>
-    </form>
-    <form id="budgetCategoryAddForm" class="action-form">
-      <label>
-        <span>New category</span>
-        <input id="budgetCategoryName" autocomplete="off" placeholder="Emergency">
-      </label>
-      <label>
-        <span>Planned amount</span>
-        <input id="budgetCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
-      </label>
-      <button class="secondary-action" type="submit">Add category</button>
-    </form>
-  `;
-  openModalSheet(actionSheet, { focusTarget: () => document.querySelector("#budgetCategoryPlanned") });
+function deleteMoodLog(key) {
+  const log = state.moodLogs.find((item) => getMoodLogKey(item) === key);
+  if (!log) return;
 
-  document.querySelector("#budgetCategorySheetForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const updated = updateCategoryPlan(selected.name, document.querySelector("#budgetCategoryPlanned").value);
-    closeActionSheet(false);
-    showToast(`${updated.name} plan updated.`);
+  const confirmed = window.confirm(`Delete this ${getMoodLabel(log.mood).toLowerCase()} mood log?`);
+  if (!confirmed) return;
+
+  state.moodLogs = state.moodLogs.filter((item) => getMoodLogKey(item) !== key);
+  state.entries = state.entries.filter((entry) => {
+    return !(entry.type === "mood" && entry.createdAt === key);
   });
+  saveState();
+  renderApp();
+  showToast("Mood log deleted");
+}
 
-  document.querySelector("#budgetCategoryRemove").addEventListener("click", () => {
-    const removed = removeCategoryByName(selected.name);
-    if (!removed) return;
-    closeActionSheet(false);
-    showToast(`${removed.removedName} removed.`, {
-      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
-    });
-  });
+function selectMood(moodId) {
+  const mood = moods.find((item) => item.id === moodId);
+  if (!mood) return;
+  state.selectedMood = moodId;
+  saveState();
+  renderApp();
+  showToast(`${mood.label} selected`);
+}
 
-  document.querySelector("#budgetCategoryAddForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const result = addCategoryByName(
-      document.querySelector("#budgetCategoryName").value,
-      document.querySelector("#budgetCategoryAmount").value
-    );
-    if (result.error) {
-      showToast(result.error);
-      return;
-    }
-    closeActionSheet(false);
-    showToast(`${result.name} category added.`);
+function createMoodLog({ mood, energy, note }) {
+  const createdAt = new Date().toISOString();
+  state.energy = energy;
+  state.selectedMood = mood.id;
+  state.moodLogs.unshift({ mood: mood.id, energy, date: "Today", note, source: "user", createdAt });
+  state.entries.unshift({
+    id: Date.now(),
+    source: "user",
+    action: "mood",
+    createdAt,
+    type: "mood",
+    icon: mood.id,
+    title: `Mood logged as ${mood.label.toLowerCase()}`,
+    meta: `Energy ${energy}/10 - ${note}`,
+    time: "Just now"
   });
 }
 
-function closeActionSheet(restoreFocus = true) {
-  closeModalSheet(actionSheet, {
-    restoreFocus,
-    afterClose: () => {
-      actionBillId = null;
-      actionSheetTitle.textContent = "Quick action";
-      actionSheetContent.innerHTML = "";
-    }
+function lockSelectedMood() {
+  const mood = moods.find((item) => item.id === state.selectedMood) || moods[0];
+  createMoodLog({ mood, energy: state.energy, note: "Quick mood check-in" });
+  saveState();
+  renderApp();
+  showToast(`${mood.label} logged`, "success");
+}
+
+function updateInlineEnergy(input) {
+  const energy = Math.min(10, Math.max(1, Number(input.value || state.energy || 1)));
+  const output = app.querySelector("[data-energy-output]");
+  const heading = app.querySelector("[data-energy-heading]");
+
+  if (output) output.textContent = `${energy}/10`;
+  if (heading) heading.textContent = `${energy}/10 energy`;
+}
+
+function createEnergyLog(energy) {
+  const createdAt = new Date().toISOString();
+  state.energy = energy;
+  state.energyLogs = state.energyLogs || [];
+  state.energyLogs.unshift({ id: Date.now(), energy, date: "Today", note: "Energy check-in", source: "user", createdAt });
+  state.entries.unshift({
+    id: Date.now() + 1,
+    source: "user",
+    action: "energy",
+    createdAt,
+    type: "energy",
+    icon: "energized",
+    title: "Energy logged",
+    meta: `Energy ${energy}/10`,
+    time: "Just now"
   });
 }
 
-function closeAllSheets() {
-  if (!sheet.hidden) closeSheet();
-  if (!settingsSheet.hidden) closeSettingsSheet();
-  if (!actionSheet.hidden) closeActionSheet(false);
-  if (!expenseSheet.hidden) closeExpenseSheet();
-  hideBackdropIfIdle();
+function logEnergyFromInput() {
+  const input = app.querySelector("[data-energy-input]");
+  const energy = Math.min(10, Math.max(1, Number(input?.value || state.energy || 1)));
+  createEnergyLog(energy);
+  saveState();
+  renderApp();
+  showToast("Energy logged", "success");
 }
 
-function activeSheet() {
-  if (!actionSheet.hidden) return actionSheet;
-  if (!expenseSheet.hidden) return expenseSheet;
-  if (!settingsSheet.hidden) return settingsSheet;
-  if (!sheet.hidden) return sheet;
-  return null;
-}
-
-function syncBillCategoryOptions(preferred = billCategory.value) {
-  const fallback = categories[0]?.name || "";
-  billCategory.innerHTML = categories.map((category) => `<option>${category.name}</option>`).join("");
-  billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
-}
-
-function updatePropertyTaxPlanVisibility() {
-  propertyTaxPlanRow.hidden = !isPropertyTaxBill({ name: billName.value, category: billCategory.value });
-}
-
-function toggleThemePreference() {
-  const themes = ["dark", "light", "pastel"];
-  const current = resolvedTheme();
-  const nextTheme = themes[(themes.indexOf(current) + 1) % themes.length];
-  settings.theme = nextTheme;
-  applyTheme();
-  saveState(false);
-  const themeLabels = { dark: "Dark", light: "Light", pastel: "Pastel" };
-  showToast(`${themeLabels[nextTheme] ?? nextTheme} theme applied.`);
-}
-
-function bindScreenActions() {
-  document.querySelectorAll("[data-open-bill-sheet]").forEach((button) => {
-    button.addEventListener("click", () => openSheet());
-  });
-  document.querySelectorAll("[data-open-expense-sheet]").forEach((button) => {
-    button.addEventListener("click", () => openExpenseSheet());
-  });
-  document.querySelectorAll("[data-open-settings]").forEach((button) => {
-    button.addEventListener("click", openSettingsSheet);
-  });
-  document.querySelectorAll("[data-toggle-theme]").forEach((button) => {
-    button.addEventListener("click", toggleThemePreference);
-  });
-}
-
-function bindBillOpenButtons() {
-  document.querySelectorAll("[data-open-bill]").forEach((card) => {
-    const open = () => openBillDetail(Number(card.dataset.openBill));
-    card.addEventListener("click", open);
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        open();
-      }
-    });
-  });
-}
-
-function bindBillSecondaryActions() {
-  document.querySelectorAll("[data-edit-bill]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openSheet(Number(button.dataset.editBill));
-    });
-  });
-  document.querySelectorAll("[data-snooze-bill]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openSnoozeSheet(Number(button.dataset.snoozeBill));
-    });
-  });
-}
-
-function bindPaidButtons() {
-  document.querySelectorAll("[data-paid]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      markBillPaid(Number(button.dataset.paid));
-    });
-  });
-}
-
-function exportRows(key) {
-  const billsForMonth = getMonthBills(key);
-  const billRows = billsForMonth.map((bill) => [
-    "Bill",
-    monthLabel(key),
-    bill.name,
-    bill.category,
-    bill.due,
-    bill.amount,
-    recordStatusText(bill),
-    "",
-    "",
-    "",
-    bill.archived ? "Archived from daily triage" : ""
-  ]);
-  const categoryRows = categories.map((category) => [
-    "Category",
-    monthLabel(key),
-    category.name,
-    category.name,
-    "",
-    "",
-    "",
-    category.planned,
-    category.assigned,
-    Math.max(category.planned - category.assigned, 0),
-    "Current category plan snapshot"
-  ]);
-  return [...billRows, ...categoryRows];
-}
-
-function exportCsv(key) {
-  const header = ["Record Type", "Month", "Name", "Category", "Due Date", "Amount JMD", "Status", "Planned JMD", "Assigned JMD", "Remaining JMD", "Notes"];
-  const csv = [header, ...exportRows(key)]
-    .map((row) => row.map(csvCell).join(","))
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `upnextbudgeting-${key}.csv`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  showToast(`${monthLabel(key)} CSV exported.`);
-}
-
-function renderPrintExport(key) {
-  const summary = getMonthSummary(key);
-  const generated = new Intl.DateTimeFormat("en-JM", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  }).format(today);
-
-  printExport.innerHTML = `
-    <div class="print-page">
-      <header class="print-header">
-        <p>UpNextBudgeting</p>
-        <h1>${monthLabel(key)} Monthly Record</h1>
-        <span>Generated ${generated}</span>
-      </header>
-      <section class="print-summary">
-        <article><span>Total due</span><strong>${money.format(summary.total)}</strong></article>
-        <article><span>Paid</span><strong>${money.format(summary.paid)}</strong></article>
-        <article><span>Open</span><strong>${summary.unpaidItems.length}</strong></article>
-        <article><span>Overdue</span><strong>${summary.overdueItems.length}</strong></article>
-      </section>
-      <section>
-        <h2>Bills</h2>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Category</th><th>Due</th><th>Status</th><th>Amount</th></tr>
-          </thead>
-          <tbody>
-            ${summary.items.map((bill) => `
-              <tr>
-                <td>${bill.name}</td>
-                <td>${bill.category}</td>
-                <td>${dateFormat.format(parseDate(bill.due))}</td>
-                <td>${recordStatusText(bill)}</td>
-                <td>${money.format(bill.amount)}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="5">No bills recorded for this month.</td></tr>`}
-          </tbody>
-        </table>
-      </section>
-      <section>
-        <h2>Category Plan Snapshot</h2>
-        <table>
-          <thead>
-            <tr><th>Category</th><th>Planned</th><th>Assigned</th><th>Remaining</th></tr>
-          </thead>
-          <tbody>
-            ${categories.map((category) => `
-              <tr>
-                <td>${category.name}</td>
-                <td>${money.format(category.planned)}</td>
-                <td>${money.format(category.assigned)}</td>
-                <td>${money.format(Math.max(category.planned - category.assigned, 0))}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </section>
+function showToast(message, tone = "neutral") {
+  window.clearTimeout(toastTimer);
+  window.clearTimeout(toastExitTimer);
+  toastRegion.innerHTML = `
+    <div class="toast is-${tone}">
+      <span class="toast-dot" aria-hidden="true"></span>
+      <span>${message}</span>
     </div>
   `;
+  toastTimer = window.setTimeout(() => {
+    toastRegion.querySelector(".toast")?.classList.add("is-leaving");
+    toastExitTimer = window.setTimeout(() => {
+      toastRegion.innerHTML = "";
+    }, reducedMotionQuery.matches ? 0 : 160);
+  }, 2040);
 }
 
-function exportPdf(key) {
-  renderPrintExport(key);
-  window.print();
-  showToast("PDF print view opened.");
+function clearHabitFeedback() {
+  if (!recentlyChangedHabit) return;
+  window.setTimeout(() => {
+    recentlyChangedHabit = null;
+  }, reducedMotionQuery.matches ? 0 : 650);
 }
 
-function exportBackup() {
-  const blob = new Blob([JSON.stringify(appState(), null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `upnextbudgeting-backup-${toDateInputValue(today)}.json`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  showToast("Backup exported.");
-}
+function addHabit(event) {
+  event.preventDefault();
+  const formData = new FormData(habitForm);
+  const createdAt = new Date().toISOString();
+  const status = formData.get("status")?.toString() || "due";
+  const due = formData.get("due")?.toString().trim() || "Today";
+  const streak = Math.max(0, Number.parseInt(formData.get("streak"), 10) || 0);
+  const name = formData.get("name").toString().trim();
+  const category = formData.get("category").toString();
+  const iconName = formData.get("icon").toString();
+  const frequency = formData.get("frequency").toString();
 
-function applyImportedState(state) {
-  if (!isValidState(state)) throw new Error("Backup file is not a valid UpNextBudgeting backup.");
-  categories = state.categories.map((category, index) => ({
-    name: category.name,
-    color: category.color || categoryColors[index % categoryColors.length],
-    planned: cleanAmount(category.planned),
-    assigned: cleanAmount(category.assigned)
-  }));
-  bills = state.bills.map(normalizeBill);
-  settings = { initialized: true, reminderDays: 3, ...(state.settings || {}) };
-  settings.theme = validTheme(settings.theme);
-  settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-  removeBackendSettings();
-  expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
-  expenseCategories = normalizeExpenseCategories(state.expenseCategories);
-  selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
-  selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
-  selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
-  visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
-  pendingRecurringBillId = null;
-  activeBillId = null;
-  ensureCategorySafety();
-  applyTheme();
-  syncBillCategoryOptions(selectedBudgetCategory);
-  saveState();
-  render();
-  renderSettingsContent();
-  showToast("Backup restored.");
-}
+  if (editingHabitId) {
+    const habit = getHabitById(editingHabitId);
+    if (!habit) return;
 
-function snapshotForUndo() {
-  return {
-    bills: bills.map(cloneBill),
-    categories: categories.map(cloneCategory),
-    expenses: expenses.map(cloneExpense),
-    expenseCategories: [...expenseCategories],
-    selectedBudgetCategory,
-    selectedExpenseCategory,
-    selectedHistoryMonth,
-    visibleCalendarMonth,
-    pendingRecurringBillId,
-    activeBillId
+    habit.updatedAt = createdAt;
+    habit.name = name;
+    habit.category = category;
+    habit.icon = iconName;
+    habit.frequency = frequency;
+    habit.streak = streak;
+    habit.status = status;
+    habit.due = due;
+    habit.last = "Updated today";
+    saveState();
+    closeSheets();
+    renderApp();
+    showToast("Habit updated", "success");
+    return;
+  }
+
+  const habit = {
+    id: Date.now(),
+    source: "user",
+    createdAt,
+    name,
+    category,
+    icon: iconName,
+    frequency,
+    streak,
+    status,
+    due,
+    last: "Created today"
   };
-}
-
-function restoreSnapshot(snapshot, message = "Restored.") {
-  bills = snapshot.bills.map(cloneBill);
-  categories = snapshot.categories.map(cloneCategory);
-  expenses = snapshot.expenses.map(cloneExpense);
-  expenseCategories = [...snapshot.expenseCategories];
-  selectedBudgetCategory = snapshot.selectedBudgetCategory;
-  selectedExpenseCategory = snapshot.selectedExpenseCategory;
-  selectedHistoryMonth = snapshot.selectedHistoryMonth;
-  visibleCalendarMonth = snapshot.visibleCalendarMonth;
-  pendingRecurringBillId = snapshot.pendingRecurringBillId;
-  activeBillId = snapshot.activeBillId;
-  ensureCategorySafety();
-  syncBillCategoryOptions(selectedBudgetCategory);
+  state.habits.unshift(habit);
+  state.entries.unshift({
+    id: Date.now() + 1,
+    source: "user",
+    action: "add",
+    habitId: habit.id,
+    habitName: habit.name,
+    createdAt,
+    type: "habit",
+    icon: habit.icon,
+    title: `${habit.name} added`,
+    meta: `${habit.category} - ${habit.frequency}`,
+    time: "Just now"
+  });
+  habitForm.reset();
   saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(message);
+  closeSheets();
+  renderApp();
+  showToast("Habit added", "success");
 }
 
-function clearStarterData(mode) {
-  const copy = {
-    bills: "starter bills",
-    categories: "starter categories",
-    both: "starter bills and categories"
-  };
-  if (!confirm(`Clear ${copy[mode]}? Your user-created items will stay.`)) return;
-  const snapshot = snapshotForUndo();
-  if (mode === "bills" || mode === "both") {
-    bills = bills.filter((bill) => !starterBillIds.has(bill.id));
-    pendingRecurringBillId = pendingRecurringBillId && starterBillIds.has(pendingRecurringBillId) ? null : pendingRecurringBillId;
-    if (activeBillId && starterBillIds.has(activeBillId)) activeBillId = null;
-  }
-  if (mode === "categories" || mode === "both") {
-    categories = categories.filter((category) => !starterCategoryNames.has(category.name));
-    expenseCategories = expenseCategories.filter((category) => !starterCategoryNames.has(category));
-  }
-  ensureCategorySafety();
-  syncBillCategoryOptions(selectedBudgetCategory);
+function addMood(event) {
+  event.preventDefault();
+  const formData = new FormData(moodForm);
+  const mood = moods.find((item) => item.id === state.selectedMood) || moods[0];
+  const energy = Number(formData.get("energy"));
+  const note = formData.get("note").toString().trim() || "Quick daily check-in.";
+  createMoodLog({ mood, energy, note });
+  moodForm.reset();
+  moodForm.elements.energy.value = energy;
+  updateMoodEnergyValue();
   saveState();
-  render();
-  renderSettingsContent();
-  showToast(`Cleared ${copy[mode]}.`, {
-    undo: () => restoreSnapshot(snapshot, "Starter data restored.")
-  });
+  closeSheets();
+  renderApp();
+  showToast("Mood logged", "success");
 }
 
-function setupAppearanceControls() {
-  const themePreference = document.querySelector("#themePreference");
-  themePreference.addEventListener("change", () => {
-    settings.theme = validTheme(themePreference.value);
-    // update theme-color meta for pastel
-    applyTheme();
-    saveState(false);
-    showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
-  });
-}
-
-function setupCashflowControls() {
-  const form = document.querySelector("#cashflowForm");
-  const startingBalance = document.querySelector("#monthlyStartingBalance");
-  const buffer = document.querySelector("#safeSpendBuffer");
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    settings.cashflow.monthlyStartingBalance = cleanAmount(startingBalance.value);
-    settings.cashflow.safeSpendBuffer = cleanAmount(buffer.value);
-    saveState();
-    render();
-    renderSettingsContent();
-    showToast("Cashflow settings updated.");
-  });
-}
-
-function setupMonthlyHistory() {
-  const historyMonth = document.querySelector("#historyMonth");
-  const exportCsvButton = document.querySelector("#exportCsv");
-  const exportPdfButton = document.querySelector("#exportPdf");
-
-  historyMonth.addEventListener("change", () => {
-    selectedHistoryMonth = historyMonth.value;
-    saveState(false);
-    renderSettingsContent();
-  });
-
-  exportCsvButton.addEventListener("click", () => exportCsv(selectedHistoryMonth));
-  exportPdfButton.addEventListener("click", () => exportPdf(selectedHistoryMonth));
-}
-
-function setupReminderSettings() {
-  const reminderForm = document.querySelector("#reminderForm");
-  const reminderDays = document.querySelector("#reminderDays");
-  reminderForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    settings.reminderDays = Math.max(0, Math.min(30, cleanAmount(reminderDays.value)));
-    saveState();
-    render();
-    renderSettingsContent();
-    showToast(`Reminder window set to ${settings.reminderDays} days.`);
-  });
-}
-
-async function updateAppBadge() {
-  const count = getReminderBadgeItems().length;
-  try {
-    if (count && "setAppBadge" in navigator) await navigator.setAppBadge(count);
-    if (!count && "clearAppBadge" in navigator) await navigator.clearAppBadge();
-  } catch (error) {
-    console.warn("Could not update app badge", error);
-  }
-}
-
-async function clearAppBadge() {
-  try {
-    if ("clearAppBadge" in navigator) await navigator.clearAppBadge();
-  } catch (error) {
-    console.warn("Could not clear app badge", error);
-  }
-}
-
-function setupBackupControls() {
-  document.querySelector("#exportBackup").addEventListener("click", exportBackup);
-  document.querySelector("#restoreBackup").addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      try {
-        const state = JSON.parse(String(reader.result));
-        if (!confirm("Restore this backup? Current local data will be replaced.")) return;
-        applyImportedState(state);
-      } catch (error) {
-        showToast(error.message || "Could not restore backup.");
-      } finally {
-        event.target.value = "";
-      }
-    });
-    reader.readAsText(file);
-  });
-}
-
-function setupStarterClearControls() {
-  document.querySelector("#clearStarterBills").addEventListener("click", () => clearStarterData("bills"));
-  document.querySelector("#clearStarterCategories").addEventListener("click", () => clearStarterData("categories"));
-  document.querySelector("#clearStarterAll").addEventListener("click", () => clearStarterData("both"));
-}
-
-function setupArchivedControls() {
-  document.querySelectorAll("[data-restore-bill]").forEach((button) => {
-    button.addEventListener("click", () => restoreArchivedBill(Number(button.dataset.restoreBill)));
-  });
-}
-
-function setupAccessibility() {
-  document.addEventListener("keydown", (event) => {
-    const currentSheet = activeSheet();
-    if (event.key === "Escape") {
-      if (currentSheet) {
-        event.preventDefault();
-        if (currentSheet === actionSheet) closeActionSheet();
-        if (currentSheet === expenseSheet) closeExpenseSheet();
-        if (currentSheet === settingsSheet) closeSettingsSheet();
-        if (currentSheet === sheet) closeSheet();
-        return;
-      }
-      if (activeBillId) {
-        event.preventDefault();
-        closeBillDetail();
-      }
-      return;
-    }
-    if (!currentSheet || event.key !== "Tab") return;
-    const focusable = [...currentSheet.querySelectorAll("button, input, select, textarea, a[href], [tabindex]:not([tabindex='-1'])")]
-      .filter((element) => !element.disabled && !element.hidden && element.offsetParent !== null);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-}
-
-function setupBudgetControls() {
-  const editCategory = document.querySelector("#editCategory");
-  const editPlanned = document.querySelector("#editPlanned");
-  const editCategoryForm = document.querySelector("#editCategoryForm");
-  const addCategoryForm = document.querySelector("#addCategoryForm");
-  const removeCategory = document.querySelector("#removeCategory");
-  const newCategoryName = document.querySelector("#newCategoryName");
-  const newCategoryAmount = document.querySelector("#newCategoryAmount");
-
-  editCategory.addEventListener("change", () => {
-    selectedBudgetCategory = editCategory.value;
-    const selected = getCategory(selectedBudgetCategory);
-    editPlanned.value = formatMoneyInput(selected.planned);
-  });
-
-  editCategoryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const selected = updateCategoryPlan(editCategory.value, editPlanned.value);
-    renderSettingsContent();
-    showToast(`${selected.name} plan updated.`);
-  });
-
-  removeCategory.addEventListener("click", () => {
-    const removed = removeCategoryByName(editCategory.value);
-    if (!removed) return;
-    renderSettingsContent();
-    showToast(`${removed.removedName} removed.`, {
-      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
-    });
-  });
-
-  addCategoryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const result = addCategoryByName(newCategoryName.value, newCategoryAmount.value);
-    if (result?.error) {
-      showToast(result.error);
-      return;
-    }
-    renderSettingsContent();
-    showToast(`${result.name} category added.`);
-  });
-}
-
-function addExpenseFromForm({ addAnother = false } = {}) {
-  const expense = normalizeExpense({
-    id: Date.now() + Math.floor(Math.random() * 1000),
-    amount: expenseAmount.value,
-    category: expenseCategory.value,
-    merchant: expenseMerchant.value.trim() || expenseCategory.value,
-    note: expenseMerchant.value.trim(),
-    date: expenseDate.value,
-    paymentSource: expenseSource.value,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  });
-  expenses.push(expense);
-  if (!expenseCategories.includes(expense.category)) expenseCategories.push(expense.category);
-  saveState();
-  render();
-  showToast(`${expense.merchant} added.`, {
-    undo: () => {
-      expenses = expenses.filter((item) => item.id !== expense.id);
-      saveState();
-      render();
-      showToast("Expense removed.");
-    }
-  });
-  if (addAnother) {
-    openExpenseSheet({ keepValues: true });
-    expenseAmount.value = "";
-    expenseMerchant.value = "";
-  } else {
-    closeExpenseSheet();
-  }
-}
-
-function deleteExpense(expenseId) {
-  const expense = expenses.find((item) => item.id === expenseId);
-  if (!expense) return;
-  const snapshot = cloneExpense(expense);
-  expenses = expenses.filter((item) => item.id !== expenseId);
-  saveState();
-  render();
-  showToast(`${snapshot.merchant} removed.`, {
-    undo: () => {
-      expenses.push(snapshot);
-      saveState();
-      render();
-      showToast(`${snapshot.merchant} restored.`);
-    }
-  });
-}
-
-function bindExpenseActions() {
-  document.querySelectorAll("[data-delete-expense]").forEach((button) => {
-    button.addEventListener("click", () => deleteExpense(Number(button.dataset.deleteExpense)));
-  });
-}
-
-function setupExpenseForm() {
-  syncExpenseCategoryOptions();
-  expenseForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const addAnother = event.submitter?.dataset.expenseSubmit === "again";
-    addExpenseFromForm({ addAnother });
-  });
-  document.querySelector("#closeExpenseSheet").addEventListener("click", closeExpenseSheet);
-}
-
-function setupForm() {
-  syncBillCategoryOptions();
-  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${preset.name}">${preset.name}</button>`).join("");
-
-  presetRail.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-preset]");
-    if (!button) return;
-    const preset = presets.find((item) => item.name === button.dataset.preset);
-    billName.value = preset.name;
-    billAmount.value = formatMoneyInput(preset.amount);
-    billCategory.value = preset.category;
-    billRepeat.value = inferRepeat(preset);
-    if (isPropertyTaxBill(preset)) propertyTaxPlan.value = "full";
-    updatePropertyTaxPlanVisibility();
-  });
-
-  billName.addEventListener("input", updatePropertyTaxPlanVisibility);
-  billCategory.addEventListener("change", updatePropertyTaxPlanVisibility);
-
-  billForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const wasEditing = Boolean(editingBillId);
-    const payload = {
-      name: billName.value.trim(),
-      category: billCategory.value,
-      amount: cleanAmount(billAmount.value),
-      due: billDate.value,
-      paid: editingBillId ? billPaid.checked : false,
-      repeat: billRepeat.value,
-      propertyTaxPlan: propertyTaxPlan.value
-    };
-    if (editingBillId) {
-      const bill = getBillById(editingBillId);
-      if (bill) {
-        const before = cloneBill(bill);
-        bill.name = payload.name;
-        bill.category = payload.category;
-        bill.amount = payload.amount;
-        bill.due = payload.due;
-        bill.repeat = payload.repeat;
-        bill.propertyTaxPlan = payload.propertyTaxPlan;
-        if (!before.paid && payload.paid) {
-          bill.paid = true;
-          bill.completedAt = nowIso();
-          appendActivity(bill, "paid", { note: "Marked paid from edit view." });
-        } else if (before.paid && !payload.paid) {
-          bill.paid = false;
-          bill.completedAt = null;
-          appendActivity(bill, "unpaid", { note: "Marked unpaid from edit view." });
-        } else {
-          bill.paid = payload.paid;
-        }
-        if (
-          before.name !== bill.name ||
-          before.amount !== bill.amount ||
-          before.category !== bill.category ||
-          before.due !== bill.due ||
-          before.repeat !== bill.repeat ||
-          before.propertyTaxPlan !== bill.propertyTaxPlan
-        ) {
-          appendActivity(bill, "edited", { note: "Bill details were updated." });
-        }
-      }
-    } else {
-      bills.push(normalizeBill({
-        id: Date.now(),
-        ...payload,
-        seriesKey: makeSeriesKey(payload),
-        activity: [createActivity("created", { note: "Bill added to the plan." })],
-        completedAt: payload.paid ? nowIso() : null
-      }));
-    }
-    saveState();
-    closeSheet();
-    render();
-    if (!settingsSheet.hidden) renderSettingsContent();
-    showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
-  });
-
-  deleteBillButton.addEventListener("click", () => {
-    if (!editingBillId) return;
-    const bill = getBillById(editingBillId);
-    if (!bill || !confirm(`Delete ${bill.name}?`)) return;
-    const deletedBill = cloneBill(bill);
-    const previousPending = pendingRecurringBillId;
-    const previousActive = activeBillId;
-    bills = bills.filter((item) => item.id !== editingBillId);
-    if (pendingRecurringBillId === editingBillId) pendingRecurringBillId = null;
-    if (activeBillId === editingBillId) activeBillId = null;
-    saveState();
-    closeSheet();
-    render();
-    showToast(`${deletedBill.name} deleted.`, {
-      undo: () => {
-        replaceOrInsertBill(deletedBill);
-        pendingRecurringBillId = previousPending;
-        activeBillId = previousActive;
-        saveState();
-        render();
-        showToast(`${deletedBill.name} restored.`);
-      }
-    });
-  });
-
-  document.querySelector("#closeSheet").addEventListener("click", closeSheet);
-  document.querySelector("#closeSettingsSheet").addEventListener("click", closeSettingsSheet);
-  document.querySelector("#closeActionSheet").addEventListener("click", () => closeActionSheet());
-  backdrop.addEventListener("click", closeAllSheets);
-}
-
-function render() {
-  if (activeBillId) {
-    renderBillDetail();
-  } else if (activeTab === "spending") {
-    renderSpending();
-  } else if (activeTab === "calendar") {
-    renderCalendar();
-  } else if (activeTab === "insights") {
-    renderInsights();
-  } else {
-    renderHome();
-  }
-  tabs.forEach((tab) => tab.classList.toggle("is-active", !activeBillId && tab.dataset.tab === activeTab));
-  if (tabbar) {
-    tabbar.hidden = Boolean(activeBillId);
-    tabbar.dataset.activeTab = activeTab;
-  }
-  updateAppBadge();
-}
-
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    activeTab = tab.dataset.tab;
-    activeBillId = null;
-    render();
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActivePage(button.dataset.page);
   });
 });
 
-const themePreferenceMedia = window.matchMedia?.("(prefers-color-scheme: light)");
-const handleThemePreferenceChange = () => {
-  if (settings.theme === "system") applyTheme();
-};
-if (themePreferenceMedia?.addEventListener) {
-  themePreferenceMedia.addEventListener("change", handleThemePreferenceChange);
-} else if (themePreferenceMedia?.addListener) {
-  themePreferenceMedia.addListener(handleThemePreferenceChange);
+function setActivePage(page) {
+  if (!pages.includes(page)) return;
+  activePage = page;
+  if (window.location.hash.slice(1) !== page) {
+    window.history.pushState(null, "", `#${page}`);
+  }
+  window.scrollTo({ top: 0, behavior: reducedMotionQuery.matches ? "auto" : "smooth" });
+  renderApp();
 }
 
-if ("serviceWorker" in navigator) {
+window.addEventListener("hashchange", () => {
+  const page = window.location.hash.slice(1);
+  if (pages.includes(page) && page !== activePage) {
+    activePage = page;
+    renderApp();
+  }
+});
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch((error) => {
-      console.warn("Service worker registration skipped", error);
+    navigator.serviceWorker.register("sw.js").catch(() => {
+      console.warn("MoodRabbit service worker registration failed.");
     });
   });
 }
 
-loadState();
-setupMoneyInputFormatting();
-setupForm();
-setupExpenseForm();
-setupAccessibility();
-render();
+document.querySelectorAll("[data-close-sheet]").forEach((button) => {
+  button.addEventListener("click", closeSheets);
+});
+
+removeSampleDataButton?.addEventListener("click", removeSampleData);
+exportBackupButton?.addEventListener("click", exportBackup);
+importBackupButton?.addEventListener("click", () => importBackupFile?.click());
+importBackupFile?.addEventListener("change", () => importBackupFileContents(importBackupFile.files?.[0]));
+themeModeButtons.forEach((button) => {
+  button.addEventListener("click", () => setThemeMode(button.dataset.themeMode));
+});
+systemThemeQuery.addEventListener("change", () => {
+  if (getThemeMode() === "auto") {
+    renderApp();
+  }
+});
+backdrop.addEventListener("click", closeSheets);
+habitForm.addEventListener("submit", addHabit);
+moodForm.addEventListener("submit", addMood);
+moodEnergy.addEventListener("input", updateMoodEnergyValue);
+
+renderApp();
+registerServiceWorker();
