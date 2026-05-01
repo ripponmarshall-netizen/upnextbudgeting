@@ -1,231 +1,190 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#f4efe5">
-    <meta name="description" content="A calm habit and mood tracker for daily routines, check-ins, and wellbeing patterns.">
-    <meta name="application-name" content="MoodRabbit">
+    <meta name="theme-color" content="#111315">
+    <meta name="description" content="A calm local-first cashflow planner for bills, calendar dates, expenses, and budget categories.">
+    <meta name="application-name" content="UpNextBudgeting">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="MoodRabbit">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="UpNextBudgeting">
     <meta name="format-detection" content="telephone=no">
-    <title>MoodRabbit</title>
+    <title>UpNextBudgeting</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" sizes="180x180">
-    <link rel="stylesheet" href="styles.css?v=motion-1">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+    <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <div class="app-shell">
       <main id="app" class="screen" aria-live="polite"></main>
     </div>
 
-    <nav class="tabbar" aria-label="Primary">
-      <button class="tab is-active" data-page="today" type="button">
+    <nav class="tabbar" id="tabbar" aria-label="Primary">
+      <button class="tab is-active" data-tab="home" type="button">
         <span class="tab-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h10M5 16.5h7"/><path d="m16.5 15.2 1.7 1.7 3.2-3.6"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h10M5 16.5h7"/><path d="M17 14.5l2 2 3-3"/></svg>
         </span>
         <span>Home</span>
       </button>
-      <button class="tab" data-page="habits" type="button">
+      <button class="tab" data-tab="spending" type="button">
         <span class="tab-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M8 5.5h8M8 18.5h8"/><path d="M12 5.5v13"/><path d="M6 9.5c0 3.3 2.7 5.8 6 5.8s6-2.5 6-5.8"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M5 7.5h14v12H5z"/><path d="M8 11h8M8 15h5"/><path d="M17 4.5v3"/><path d="M7 3.5h10l1.2 2"/></svg>
         </span>
-        <span>Habits</span>
+        <span>Spending</span>
       </button>
-      <button class="tab" data-page="mood" type="button">
+      <button class="tab" data-tab="calendar" type="button">
         <span class="tab-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M7.2 13.5c.8 2 2.5 3.2 4.8 3.2s4-1.2 4.8-3.2"/><path d="M8.6 9.2h.01M15.4 9.2h.01"/><path d="M12 21c4.8-3.1 7-6.5 7-10.2a7 7 0 0 0-14 0C5 14.5 7.2 17.9 12 21Z"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M6.5 4.5v3M17.5 4.5v3"/><rect x="4" y="6.5" width="16" height="13" rx="2"/><path d="M4 10h16M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01"/></svg>
         </span>
-        <span>Mood</span>
+        <span>Calendar</span>
       </button>
-      <button class="tab" data-page="patterns" type="button">
+      <button class="tab" data-tab="insights" type="button">
         <span class="tab-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M5 17.5V11M12 17.5V6.5M19 17.5v-4"/><path d="M4 20h16"/><rect x="3.8" y="9" width="2.8" height="8.5" rx="1"/><rect x="10.6" y="4.5" width="2.8" height="13" rx="1"/><rect x="17.4" y="12" width="2.8" height="5.5" rx="1"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M5 17.5V10M12 17.5V6.5M19 17.5v-4"/><path d="M4 20h16"/><rect x="3.5" y="8" width="3" height="9.5" rx="1"/><rect x="10.5" y="4.5" width="3" height="13" rx="1"/><rect x="17.5" y="11.5" width="3" height="6" rx="1"/></svg>
         </span>
-        <span>Patterns</span>
+        <span>Insights</span>
       </button>
     </nav>
 
     <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
-    <section class="quick-sheet" id="habitSheet" aria-labelledby="habitSheetTitle" aria-modal="true" role="dialog" hidden>
+    <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>
+    <section class="quick-sheet compose-sheet" id="quickSheet" aria-labelledby="sheetTitle" aria-modal="true" role="dialog" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>
-      <div class="sheet-top">
-        <div>
-          <p class="eyebrow">New routine</p>
-          <h2 id="habitSheetTitle">Add habit</h2>
-        </div>
-        <button class="icon-button" data-close-sheet type="button" aria-label="Close habit form">
+      <div class="sheet-top compose-top">
+        <button class="icon-button compose-dismiss" id="closeSheet" type="button" aria-label="Close">
           <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
+        <div class="compose-title">
+          <p class="eyebrow">New reminder</p>
+          <h2 id="sheetTitle">Add a bill</h2>
+        </div>
+        <button class="icon-button compose-confirm" type="submit" form="billForm" aria-label="Save bill">
+          <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>
+        </button>
       </div>
-      <form id="habitForm" class="panel-form">
+      <form id="billForm" class="bill-form">
         <label>
           <span>Name</span>
-          <input name="name" autocomplete="off" required placeholder="Evening stretch">
+          <input id="billName" name="name" autocomplete="off" required placeholder="JPS electricity">
         </label>
         <div class="form-row">
           <label>
-            <span>Category</span>
-            <select name="category">
-              <option>Body</option>
-              <option>Mind</option>
-              <option>Focus</option>
-              <option>Care</option>
-            </select>
+            <span>Amount</span>
+            <input id="billAmount" class="money-input" name="amount" inputmode="decimal" required placeholder="18,500.00">
           </label>
-          <label>
-            <span>Icon</span>
-            <select name="icon">
-              <option value="stretching">Stretching</option>
-              <option value="water">Water</option>
-              <option value="sleep">Sleep</option>
-              <option value="workout">Workout</option>
-              <option value="reading">Reading</option>
-              <option value="meditation">Meditation</option>
-              <option value="vitamins">Vitamins</option>
-              <option value="coding">Coding</option>
-              <option value="journaling">Journaling</option>
-              <option value="walking">Walking</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          <span>Target frequency</span>
-          <select name="frequency">
-            <option>Daily</option>
-            <option>Weekdays</option>
-            <option>3x weekly</option>
-            <option>Weekly</option>
-          </select>
-        </label>
-        <div class="form-row">
           <label>
             <span>Due</span>
-            <input name="due" autocomplete="off" value="Today" placeholder="Today">
-          </label>
-          <label>
-            <span>Starting streak</span>
-            <input name="streak" type="number" min="0" step="1" value="0">
+            <input id="billDate" name="date" type="date" required>
           </label>
         </div>
         <label>
-          <span>Status</span>
-          <select name="status">
-            <option value="due">Due today</option>
-            <option value="due-later">Due later</option>
-            <option value="done">Done today</option>
-            <option value="missed">Missed</option>
+          <span>Category</span>
+          <select id="billCategory" name="category"></select>
+        </label>
+        <label>
+          <span>Repeats</span>
+          <select id="billRepeat" name="repeat">
+            <option value="none">Does not repeat</option>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="yearly">Yearly</option>
           </select>
         </label>
-        <button class="primary-action" type="submit">Add habit</button>
+        <label id="propertyTaxPlanRow" hidden>
+          <span>Property tax planning</span>
+          <select id="propertyTaxPlan" name="propertyTaxPlan">
+            <option value="full">Pay in full</option>
+            <option value="half-yearly">Half-yearly</option>
+            <option value="quarterly">Quarterly</option>
+          </select>
+        </label>
+        <label class="check-row" id="paidRow" hidden>
+          <input id="billPaid" name="paid" type="checkbox">
+          <span>Already paid</span>
+        </label>
+        <button class="primary-action compose-primary-inline" type="submit">Add to Upcoming</button>
+        <button class="danger-action" id="deleteBill" type="button" hidden>Delete bill</button>
       </form>
+      <div class="preset-area">
+        <p class="microcopy">Jamaica-first presets</p>
+        <div id="presetRail" class="preset-rail"></div>
+      </div>
     </section>
 
-    <section class="quick-sheet" id="moodSheet" aria-labelledby="moodSheetTitle" aria-modal="true" role="dialog" hidden>
+    <section class="quick-sheet settings-sheet" id="settingsSheet" aria-labelledby="settingsTitle" aria-modal="true" role="dialog" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>
       <div class="sheet-top">
         <div>
-          <p class="eyebrow">Daily check-in</p>
-          <h2 id="moodSheetTitle">Log mood</h2>
+          <p class="eyebrow">App settings</p>
+          <h2 id="settingsTitle">Settings</h2>
         </div>
-        <button class="icon-button" data-close-sheet type="button" aria-label="Close mood form">
+        <button class="icon-button light" id="closeSettingsSheet" type="button" aria-label="Close settings">
           <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
       </div>
-      <form id="moodForm" class="panel-form">
-        <div class="mood-picker" id="sheetMoodPicker" aria-label="Choose a mood"></div>
-        <label>
-          <span class="range-label">
-            Energy
-            <output id="moodEnergyValue" for="moodEnergy">7/10</output>
-          </span>
-          <div class="range-shell">
-            <input id="moodEnergy" name="energy" type="range" min="1" max="10" value="7" aria-describedby="energyScale">
-            <div class="range-marks" id="energyScale" aria-hidden="true">
-              <span>1</span>
-              <span>3</span>
-              <span>5</span>
-              <span>8</span>
-              <span>10</span>
-            </div>
-          </div>
-        </label>
-        <label>
-          <span>Note</span>
-          <textarea name="note" rows="3" placeholder="Optional reflection"></textarea>
-        </label>
-        <button class="primary-action" type="submit">Save mood</button>
-      </form>
+      <div id="settingsContent"></div>
     </section>
-
-    <section class="quick-sheet" id="settingsSheet" aria-labelledby="settingsSheetTitle" aria-modal="true" role="dialog" hidden>
+    <section class="quick-sheet action-sheet" id="actionSheet" aria-labelledby="actionSheetTitle" aria-modal="true" role="dialog" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>
       <div class="sheet-top">
         <div>
-          <p class="eyebrow">Preferences</p>
-          <h2 id="settingsSheetTitle">Settings</h2>
+          <p class="eyebrow">Quick action</p>
+          <h2 id="actionSheetTitle">Quick action</h2>
         </div>
-        <button class="icon-button" data-close-sheet type="button" aria-label="Close settings">
+        <button class="icon-button light" id="closeActionSheet" type="button" aria-label="Close quick action">
           <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
       </div>
-      <div class="settings-list">
-        <div class="settings-group" aria-label="Theme mode">
-          <p class="mini-label">Theme</p>
-          <div class="segmented-control" role="group" aria-label="Theme mode">
-            <button data-theme-mode="auto" type="button" aria-pressed="true">Auto</button>
-            <button data-theme-mode="light" type="button" aria-pressed="false">Light</button>
-            <button data-theme-mode="dark" type="button" aria-pressed="false">Dark</button>
-          </div>
-          <p class="setting-help">Auto follows your device, so night mode turns on when your system does.</p>
-        </div>
-        <label class="setting-row">
-          <span>
-            <strong>Gentle reminders</strong>
-            <small>Keep missed routines visible without loud alerts.</small>
-          </span>
-          <input type="checkbox" checked>
-        </label>
-        <label class="setting-row">
-          <span>
-            <strong>Private notes</strong>
-            <small>Store reflection text locally for now.</small>
-          </span>
-          <input type="checkbox" checked>
-        </label>
-        <div class="settings-group" aria-label="Data tools">
-          <p class="mini-label">Data</p>
-          <button class="setting-action" id="removeSampleData" type="button">
-            <span>
-              <strong>Remove sample data</strong>
-              <small>Keep only your own locally created habits, moods, and entries.</small>
-            </span>
-          </button>
-          <button class="setting-action" id="exportBackup" type="button">
-            <span>
-              <strong>Export backup</strong>
-              <small>Download a local JSON backup of this app state.</small>
-            </span>
-          </button>
-          <button class="setting-action" id="importBackupButton" type="button">
-            <span>
-              <strong>Import backup</strong>
-              <small>Merge a MoodRabbit JSON backup into this device.</small>
-            </span>
-          </button>
-          <input id="importBackupFile" type="file" accept="application/json,.json" hidden>
-        </div>
-        <article class="settings-note">
-          <p class="mini-label">Local first</p>
-          <p>Your tracker stays on this device. Backups export plain JSON, imports merge into local storage, and sample data can be removed without touching your own logs.</p>
-        </article>
-      </div>
+      <div id="actionSheetContent"></div>
     </section>
+    <section class="quick-sheet expense-sheet compose-sheet" id="expenseSheet" aria-labelledby="expenseSheetTitle" aria-modal="true" role="dialog" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-top compose-top">
+        <button class="icon-button light compose-dismiss" id="closeExpenseSheet" type="button" aria-label="Close expense form">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+        <div class="compose-title">
+          <p class="eyebrow">Fast capture</p>
+          <h2 id="expenseSheetTitle">Add expense</h2>
+        </div>
+        <button class="icon-button light compose-confirm" type="submit" form="expenseForm" data-expense-submit="close" aria-label="Save expense">
+          <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>
+        </button>
+      </div>
+      <form id="expenseForm" class="expense-form">
+        <label class="amount-entry">
+          <span>Amount</span>
+          <input id="expenseAmount" class="money-input" name="amount" inputmode="decimal" required placeholder="2,500.00">
+        </label>
+        <label>
+          <span>Category</span>
+          <select id="expenseCategory" name="category"></select>
+        </label>
+        <label>
+          <span>Merchant or note</span>
+          <input id="expenseMerchant" name="merchant" autocomplete="off" placeholder="Sovereign groceries">
+        </label>
+        <div class="form-row">
+          <label>
+            <span>Date</span>
+            <input id="expenseDate" name="date" type="date" required>
+          </label>
+          <label>
+            <span>Source</span>
+            <select id="expenseSource" name="source"></select>
+          </label>
+        </div>
+        <div class="control-actions">
+          <button class="primary-action compose-primary-inline" type="submit" data-expense-submit="close">Save expense</button>
+          <button class="secondary-action" type="submit" data-expense-submit="again">Save & add another</button>
+        </div>
+      </form>
+    </section>
+    <section id="printExport" class="print-export" aria-hidden="true"></section>
 
-    <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>
-    <script src="app.js?v=motion-1" type="module"></script>
+    <script src="app.js?v=reset-1" type="module"></script>
   </body>
 </html>
