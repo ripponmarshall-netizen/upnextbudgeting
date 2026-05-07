@@ -103,8 +103,8 @@ Deno.serve(async () => {
       continue;
     }
 
-    const total = dueBills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
-    const firstBill = dueBills.sort((a, b) => a.due.localeCompare(b.due))[0];
+    const total = Math.round(dueBills.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0) * 100) / 100;
+    const firstBill = [...dueBills].sort((a, b) => a.due.localeCompare(b.due))[0];
     const body = dueBills.length === 1
       ? `${firstBill.name} is due ${firstBill.due}.`
       : `${dueBills.length} bills are due soon, totaling ${money(total)}.`;
