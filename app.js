@@ -308,7 +308,8 @@ let settings = {
   profile: defaultProfile(),
   cashflow: {
     monthlyStartingBalance: 260000,
-    safeSpendBuffer: 20000,
+    safeSpendBuffer: 0,
+    budgetPeriodStartDay: 25,
     paymentSources: ["Cash", "Debit card", "Credit card", "Bank transfer"]
   }
 };
@@ -379,6 +380,36 @@ function nowIso() {
 
 function monthKey(value) {
   return value.slice(0, 7);
+}
+
+function budgetPeriodStartDay() {
+  const day = Number(settings.cashflow?.budgetPeriodStartDay);
+  return Number.isFinite(day) ? Math.max(1, Math.min(28, Math.round(day))) : 25;
+}
+
+function getBudgetPeriod(reference = today) {
+  const day = budgetPeriodStartDay();
+  const ref = reference instanceof Date ? reference : parseDate(reference);
+  const refMonth = ref.getMonth();
+  const refYear = ref.getFullYear();
+  const start = new Date(refYear, ref.getDate() >= day ? refMonth : refMonth - 1, day, 12);
+  const next = new Date(start.getFullYear(), start.getMonth() + 1, day, 12);
+  const last = new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1, 12);
+  return {
+    startDate: toDateInputValue(start),
+    endDate: toDateInputValue(last),
+    nextStartDate: toDateInputValue(next),
+    key: toDateInputValue(start)
+  };
+}
+
+function isInPeriod(value, period = getBudgetPeriod()) {
+  if (!value) return false;
+  return value >= period.startDate && value < period.nextStartDate;
+}
+
+function periodLabel(period = getBudgetPeriod()) {
+  return `${dateFormat.format(parseDate(period.startDate))} – ${dateFormat.format(parseDate(period.endDate))}`;
 }
 
 function escapeHtml(value) {
@@ -455,10 +486,37 @@ function getUnpaidBillTotal(key = monthKey(toDateInputValue(today))) {
   );
 }
 
-function getSafeToSpend(key = monthKey(toDateInputValue(today))) {
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const buffer = settings.cashflow?.safeSpendBuffer || 0;
-  return roundMoney(starting - getUnpaidBillTotal(key) - getExpenseTotal(key) - buffer);
+function getPeriodExpenseTotal(period = getBudgetPeriod()) {
+  return sumMoney(
+    expenses
+      .filter((expense) => !expense.deletedAt && isInPeriod(expense.date, period))
+      .map((expense) => expense.amount)
+  );
+}
+
+function getPeriodPaidBillTotal(period = getBudgetPeriod()) {
+  return sumMoney(
+    bills
+      .filter((bill) => bill.paid && !bill.archived && !bill.deletedAt && isInPeriod(bill.due, period))
+      .map((bill) => bill.amount)
+  );
+}
+
+function getPeriodUnpaidBillTotal(period = getBudgetPeriod()) {
+  return sumMoney(
+    bills
+      .filter((bill) => !bill.paid && !bill.archived && !bill.deletedAt && isInPeriod(bill.due, period))
+      .map((bill) => bill.amount)
+  );
+}
+
+function getMoneyLeft(period = getBudgetPeriod()) {
+  const budget = settings.cashflow?.monthlyStartingBalance || 0;
+  return roundMoney(budget - getPeriodPaidBillTotal(period) - getPeriodExpenseTotal(period));
+}
+
+function getMoneyLeftAfterBills(period = getBudgetPeriod()) {
+  return roundMoney(getMoneyLeft(period) - getPeriodUnpaidBillTotal(period));
 }
 
 function getRecentExpenses(limit = 5) {
@@ -494,9 +552,8 @@ function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
   const openBills = sumMoney(monthBills.filter((bill) => !bill.paid).map((bill) => bill.amount));
   const variableSpent = sumMoney(monthExpenses.map((expense) => expense.amount));
   const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const buffer = settings.cashflow?.safeSpendBuffer || 0;
   const projected = roundMoney(starting - openBills - variableSpent);
-  const safeToSpend = roundMoney(projected - buffer);
+  const safeToSpend = projected;
   const topCategory = topExpenseCategories(key, 1)[0] || null;
   const propertyTaxDue = monthBills.some(isPropertyTaxBill);
   return {
@@ -506,7 +563,6 @@ function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
     openBills,
     variableSpent,
     starting,
-    buffer,
     projected,
     safeToSpend,
     topCategory,
@@ -539,6 +595,7 @@ function getDailyOutflow(date) {
 
 function getProjectedBalanceSeries(days = 30) {
   const starting = settings.cashflow?.monthlyStartingBalance || 0;
+  const period = getBudgetPeriod();
   let projected = starting;
   return Array.from({ length: days }, (_, index) => {
     const date = new Date(today);
@@ -547,15 +604,15 @@ function getProjectedBalanceSeries(days = 30) {
     if (index === 0) {
       const expensesToDate = sumMoney(
         expenses
-          .filter((expense) => parseDate(expense.date) <= parseDate(valueDate) && monthKey(expense.date) === monthKey(valueDate))
+          .filter((expense) => !expense.deletedAt && parseDate(expense.date) <= parseDate(valueDate) && isInPeriod(expense.date, period))
           .map((expense) => expense.amount)
       );
-      const unpaidToDate = sumMoney(
+      const paidToDate = sumMoney(
         bills
-          .filter((bill) => !bill.archived && !bill.paid && parseDate(bill.due) <= parseDate(valueDate) && monthKey(bill.due) === monthKey(valueDate))
+          .filter((bill) => bill.paid && !bill.archived && !bill.deletedAt && parseDate(bill.due) <= parseDate(valueDate) && isInPeriod(bill.due, period))
           .map((bill) => bill.amount)
       );
-      projected = roundMoney(starting - expensesToDate - unpaidToDate);
+      projected = roundMoney(starting - expensesToDate - paidToDate);
     } else {
       projected = roundMoney(projected - getDailyOutflow(valueDate));
     }
@@ -891,9 +948,12 @@ function normalizeCashflowSettings(source = {}) {
   const sources = Array.isArray(source.paymentSources) && source.paymentSources.length
     ? source.paymentSources
     : ["Cash", "Debit card", "Credit card", "Bank transfer"];
+  const rawDay = Number(source.budgetPeriodStartDay);
+  const startDay = Number.isFinite(rawDay) ? Math.max(1, Math.min(28, Math.round(rawDay))) : 25;
   return {
     monthlyStartingBalance: cleanAmount(source.monthlyStartingBalance ?? 260000),
-    safeSpendBuffer: cleanAmount(source.safeSpendBuffer ?? 20000),
+    safeSpendBuffer: cleanAmount(source.safeSpendBuffer ?? 0),
+    budgetPeriodStartDay: startDay,
     paymentSources: sources
   };
 }
@@ -1921,14 +1981,15 @@ function renderProfileForm({ mode = "onboarding" } = {}) {
       </div>
       <div class="form-row">
         <label>
-          <span>Monthly starting balance</span>
+          <span>Period budget</span>
           <input class="money-input" id="profileStartingBalance" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}">
         </label>
         <label>
-          <span>Safety buffer</span>
-          <input class="money-input" id="profileSafeBuffer" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.safeSpendBuffer)}">
+          <span>Period starts on</span>
+          <input id="profileBudgetStartDay" type="number" min="1" max="28" inputmode="numeric" value="${escapeAttribute(String(settings.cashflow.budgetPeriodStartDay || 25))}">
         </label>
       </div>
+      <p class="settings-copy">The budget period runs from day ${settings.cashflow.budgetPeriodStartDay || 25} of one month to the day before in the next.</p>
       <button class="primary-action profile-submit" type="submit">${action}</button>
     </form>
   `;
@@ -2141,8 +2202,8 @@ function renderInsightHighlight(analytics, comparison = getPreviousMonthComparis
     <section class="insight-highlight ${safe ? "is-safe" : "is-alert"} home-reveal" style="--delay: 44ms">
       <div>
         <p class="mini-label">Highlight</p>
-        <h2>${safe ? "Safe buffer intact" : "Upcoming pressure"}</h2>
-        <p>${safe ? "Projected balance stays above your safety buffer." : "Open bills and spending are pushing below the safety buffer."}</p>
+        <h2>${safe ? "Steady after bills" : "Upcoming pressure"}</h2>
+        <p>${safe ? "Projected balance stays positive after open bills and recorded expenses." : "Open bills and spending push the projected balance below zero."}</p>
       </div>
       <div class="highlight-notes">
         <span>${top}</span>
@@ -2198,11 +2259,12 @@ function renderHome() {
   const unpaid = getVisibleBills();
   const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
   const dueSevenCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= 7).length;
-  const dueThisMonth = unpaid.filter((bill) => monthKey(bill.due) === monthKey(toDateInputValue(today))).length;
-  const currentMonth = monthKey(toDateInputValue(today));
-  const analytics = getMonthAnalytics(currentMonth);
-  const spent = getExpenseTotal(currentMonth);
-  const safe = getSafeToSpend(currentMonth);
+  const period = getBudgetPeriod();
+  const dueThisPeriod = unpaid.filter((bill) => isInPeriod(bill.due, period)).length;
+  const spent = getPeriodExpenseTotal(period);
+  const moneyLeft = getMoneyLeft(period);
+  const afterBills = getMoneyLeftAfterBills(period);
+  const periodCopy = periodLabel(period);
   const recentExpenses = getRecentExpenses(4);
 
   app.innerHTML = `
@@ -2213,20 +2275,20 @@ function renderHome() {
       <button class="secondary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
     </section>
 
-    <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Monthly cashflow summary">
+    <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Budget period summary">
       ${renderKpiCard("Overdue", overdueCount, "bills need action", overdueCount ? "is-alert" : "")}
-      ${renderKpiCard("Due in 7 days", dueSevenCount, `${dueThisMonth} this month`)}
-      ${renderKpiCard("Spent", money.format(spent), monthName())}
-      ${renderKpiCard("Safe to spend", money.format(safe), `${money.format(settings.cashflow.safeSpendBuffer)} buffer`, safe < 0 ? "is-alert" : "is-safe")}
+      ${renderKpiCard("Due in 7 days", dueSevenCount, `${dueThisPeriod} this period`)}
+      ${renderKpiCard("Spent", money.format(spent), periodCopy)}
+      ${renderKpiCard("Money left", money.format(moneyLeft), periodCopy, moneyLeft < 0 ? "is-alert" : "is-safe")}
     </section>
 
     <section class="cashflow-card home-reveal" style="--delay: 70ms">
       <div>
-        <p class="mini-label">Projected after bills</p>
-        <h2>${money.format(analytics.projected)}</h2>
-        <p class="small-note">Starting balance minus open bills and recorded expenses.</p>
+        <p class="mini-label">After all bills paid</p>
+        <h2>${money.format(afterBills)}</h2>
+        <p class="small-note">${escapeHtml(periodCopy)} · subtracts unpaid bills due this period.</p>
       </div>
-      <span class="state-pill ${safe < 0 ? "is-overdue" : "is-paid"}">${safe < 0 ? "tight" : "steady"}</span>
+      <span class="state-pill ${afterBills < 0 ? "is-overdue" : "is-paid"}">${afterBills < 0 ? "tight" : "steady"}</span>
     </section>
 
     <section class="section-block">
@@ -2611,7 +2673,7 @@ function renderSpendingExpensesContent() {
     <section class="expense-summary-grid home-reveal" style="--delay: 60ms">
       ${renderKpiCard("Spent this month", money.format(total), selectedExpenseCategory)}
       ${renderKpiCard("Transactions", monthExpenses.length, "recorded")}
-      ${renderKpiCard("Safe to spend", money.format(getSafeToSpend(currentMonth)), "after bills and buffer", getSafeToSpend(currentMonth) < 0 ? "is-alert" : "is-safe")}
+      ${(() => { const ml = getMoneyLeft(); return renderKpiCard("Money left", money.format(ml), periodLabel(), ml < 0 ? "is-alert" : "is-safe"); })()}
     </section>
     <section class="screen-controls spending-controls home-reveal" style="--delay: 72ms">
       <button class="filter-disclosure" data-toggle-expense-filters type="button" aria-expanded="${spendingExpenseFiltersOpen}">
@@ -2950,17 +3012,17 @@ function renderSettingsContent() {
     <section class="settings-section">
       <div class="section-heading compact">
         <h3>Cashflow</h3>
-        <span class="mini-label">safe spend</span>
+        <span class="mini-label">budget period</span>
       </div>
-      <p class="settings-copy">Set a monthly starting balance and a cushion to power projected balance and safe-to-spend cards.</p>
+      <p class="settings-copy">Set the period budget and the day each new period starts. Today's period: ${escapeHtml(periodLabel())}.</p>
       <form id="cashflowForm" class="control-form">
         <label>
-          <span>Monthly starting balance</span>
-          <input id="monthlyStartingBalance" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}" aria-label="Monthly starting balance">
+          <span>Period budget</span>
+          <input id="monthlyStartingBalance" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}" aria-label="Period budget">
         </label>
         <label>
-          <span>Safety buffer</span>
-          <input id="safeSpendBuffer" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.safeSpendBuffer)}" aria-label="Safe to spend buffer">
+          <span>Period starts on</span>
+          <input id="budgetPeriodStartDay" type="number" min="1" max="28" inputmode="numeric" value="${escapeAttribute(String(settings.cashflow.budgetPeriodStartDay || 25))}" aria-label="Budget period start day of month">
         </label>
         <button class="primary-action small" type="submit">Save cashflow</button>
       </form>
@@ -3497,7 +3559,10 @@ function saveProfileFromForm(form) {
     onboardingComplete: true
   });
   settings.cashflow.monthlyStartingBalance = cleanAmount(form.querySelector("#profileStartingBalance")?.value);
-  settings.cashflow.safeSpendBuffer = cleanAmount(form.querySelector("#profileSafeBuffer")?.value);
+  const onboardingDay = Number(form.querySelector("#profileBudgetStartDay")?.value);
+  settings.cashflow.budgetPeriodStartDay = Number.isFinite(onboardingDay)
+    ? Math.max(1, Math.min(28, Math.round(onboardingDay)))
+    : 25;
   activeTab = "home";
   activeBillId = null;
   onboardingStep = "landing";
@@ -3883,11 +3948,14 @@ function setupCloudSyncControls() {
 function setupCashflowControls() {
   const form = document.querySelector("#cashflowForm");
   const startingBalance = document.querySelector("#monthlyStartingBalance");
-  const buffer = document.querySelector("#safeSpendBuffer");
+  const startDay = document.querySelector("#budgetPeriodStartDay");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     settings.cashflow.monthlyStartingBalance = cleanAmount(startingBalance.value);
-    settings.cashflow.safeSpendBuffer = cleanAmount(buffer.value);
+    const day = Number(startDay?.value);
+    settings.cashflow.budgetPeriodStartDay = Number.isFinite(day)
+      ? Math.max(1, Math.min(28, Math.round(day)))
+      : 25;
     saveState();
     render();
     renderSettingsContent();
