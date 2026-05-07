@@ -319,6 +319,14 @@ let syncTimer = null;
 let syncInFlight = false;
 let syncStarted = false;
 
+if (typeof window !== "undefined") {
+  // Two tabs each writing SYNC_KEY can drop each other's flags. Reload the
+  // metadata when another tab persists a change so this tab sees the merged truth.
+  window.addEventListener("storage", (event) => {
+    if (event.key === SYNC_KEY) syncMeta = loadSyncMeta();
+  });
+}
+
 const money = new Intl.NumberFormat("en-JM", {
   style: "currency",
   currency: "JMD",
@@ -417,10 +425,10 @@ function getMonthBills(key) {
 }
 
 function getMonthSummary(key) {
-  const items = getMonthBills(key);
-  const total = items.reduce((sum, bill) => sum + bill.amount, 0);
-  const paid = items.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const unpaidItems = items.filter((bill) => !bill.paid && !bill.archived);
+  const items = getMonthBills(key).filter((bill) => !bill.archived && !bill.deletedAt);
+  const total = sumMoney(items.map((bill) => bill.amount));
+  const paid = sumMoney(items.filter((bill) => bill.paid).map((bill) => bill.amount));
+  const unpaidItems = items.filter((bill) => !bill.paid);
   const overdueItems = unpaidItems.filter((bill) => daysUntil(bill.due) < 0);
   return { items, total, paid, unpaidItems, overdueItems };
 }
@@ -432,21 +440,25 @@ function getMonthExpenses(key = monthKey(toDateInputValue(today))) {
 }
 
 function getExpenseTotal(key = monthKey(toDateInputValue(today)), category = "All") {
-  return getMonthExpenses(key)
-    .filter((expense) => category === "All" || expense.category === category)
-    .reduce((sum, expense) => sum + expense.amount, 0);
+  return sumMoney(
+    getMonthExpenses(key)
+      .filter((expense) => category === "All" || expense.category === category)
+      .map((expense) => expense.amount)
+  );
 }
 
 function getUnpaidBillTotal(key = monthKey(toDateInputValue(today))) {
-  return bills
-    .filter((bill) => !bill.paid && !bill.archived && monthKey(bill.due) === key)
-    .reduce((sum, bill) => sum + bill.amount, 0);
+  return sumMoney(
+    bills
+      .filter((bill) => !bill.paid && !bill.archived && monthKey(bill.due) === key)
+      .map((bill) => bill.amount)
+  );
 }
 
 function getSafeToSpend(key = monthKey(toDateInputValue(today))) {
   const starting = settings.cashflow?.monthlyStartingBalance || 0;
   const buffer = settings.cashflow?.safeSpendBuffer || 0;
-  return starting - getUnpaidBillTotal(key) - getExpenseTotal(key) - buffer;
+  return roundMoney(starting - getUnpaidBillTotal(key) - getExpenseTotal(key) - buffer);
 }
 
 function getRecentExpenses(limit = 5) {
@@ -465,7 +477,7 @@ function expensesByDate(items) {
 
 function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4) {
   const totals = getMonthExpenses(key).reduce((map, expense) => {
-    map[expense.category] = (map[expense.category] || 0) + expense.amount;
+    map[expense.category] = roundMoney((map[expense.category] || 0) + expense.amount);
     return map;
   }, {});
   return Object.entries(totals)
@@ -477,14 +489,14 @@ function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4
 function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
   const monthBills = getMonthBills(key).filter((bill) => !bill.archived);
   const monthExpenses = getMonthExpenses(key);
-  const fixedBills = monthBills.reduce((sum, bill) => sum + bill.amount, 0);
-  const paidBills = monthBills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const openBills = monthBills.filter((bill) => !bill.paid).reduce((sum, bill) => sum + bill.amount, 0);
-  const variableSpent = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const fixedBills = sumMoney(monthBills.map((bill) => bill.amount));
+  const paidBills = sumMoney(monthBills.filter((bill) => bill.paid).map((bill) => bill.amount));
+  const openBills = sumMoney(monthBills.filter((bill) => !bill.paid).map((bill) => bill.amount));
+  const variableSpent = sumMoney(monthExpenses.map((expense) => expense.amount));
   const starting = settings.cashflow?.monthlyStartingBalance || 0;
   const buffer = settings.cashflow?.safeSpendBuffer || 0;
-  const projected = starting - openBills - variableSpent;
-  const safeToSpend = projected - buffer;
+  const projected = roundMoney(starting - openBills - variableSpent);
+  const safeToSpend = roundMoney(projected - buffer);
   const topCategory = topExpenseCategories(key, 1)[0] || null;
   const propertyTaxDue = monthBills.some(isPropertyTaxBill);
   return {
@@ -516,13 +528,13 @@ function getPreviousMonthComparison(key = monthKey(toDateInputValue(today))) {
 }
 
 function getDailyOutflow(date) {
-  const dayBills = bills
-    .filter((bill) => bill.due === date && !bill.archived)
-    .reduce((sum, bill) => sum + bill.amount, 0);
-  const dayExpenses = expenses
-    .filter((expense) => expense.date === date)
-    .reduce((sum, expense) => sum + expense.amount, 0);
-  return dayBills + dayExpenses;
+  const dayBills = sumMoney(
+    bills.filter((bill) => bill.due === date && !bill.archived).map((bill) => bill.amount)
+  );
+  const dayExpenses = sumMoney(
+    expenses.filter((expense) => expense.date === date).map((expense) => expense.amount)
+  );
+  return roundMoney(dayBills + dayExpenses);
 }
 
 function getProjectedBalanceSeries(days = 30) {
@@ -533,11 +545,19 @@ function getProjectedBalanceSeries(days = 30) {
     date.setDate(today.getDate() + index);
     const valueDate = toDateInputValue(date);
     if (index === 0) {
-      projected = starting
-        - expenses.filter((expense) => parseDate(expense.date) <= parseDate(valueDate) && monthKey(expense.date) === monthKey(valueDate)).reduce((sum, expense) => sum + expense.amount, 0)
-        - bills.filter((bill) => !bill.archived && !bill.paid && parseDate(bill.due) <= parseDate(valueDate) && monthKey(bill.due) === monthKey(valueDate)).reduce((sum, bill) => sum + bill.amount, 0);
+      const expensesToDate = sumMoney(
+        expenses
+          .filter((expense) => parseDate(expense.date) <= parseDate(valueDate) && monthKey(expense.date) === monthKey(valueDate))
+          .map((expense) => expense.amount)
+      );
+      const unpaidToDate = sumMoney(
+        bills
+          .filter((bill) => !bill.archived && !bill.paid && parseDate(bill.due) <= parseDate(valueDate) && monthKey(bill.due) === monthKey(valueDate))
+          .map((bill) => bill.amount)
+      );
+      projected = roundMoney(starting - expensesToDate - unpaidToDate);
     } else {
-      projected -= getDailyOutflow(valueDate);
+      projected = roundMoney(projected - getDailyOutflow(valueDate));
     }
     return { date: valueDate, value: projected };
   });
@@ -554,7 +574,7 @@ function getSpendingRhythm(key = monthKey(toDateInputValue(today))) {
   getMonthExpenses(key).forEach((expense) => {
     const day = parseDate(expense.date).getDate();
     const index = Math.min(4, Math.floor((day - 1) / 7));
-    weeks[index].amount += expense.amount;
+    weeks[index].amount = roundMoney(weeks[index].amount + expense.amount);
   });
   return weeks;
 }
@@ -569,7 +589,8 @@ function getUpcomingPressure() {
         const due = daysUntil(bill.due);
         return due >= 0 && due <= days;
       })
-      .reduce((sum, bill) => sum + bill.amount, 0)
+      .map((bill) => bill.amount)
+      .reduce((sum, value) => roundMoney(sum + value), 0)
   }));
 }
 
@@ -704,6 +725,23 @@ function cleanAmount(value) {
   return parseMoneyInput(value);
 }
 
+function roundMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function sumMoney(values) {
+  return roundMoney(values.reduce((sum, value) => sum + (Number(value) || 0), 0));
+}
+
+let _idCounter = 0;
+function newId() {
+  // Date.now() alone collides on rapid creation (e.g., starter-data import).
+  // Mix in a session counter so two records made in the same ms can't share an id.
+  return Date.now() * 1e6 + (_idCounter++ % 1e6);
+}
+
 function formatMoneyField(input) {
   input.value = formatMoneyInput(input.value);
 }
@@ -746,9 +784,14 @@ function isPropertyTaxBill(source) {
 
 function advanceDueDate(value, repeat) {
   const next = parseDate(value);
+  const targetDay = next.getDate();
   if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
   if (repeat === "quarterly") next.setMonth(next.getMonth() + 3);
   if (repeat === "yearly") next.setFullYear(next.getFullYear() + 1);
+  // setMonth on Jan 31 silently rolls forward to Mar 3; clamp back to the
+  // last day of the intended month so a monthly bill due the 31st lands on
+  // Feb 28/29, Apr 30, etc.
+  if (next.getDate() !== targetDay) next.setDate(0);
   return toDateInputValue(next);
 }
 
@@ -757,7 +800,7 @@ function normalizeBill(bill) {
   const paid = Boolean(bill.paid);
   const createdAt = bill.createdAt || bill.updatedAt || nowIso();
   return {
-    id: bill.id || Date.now() + Math.floor(Math.random() * 100000),
+    id: bill.id || newId(),
     name: bill.name || "Untitled bill",
     category: bill.category || categories[0]?.name || "Home",
     amount: cleanAmount(bill.amount),
@@ -779,7 +822,7 @@ function normalizeBill(bill) {
 function normalizeExpense(expense) {
   const createdAt = expense.createdAt || nowIso();
   return {
-    id: expense.id || Date.now() + Math.floor(Math.random() * 100000),
+    id: expense.id || newId(),
     amount: cleanAmount(expense.amount),
     category: expense.category || defaultCategory().name,
     merchant: expense.merchant || expense.note || "Expense",
@@ -859,7 +902,7 @@ function createNextBillFrom(bill) {
   const repeat = bill.repeat || "none";
   if (repeat === "none") return null;
   return normalizeBill({
-    id: Date.now() + Math.floor(Math.random() * 1000),
+    id: newId(),
     name: bill.name,
     category: bill.category,
     amount: bill.amount,
@@ -970,8 +1013,10 @@ function updateSyncStatus(status, detail = "", extra = {}) {
   if (!settingsSheet.hidden) renderSettingsContent();
 }
 
+let _mutationToken = 0;
 function markSyncDirty() {
   syncMeta.dirty = true;
+  _mutationToken += 1;
   saveSyncMeta();
 }
 
@@ -1283,6 +1328,7 @@ async function syncUpNextState({ reason = "manual" } = {}) {
     return;
   }
   syncInFlight = true;
+  const tokenAtStart = _mutationToken;
   updateSyncStatus("Syncing", reason === "manual" ? "Syncing cloud backup now." : "Syncing latest local changes.");
   try {
     const { client, userId } = await ensureSupabaseSession();
@@ -1291,14 +1337,16 @@ async function syncUpNextState({ reason = "manual" } = {}) {
     syncMeta.deletedBills = pruneTombstones(syncMeta.deletedBills);
     syncMeta.deletedExpenses = pruneTombstones(syncMeta.deletedExpenses);
     syncMeta.deletedCategories = pruneTombstones(syncMeta.deletedCategories);
-    syncMeta.dirty = false;
+    // Only mark clean if no UI mutation happened during the round-trip.
+    // Otherwise a follow-up sync (already scheduled by the mutation) will flush.
+    if (_mutationToken === tokenAtStart) syncMeta.dirty = false;
     syncMeta.lastSyncAt = nowIso();
     syncMeta.userId = userId;
     saveSyncMeta();
     saveState(false);
     render();
     if (!settingsSheet.hidden) renderSettingsContent();
-    updateSyncStatus("Synced", "Cloud backup is current.");
+    updateSyncStatus(syncMeta.dirty ? "Pending" : "Synced", syncMeta.dirty ? "New local changes will sync shortly." : "Cloud backup is current.");
   } catch (error) {
     syncMeta.dirty = true;
     saveSyncMeta();
@@ -1335,6 +1383,11 @@ async function enablePushNotifications() {
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
   });
+  if (!subscription.endpoint || !subscription.endpoint.startsWith("https://") || subscription.endpoint.length > 1024) {
+    updateSyncStatus("Push not enabled", "The browser returned an unexpected push endpoint.");
+    try { await subscription.unsubscribe(); } catch { /* ignore */ }
+    return;
+  }
   const subscriptionJson = subscription.toJSON();
   const { error } = await client.from("upnext_web_push_subscriptions").upsert({
     user_id: userId,
@@ -1784,8 +1837,8 @@ function renderRecurringPrompt() {
   return `
     <section class="recurring-prompt home-reveal" style="--delay: 160ms" aria-label="Recurring bill follow-up">
       <div>
-        <p class="mini-label">Repeats ${bill.repeat}</p>
-        <strong>Create next ${bill.name}?</strong>
+        <p class="mini-label">Repeats ${escapeHtml(bill.repeat)}</p>
+        <strong>Create next ${escapeHtml(bill.name)}?</strong>
         <p class="small-note">Next due date would be ${dateFormat.format(parseDate(advanceDueDate(bill.due, bill.repeat)))}.</p>
       </div>
       <div class="prompt-actions">
@@ -1808,9 +1861,9 @@ function renderTopAppBar({ kicker, title, subtitle = "" }) {
           <img class="brandmark" src="assets/icon.svg" alt="">
         </button>
         <div class="hero-copy">
-          <p class="kicker">${kicker}</p>
-          <h1>${title}</h1>
-          ${subtitle ? `<p class="hero-note">${subtitle}</p>` : ""}
+          <p class="kicker">${escapeHtml(kicker)}</p>
+          <h1>${escapeHtml(title)}</h1>
+          ${subtitle ? `<p class="hero-note">${escapeHtml(subtitle)}</p>` : ""}
         </div>
       </div>
     </header>
@@ -1913,10 +1966,10 @@ function renderOnboarding() {
 
 function renderKpiCard(label, value, detail = "", tone = "") {
   return `
-    <article class="kpi-card ${tone}">
-      <span>${label}</span>
-      <strong>${value}</strong>
-      ${detail ? `<small>${detail}</small>` : ""}
+    <article class="kpi-card ${escapeAttribute(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
     </article>
   `;
 }
@@ -1960,7 +2013,7 @@ function renderSparklineChart({ title, summary, series, tone = "is-safe" }) {
 }
 
 function renderStackedBarChart({ title, summary, parts }) {
-  const total = parts.reduce((sum, part) => sum + part.amount, 0);
+  const total = sumMoney(parts.map((part) => part.amount));
   return `
     <section class="analytics-card home-reveal" style="--delay: 52ms">
       <div class="analytics-card-head">
@@ -1993,7 +2046,7 @@ function renderCategoryBars({ title, summary, items, total, emptyText = "Add exp
       </div>
       <p class="settings-copy">${summary}</p>
       <div class="premium-bars">
-        ${items.length ? items.map((item) => `<article style="--accent:${item.color}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${item.name}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${emptyText}</p>`}
+        ${items.length ? items.map((item) => `<article style="--accent:${escapeAttribute(item.color)}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${escapeHtml(item.name)}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${escapeHtml(emptyText)}</p>`}
       </div>
     </section>
   `;
@@ -2001,7 +2054,7 @@ function renderCategoryBars({ title, summary, items, total, emptyText = "Add exp
 
 function renderSpendingRhythmChart(key = monthKey(toDateInputValue(today))) {
   const rhythm = getSpendingRhythm(key);
-  const total = rhythm.reduce((sum, item) => sum + item.amount, 0);
+  const total = sumMoney(rhythm.map((item) => item.amount));
   const max = Math.max(...rhythm.map((item) => item.amount), 1);
   return `
     <section class="analytics-card home-reveal" style="--delay: 52ms">
@@ -2033,8 +2086,8 @@ function renderCategoryMovers(key = monthKey(toDateInputValue(today))) {
       </div>
       <p class="settings-copy">${movers[0]?.hasPrevious ? "Largest category changes compared with last month." : "Not enough history yet for category movement."}</p>
       <div class="mover-list">
-        ${movers.length ? movers.map((item) => `<article style="--accent:${item.color}">
-          <span>${item.name}</span>
+        ${movers.length ? movers.map((item) => `<article style="--accent:${escapeAttribute(item.color)}">
+          <span>${escapeHtml(item.name)}</span>
           <strong>${item.hasPrevious ? `${item.delta >= 0 ? "up" : "down"} ${money.format(Math.abs(item.delta))}` : money.format(item.amount)}</strong>
         </article>`).join("") : `<p class="settings-copy">Add expenses to see category movement.</p>`}
       </div>
@@ -2080,7 +2133,7 @@ function renderPressureCalendarMarks(date) {
 
 function renderInsightHighlight(analytics, comparison = getPreviousMonthComparison(analytics.key)) {
   const safe = analytics.safeToSpend >= 0;
-  const top = analytics.topCategory ? `${analytics.topCategory.name} is the largest variable category.` : "No variable category is leading yet.";
+  const top = analytics.topCategory ? `${escapeHtml(analytics.topCategory.name)} is the largest variable category.` : "No variable category is leading yet.";
   const comparisonText = comparison.hasPrevious
     ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
     : "Not enough history yet for a month-over-month trend.";
@@ -2103,14 +2156,14 @@ function renderInsightHighlight(analytics, comparison = getPreviousMonthComparis
 function renderExpenseRow(expense) {
   const category = getCategory(expense.category);
   return `
-    <article class="expense-row" style="--accent:${category.color}">
+    <article class="expense-row" style="--accent:${escapeAttribute(category.color)}">
       <span class="expense-dot" aria-hidden="true"></span>
       <div>
-        <strong>${expense.merchant}</strong>
-        <span>${expense.category} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${expense.paymentSource}` : ""}</span>
+        <strong>${escapeHtml(expense.merchant)}</strong>
+        <span>${escapeHtml(expense.category)} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${escapeHtml(expense.paymentSource)}` : ""}</span>
       </div>
       <strong>${money.format(expense.amount)}</strong>
-      <button class="icon-button light expense-delete-button" data-delete-expense="${expense.id}" type="button" aria-label="Remove ${expense.merchant}" title="Remove expense">${icon("trash")}</button>
+      <button class="icon-button light expense-delete-button" data-delete-expense="${expense.id}" type="button" aria-label="Remove ${escapeAttribute(expense.merchant)}" title="Remove expense">${icon("trash")}</button>
     </article>
   `;
 }
@@ -2119,12 +2172,12 @@ function renderBillListCard(bill, index = 0) {
   const category = getCategory(bill.category);
   const paidLabel = bill.paid ? `${bill.name} paid` : `Mark ${bill.name} paid`;
   return `
-    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay:${Math.min(40 + index * 24, 260)}ms">
-      <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${bill.name}">
+    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${escapeAttribute(category.color)}; --delay:${Math.min(40 + index * 24, 260)}ms">
+      <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${escapeAttribute(bill.name)}">
         <span class="budget-row-icon">${icon(categoryIconName(bill.category))}</span>
         <span class="budget-row-copy">
-          <strong>${bill.name}</strong>
-          <small>${bill.category} · ${repeatLabels[bill.repeat] || repeatLabels.none}</small>
+          <strong>${escapeHtml(bill.name)}</strong>
+          <small>${escapeHtml(bill.category)} · ${repeatLabels[bill.repeat] || repeatLabels.none}</small>
         </span>
         <span class="bill-card-amount">${money.format(bill.amount)}</span>
       </button>
@@ -2135,7 +2188,7 @@ function renderBillListCard(bill, index = 0) {
       <div class="bill-card-actions">
         <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
         <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
-        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${paidLabel}" title="${paidLabel}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
+        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${escapeAttribute(paidLabel)}" title="${escapeAttribute(paidLabel)}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
       </div>
     </article>
   `;
@@ -2219,11 +2272,11 @@ function renderUpcoming() {
 
 function renderTimelineItem(entry) {
   return `
-    <article class="timeline-item ${entry.tone}">
+    <article class="timeline-item ${escapeAttribute(entry.tone)}">
       <span class="timeline-dot" aria-hidden="true"></span>
       <div>
-        <strong>${entry.title}</strong>
-        <p>${entry.detail}</p>
+        <strong>${escapeHtml(entry.title)}</strong>
+        <p>${escapeHtml(entry.detail)}</p>
       </div>
       <time>${timelineFormat.format(new Date(entry.at))}</time>
     </article>
@@ -2246,13 +2299,13 @@ function renderBillDetail() {
       <header class="topbar detail-topbar home-reveal" style="--delay: 0ms">
         <button class="icon-button light" id="closeDetail" type="button" aria-label="Back to bills">${icon("back")}</button>
         <div class="detail-topbar-copy">
-          <p class="kicker">${bill.category}</p>
-          <h1>${bill.name}</h1>
+          <p class="kicker">${escapeHtml(bill.category)}</p>
+          <h1>${escapeHtml(bill.name)}</h1>
         </div>
         <button class="icon-button light" id="detailEdit" type="button" aria-label="Edit bill">${icon("edit")}</button>
       </header>
 
-      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${category.color}; --delay: 30ms">
+      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${escapeAttribute(category.color)}; --delay: 30ms">
         <div class="detail-hero-head">
           <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
           <span class="mini-label">${bill.archived ? "Archived" : "Active bill"}</span>
@@ -2285,8 +2338,8 @@ function renderBillDetail() {
             <h3>Schedule</h3>
           </div>
           <p class="small-note">Category</p>
-          <strong>${bill.category}</strong>
-          <p class="small-note detail-copy">${statusText(bill)}${bill.completedAt ? ` · paid ${timelineFormat.format(new Date(bill.completedAt))}` : ""}</p>
+          <strong>${escapeHtml(bill.category)}</strong>
+          <p class="small-note detail-copy">${escapeHtml(statusText(bill))}${bill.completedAt ? ` · paid ${timelineFormat.format(new Date(bill.completedAt))}` : ""}</p>
         </article>
         <article class="info-card">
           <div class="info-card-head">
@@ -2302,7 +2355,7 @@ function renderBillDetail() {
       ${isPropertyTax ? `
         <section class="property-note detail-note home-reveal" style="--delay: 130ms">
           <strong>Jamaica property tax planning</strong>
-          <span>Due April 1 yearly. Current plan: ${bill.propertyTaxPlan === "half-yearly" ? "half-yearly" : bill.propertyTaxPlan}. Keep April 30 visible as the first-payment warning date.</span>
+          <span>Due April 1 yearly. Current plan: ${escapeHtml(bill.propertyTaxPlan === "half-yearly" ? "half-yearly" : bill.propertyTaxPlan)}. Keep April 30 visible as the first-payment warning date.</span>
         </section>
       ` : ""}
 
@@ -2352,8 +2405,8 @@ function escapeAttribute(value) {
 }
 
 function renderBudgetChart() {
-  const totalPlanned = categories.reduce((sum, category) => sum + category.planned, 0);
-  const totalAssigned = categories.reduce((sum, category) => sum + category.assigned, 0);
+  const totalPlanned = sumMoney(categories.map((category) => category.planned));
+  const totalAssigned = sumMoney(categories.map((category) => category.assigned));
   const focus = getCategory(selectedBudgetCategory);
   const focusAssigned = focus?.assigned || 0;
   const focusPlanned = focus?.planned || 0;
@@ -2480,7 +2533,7 @@ function renderSpendingBillsContent() {
       <button class="filter-disclosure" data-toggle-bill-filters type="button" aria-expanded="${spendingBillFiltersOpen}">
         <span>
           <strong>Filters</strong>
-          <small>${filters.find(([value]) => value === billFilter)?.[1] || "All"} · ${billSort === "due" ? "Due date" : billSort === "amount" ? "Amount" : "Name"}${billSearch ? ` · ${billSearch}` : ""}</small>
+          <small>${filters.find(([value]) => value === billFilter)?.[1] || "All"} · ${billSort === "due" ? "Due date" : billSort === "amount" ? "Amount" : "Name"}${billSearch ? ` · ${escapeHtml(billSearch)}` : ""}</small>
         </span>
         ${icon("chevron")}
       </button>
@@ -2543,7 +2596,7 @@ function renderBills() {
 
 function renderExpenseCategoryChips() {
   return ["All", ...expenseCategories].map((category) => `
-    <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${category}</button>
+    <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${escapeHtml(category)}</button>
   `).join("");
 }
 
@@ -2564,7 +2617,7 @@ function renderSpendingExpensesContent() {
       <button class="filter-disclosure" data-toggle-expense-filters type="button" aria-expanded="${spendingExpenseFiltersOpen}">
         <span>
           <strong>Category</strong>
-          <small>${selectedExpenseCategory}</small>
+          <small>${escapeHtml(selectedExpenseCategory)}</small>
         </span>
         ${icon("chevron")}
       </button>
@@ -2577,7 +2630,7 @@ function renderSpendingExpensesContent() {
     ${renderSpendingRhythmChart(currentMonth)}
     ${renderCategoryBars({
       title: "Top categories",
-      summary: topCategories.length ? `${topCategories[0].name} is the largest variable category this month.` : "Add expenses to see category patterns.",
+      summary: topCategories.length ? `${escapeHtml(topCategories[0].name)} is the largest variable category this month.` : "Add expenses to see category patterns.",
       items: topCategories,
       total,
       emptyText: "Add expenses to see category patterns."
@@ -2668,7 +2721,9 @@ function renderCalendarDay(date) {
   const key = monthKey(date);
   const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
   const expensesForDay = expenses.filter((expense) => expense.date === date);
-  const totalOut = billsForDay.reduce((sum, bill) => sum + bill.amount, 0) + expensesForDay.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalOut = roundMoney(
+    sumMoney(billsForDay.map((bill) => bill.amount)) + sumMoney(expensesForDay.map((expense) => expense.amount))
+  );
   const isCurrentMonth = key === visibleCalendarMonth;
   return `
     <button class="calendar-day ${isCurrentMonth ? "" : "is-muted"} ${date === toDateInputValue(today) ? "is-today" : ""}" data-calendar-day="${date}" type="button">
@@ -2755,9 +2810,11 @@ function renderInsights() {
   const projectedSeries = getProjectedBalanceSeries(30);
   const spent = getExpenseTotal(currentMonth);
   const unpaidBills = getUnpaidBillTotal(currentMonth);
-  const subscriptions = bills
-    .filter((bill) => bill.category === "Subscriptions" && !bill.archived && monthKey(bill.due) === currentMonth)
-    .reduce((sum, bill) => sum + bill.amount, 0);
+  const subscriptions = sumMoney(
+    bills
+      .filter((bill) => bill.category === "Subscriptions" && !bill.archived && monthKey(bill.due) === currentMonth)
+      .map((bill) => bill.amount)
+  );
   const paidThisMonth = bills.filter((bill) => bill.paid && monthKey(bill.due) === currentMonth);
   const totalThisMonth = bills.filter((bill) => monthKey(bill.due) === currentMonth);
   const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
@@ -2794,7 +2851,7 @@ function renderInsights() {
     })}
     ${renderCategoryBars({
       title: "Top spending categories",
-      summary: top.length ? `${top[0].name} contributes the most variable spend this month.` : "Add expenses to unlock spending insights.",
+      summary: top.length ? `${escapeHtml(top[0].name)} contributes the most variable spend this month.` : "Add expenses to unlock spending insights.",
       items: top,
       total: spent,
       emptyText: "Add expenses to unlock spending insights."
@@ -2809,12 +2866,12 @@ function renderHistoryBill(bill) {
   return `
     <div class="history-item">
       <div>
-        <strong>${bill.name}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
+        <strong>${escapeHtml(bill.name)}</strong>
+        <span>${dateFormat.format(parseDate(bill.due))} · ${escapeHtml(bill.category)}</span>
       </div>
       <div>
         <strong>${money.format(bill.amount)}</strong>
-        <span>${recordStatusText(bill)}</span>
+        <span>${escapeHtml(recordStatusText(bill))}</span>
       </div>
     </div>
   `;
@@ -2824,8 +2881,8 @@ function renderArchivedBillRow(bill) {
   return `
     <div class="archived-item">
       <div>
-        <strong>${bill.name}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${bill.category}</span>
+        <strong>${escapeHtml(bill.name)}</strong>
+        <span>${dateFormat.format(parseDate(bill.due))} · ${escapeHtml(bill.category)}</span>
       </div>
       <button class="secondary-action" type="button" data-restore-bill="${bill.id}">Restore</button>
     </div>
@@ -2994,7 +3051,7 @@ function renderSettingsContent() {
       <form id="editCategoryForm" class="control-form">
         <label>
           <span>Category</span>
-          <select id="editCategory">${categories.map((category) => `<option ${category.name === selected.name ? "selected" : ""}>${category.name}</option>`).join("")}</select>
+          <select id="editCategory">${categories.map((category) => `<option ${category.name === selected.name ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}</select>
         </label>
         <label>
           <span>Planned amount</span>
@@ -3179,9 +3236,9 @@ function closeSheet() {
 function syncExpenseCategoryOptions(preferred = expenseCategory.value) {
   expenseCategories = normalizeExpenseCategories(expenseCategories);
   const fallback = expenseCategories[0] || defaultCategory().name;
-  expenseCategory.innerHTML = expenseCategories.map((category) => `<option>${category}</option>`).join("");
+  expenseCategory.innerHTML = expenseCategories.map((category) => `<option>${escapeHtml(category)}</option>`).join("");
   expenseCategory.value = expenseCategories.includes(preferred) ? preferred : fallback;
-  expenseSource.innerHTML = settings.cashflow.paymentSources.map((source) => `<option>${source}</option>`).join("");
+  expenseSource.innerHTML = settings.cashflow.paymentSources.map((source) => `<option>${escapeHtml(source)}</option>`).join("");
 }
 
 function openExpenseSheet({ keepValues = false } = {}) {
@@ -3310,7 +3367,7 @@ function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
     <form id="budgetCategorySheetForm" class="action-form">
       <label>
         <span>Planned amount</span>
-        <input id="budgetCategoryPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for ${selected.name}">
+        <input id="budgetCategoryPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for ${escapeAttribute(selected.name)}">
       </label>
       <div class="control-actions">
         <button class="primary-action small" type="submit">Update</button>
@@ -3391,7 +3448,7 @@ function activeSheet() {
 
 function syncBillCategoryOptions(preferred = billCategory.value) {
   const fallback = categories[0]?.name || "";
-  billCategory.innerHTML = categories.map((category) => `<option>${category.name}</option>`).join("");
+  billCategory.innerHTML = categories.map((category) => `<option>${escapeHtml(category.name)}</option>`).join("");
   billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
 }
 
@@ -3631,10 +3688,10 @@ function renderPrintExport(key) {
           <tbody>
             ${summary.items.map((bill) => `
               <tr>
-                <td>${bill.name}</td>
-                <td>${bill.category}</td>
+                <td>${escapeHtml(bill.name)}</td>
+                <td>${escapeHtml(bill.category)}</td>
                 <td>${dateFormat.format(parseDate(bill.due))}</td>
-                <td>${recordStatusText(bill)}</td>
+                <td>${escapeHtml(recordStatusText(bill))}</td>
                 <td>${money.format(bill.amount)}</td>
               </tr>
             `).join("") || `<tr><td colspan="5">No bills recorded for this month.</td></tr>`}
@@ -3650,7 +3707,7 @@ function renderPrintExport(key) {
           <tbody>
             ${categories.map((category) => `
               <tr>
-                <td>${category.name}</td>
+                <td>${escapeHtml(category.name)}</td>
                 <td>${money.format(category.planned)}</td>
                 <td>${money.format(category.assigned)}</td>
                 <td>${money.format(Math.max(category.planned - category.assigned, 0))}</td>
@@ -3996,7 +4053,7 @@ function setupBudgetControls() {
 
 function addExpenseFromForm({ addAnother = false } = {}) {
   const expense = normalizeExpense({
-    id: Date.now() + Math.floor(Math.random() * 1000),
+    id: newId(),
     amount: expenseAmount.value,
     category: expenseCategory.value,
     merchant: expenseMerchant.value.trim() || expenseCategory.value,
@@ -4067,7 +4124,7 @@ function setupExpenseForm() {
 
 function setupForm() {
   syncBillCategoryOptions();
-  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${preset.name}">${preset.name}</button>`).join("");
+  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${escapeAttribute(preset.name)}">${escapeHtml(preset.name)}</button>`).join("");
 
   presetRail.addEventListener("click", (event) => {
     const button = event.target.closest("[data-preset]");

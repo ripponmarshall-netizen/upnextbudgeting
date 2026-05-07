@@ -53,12 +53,30 @@ async function cacheFirst(request) {
   return response;
 }
 
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  const network = fetch(request)
+    .then((response) => {
+      if (response && response.ok) cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => cached);
+  return cached || network;
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== "GET") return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(networkFirst(event.request));
+    return;
+  }
+
+  // App code/styles must update on deploy without bumping CACHE_NAME.
+  if (/\.(?:js|css|webmanifest)$/.test(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
 
