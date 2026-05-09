@@ -61,8 +61,9 @@ async function staleWhileRevalidate(request) {
       if (response && response.ok) cache.put(request, response.clone());
       return response;
     })
-    .catch(() => cached);
-  return cached || network;
+    .catch(() => null);
+  if (cached) return cached;
+  return network || Response.error();
 }
 
 self.addEventListener("fetch", (event) => {
