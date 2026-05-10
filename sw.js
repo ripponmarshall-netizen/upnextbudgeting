@@ -56,14 +56,14 @@ async function cacheFirst(request) {
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
-  const network = fetch(request)
+  const networkResponse = await fetch(request)
     .then((response) => {
       if (response && response.ok) cache.put(request, response.clone());
       return response;
     })
     .catch(() => null);
   if (cached) return cached;
-  return network || Response.error();
+  return networkResponse || Response.error();
 }
 
 self.addEventListener("fetch", (event) => {
