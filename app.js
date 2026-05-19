@@ -1053,13 +1053,33 @@ function loadSyncMeta() {
   }
 }
 
+let quotaToastShown = false;
+function reportQuotaFailure(error) {
+  console.warn("UpNextBudgeting localStorage write failed", error);
+  if (quotaToastShown) return;
+  if (error && (error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014)) {
+    quotaToastShown = true;
+    try {
+      showToast("Local storage is full. Sign in to back up, then clear browser data.", { duration: 9000 });
+    } catch { /* toast region may not exist yet during early init */ }
+  }
+}
+
 function saveSyncMeta() {
   try {
     localStorage.setItem(SYNC_KEY, JSON.stringify(syncMeta));
   } catch (error) {
-    console.warn("Could not save UpNextBudgeting sync metadata", error);
+    reportQuotaFailure(error);
   }
 }
+
+const SYNC_STATE_BY_STATUS = {
+  "Syncing": "pending",
+  "Synced": "ok",
+  "Pending": "pending",
+  "Offline": "offline",
+  "Sync issue": "error"
+};
 
 function updateSyncStatus(status, detail = "", extra = {}) {
   syncMeta = {
@@ -1070,6 +1090,11 @@ function updateSyncStatus(status, detail = "", extra = {}) {
     ...extra
   };
   saveSyncMeta();
+  // Surface sync state as a body data-attr so CSS can show a thin progress
+  // strip / dim the cloud chip without each render needing to know about it.
+  if (typeof document !== "undefined") {
+    document.body.dataset.sync = SYNC_STATE_BY_STATUS[status] || "idle";
+  }
   if (!settingsSheet.hidden) renderSettingsContent();
 }
 
@@ -1352,7 +1377,7 @@ async function pullRemoteChanges(client, userId) {
     }
     const remote = {
       name: row.name,
-      color: row.color,
+      color: safeCssColor(row.color),
       planned: cleanAmount(row.planned),
       assigned: cleanAmount(row.assigned),
       updatedAt: row.updated_at,
@@ -1483,7 +1508,7 @@ function saveState(markDirty = true) {
       scheduleSync();
     }
   } catch (error) {
-    console.warn("Could not save UpNextBudgeting state", error);
+    reportQuotaFailure(error);
   }
 }
 
@@ -1505,7 +1530,7 @@ function loadState() {
     if (!isValidState(state)) throw new Error("Invalid saved state");
     categories = state.categories.map((category, index) => ({
       name: category.name,
-      color: category.color || categoryColors[index % categoryColors.length],
+      color: safeCssColor(category.color, categoryColors[index % categoryColors.length]),
       planned: cleanAmount(category.planned),
       assigned: cleanAmount(category.assigned),
       updatedAt: category.updatedAt || state.savedAt || nowIso(),
@@ -1956,7 +1981,7 @@ function renderProfileForm({ mode = "onboarding" } = {}) {
   return `
     <form id="profileForm" class="profile-form" data-profile-mode="${mode}">
       <div class="profile-form-head">
-        <span class="profile-token onboarding-profile-token" style="--profile-color:${profile.avatarColor}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
+        <span class="profile-token onboarding-profile-token" style="--profile-color:${safeCssColor(profile.avatarColor)}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
         <div>
           <p class="mini-label">Local profile</p>
           <h2>${title}</h2>
@@ -2086,10 +2111,10 @@ function renderStackedBarChart({ title, summary, parts }) {
       </div>
       <p class="settings-copy">${summary}</p>
       <div class="stacked-bar" role="img" aria-label="${escapeAttribute(`${title}. Total ${money.format(total)}.`)}">
-        ${parts.map((part) => `<i style="--value:${total ? (part.amount / total) * 100 : 0}%; --accent:${part.color}" title="${escapeAttribute(`${part.label}: ${money.format(part.amount)}`)}"></i>`).join("")}
+        ${parts.map((part) => `<i style="--value:${total ? (part.amount / total) * 100 : 0}%; --accent:${safeCssColor(part.color)}" title="${escapeAttribute(`${part.label}: ${money.format(part.amount)}`)}"></i>`).join("")}
       </div>
       <div class="chart-legend">
-        ${parts.map((part) => `<span><i style="--accent:${part.color}"></i>${part.label} ${money.format(part.amount)}</span>`).join("")}
+        ${parts.map((part) => `<span><i style="--accent:${safeCssColor(part.color)}"></i>${part.label} ${money.format(part.amount)}</span>`).join("")}
       </div>
     </section>
   `;
@@ -2107,7 +2132,7 @@ function renderCategoryBars({ title, summary, items, total, emptyText = "Add exp
       </div>
       <p class="settings-copy">${summary}</p>
       <div class="premium-bars">
-        ${items.length ? items.map((item) => `<article style="--accent:${escapeAttribute(item.color)}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${escapeHtml(item.name)}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${escapeHtml(emptyText)}</p>`}
+        ${items.length ? items.map((item) => `<article style="--accent:${safeCssColor(item.color)}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${escapeHtml(item.name)}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${escapeHtml(emptyText)}</p>`}
       </div>
     </section>
   `;
@@ -2147,7 +2172,7 @@ function renderCategoryMovers(key = monthKey(toDateInputValue(today))) {
       </div>
       <p class="settings-copy">${movers[0]?.hasPrevious ? "Largest category changes compared with last month." : "Not enough history yet for category movement."}</p>
       <div class="mover-list">
-        ${movers.length ? movers.map((item) => `<article style="--accent:${escapeAttribute(item.color)}">
+        ${movers.length ? movers.map((item) => `<article style="--accent:${safeCssColor(item.color)}">
           <span>${escapeHtml(item.name)}</span>
           <strong>${item.hasPrevious ? `${item.delta >= 0 ? "up" : "down"} ${money.format(Math.abs(item.delta))}` : money.format(item.amount)}</strong>
         </article>`).join("") : `<p class="settings-copy">Add expenses to see category movement.</p>`}
@@ -2217,7 +2242,7 @@ function renderInsightHighlight(analytics, comparison = getPreviousMonthComparis
 function renderExpenseRow(expense) {
   const category = getCategory(expense.category);
   return `
-    <article class="expense-row" style="--accent:${escapeAttribute(category.color)}">
+    <article class="expense-row" style="--accent:${safeCssColor(category.color)}">
       <span class="expense-dot" aria-hidden="true"></span>
       <div>
         <strong>${escapeHtml(expense.merchant)}</strong>
@@ -2233,7 +2258,7 @@ function renderBillListCard(bill, index = 0) {
   const category = getCategory(bill.category);
   const paidLabel = bill.paid ? `${bill.name} paid` : `Mark ${bill.name} paid`;
   return `
-    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${escapeAttribute(category.color)}; --delay:${Math.min(40 + index * 24, 260)}ms">
+    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${safeCssColor(category.color)}; --delay:${Math.min(40 + index * 24, 260)}ms">
       <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${escapeAttribute(bill.name)}">
         <span class="budget-row-icon">${icon(categoryIconName(bill.category))}</span>
         <span class="budget-row-copy">
@@ -2367,7 +2392,7 @@ function renderBillDetail() {
         <button class="icon-button light" id="detailEdit" type="button" aria-label="Edit bill">${icon("edit")}</button>
       </header>
 
-      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${escapeAttribute(category.color)}; --delay: 30ms">
+      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${safeCssColor(category.color)}; --delay: 30ms">
         <div class="detail-hero-head">
           <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
           <span class="mini-label">${bill.archived ? "Archived" : "Active bill"}</span>
@@ -2466,6 +2491,16 @@ function escapeAttribute(value) {
     .replace(/>/g, "&gt;");
 }
 
+// Only allow CSS color shapes we render with — anything else falls back to
+// brand teal. Prevents a malicious imported backup (or future sync payload)
+// from breaking out of a `style="--accent:${color}"` interpolation and
+// injecting arbitrary CSS via category/avatar color fields.
+const CSS_COLOR_RE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\(\s*[\d.,%\s/-]+\s*\))$/;
+function safeCssColor(value, fallback = "#5cae9f") {
+  const text = String(value ?? "").trim();
+  return CSS_COLOR_RE.test(text) ? text : fallback;
+}
+
 function renderBudgetChart() {
   const totalPlanned = sumMoney(categories.map((category) => category.planned));
   const totalAssigned = sumMoney(categories.map((category) => category.assigned));
@@ -2491,14 +2526,14 @@ function renderBudgetChart() {
       const focused = category.name === selectedBudgetCategory;
       const encodedName = encodeURIComponent(category.name);
       return `
-        <g class="chart-segment ${focused ? "is-focused" : ""}" data-chart-category="${encodedName}" tabindex="0" focusable="true" role="button" aria-label="Show ${escapeAttribute(category.name)} budget details" style="--accent:${category.color}">
+        <g class="chart-segment ${focused ? "is-focused" : ""}" data-chart-category="${encodedName}" tabindex="0" focusable="true" role="button" aria-label="Show ${escapeAttribute(category.name)} budget details" style="--accent:${safeCssColor(category.color)}">
           <path class="chart-segment-track" d="${describeArc(120, 120, 82, start, end)}"></path>
           ${category.assigned ? `<path class="chart-segment-fill" d="${describeArc(120, 120, 82, start, assignedEnd)}"></path>` : ""}
         </g>
       `;
     })
     .join("");
-  const focusColor = focus?.color || "var(--info)";
+  const focusColor = focus ? safeCssColor(focus.color, "var(--info)") : "var(--info)";
 
   return `
     <section class="chart-panel home-reveal" style="--delay: 40ms">
@@ -2965,7 +3000,7 @@ function renderSettingsContent() {
         <span class="mini-label">local</span>
       </div>
       <div class="settings-profile-card">
-        <span class="profile-token settings-profile-token" style="--profile-color:${profile.avatarColor}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
+        <span class="profile-token settings-profile-token" style="--profile-color:${safeCssColor(profile.avatarColor)}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
         <div>
           <strong>${escapeHtml(profile.name || "Local profile")}</strong>
           <p class="settings-copy">${profile.onboardingComplete ? "Saved locally on this device." : "Create a local profile to personalize the app."} Cloud sync uses a silent private device identity.</p>
@@ -3167,11 +3202,23 @@ function visibleSheetCount() {
     .length;
 }
 
+function setBackgroundInert(inert) {
+  // Prevent the background app/tabbar from receiving focus or pointer input
+  // while a sheet is open — keeps keyboard users trapped inside the modal
+  // without each sheet path needing to manage focus boundaries manually.
+  [app, tabbar].forEach((element) => {
+    if (!element) return;
+    if (inert) element.setAttribute("inert", "");
+    else element.removeAttribute("inert");
+  });
+}
+
 function showBackdrop() {
   clearSheetTimer(backdrop);
   document.body.classList.add("sheet-zoom-active");
   backdrop.hidden = false;
   backdrop.classList.remove("is-closing");
+  setBackgroundInert(true);
   window.requestAnimationFrame(() => backdrop.classList.add("is-open"));
 }
 
@@ -3184,6 +3231,7 @@ function hideBackdropIfIdle() {
     backdrop.hidden = true;
     backdrop.classList.remove("is-closing");
     document.body.classList.remove("sheet-zoom-active");
+    setBackgroundInert(false);
     sheetTimers.delete(backdrop);
   }, sheetMotionDuration());
   sheetTimers.set(backdrop, timer);
@@ -3808,7 +3856,7 @@ function applyImportedState(state) {
   if (!isValidState(state)) throw new Error("Backup file is not a valid UpNextBudgeting backup.");
   categories = state.categories.map((category, index) => ({
     name: category.name,
-    color: category.color || categoryColors[index % categoryColors.length],
+    color: safeCssColor(category.color, categoryColors[index % categoryColors.length]),
     planned: cleanAmount(category.planned),
     assigned: cleanAmount(category.assigned),
     updatedAt: category.updatedAt || state.savedAt || nowIso(),
@@ -4326,7 +4374,11 @@ function render() {
   } else {
     renderHome();
   }
-  tabs.forEach((tab) => tab.classList.toggle("is-active", !activeBillId && tab.dataset.tab === activeTab));
+  tabs.forEach((tab) => {
+    const selected = !activeBillId && tab.dataset.tab === activeTab;
+    tab.classList.toggle("is-active", selected);
+    tab.setAttribute("aria-selected", selected ? "true" : "false");
+  });
   if (tabbar) {
     tabbar.hidden = Boolean(activeBillId);
     tabbar.dataset.activeTab = activeTab;
@@ -4353,8 +4405,35 @@ if (themePreferenceMedia?.addEventListener) {
 }
 
 if ("serviceWorker" in navigator) {
+  let updateToastShown = false;
+  let reloadingForUpdate = false;
+  const promptUpdate = (worker) => {
+    if (!worker || updateToastShown) return;
+    updateToastShown = true;
+    showToast("A new version is ready.", {
+      duration: 12000,
+      undoLabel: "Reload",
+      undo: () => worker.postMessage({ type: "SKIP_WAITING" })
+    });
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch((error) => {
+    navigator.serviceWorker.register("sw.js").then((registration) => {
+      if (registration.waiting) promptUpdate(registration.waiting);
+      registration.addEventListener("updatefound", () => {
+        const incoming = registration.installing;
+        if (!incoming) return;
+        incoming.addEventListener("statechange", () => {
+          if (incoming.state === "installed" && navigator.serviceWorker.controller) {
+            promptUpdate(incoming);
+          }
+        });
+      });
+    }).catch((error) => {
       console.warn("Service worker registration skipped", error);
     });
   });
