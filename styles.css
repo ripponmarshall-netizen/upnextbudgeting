@@ -2867,3 +2867,108 @@ html[data-theme="pastel"] {
     box-shadow: 0 10px 20px rgba(105, 88, 143, 0.08);
   }
 }
+
+/* ── A11y: keyboard focus ring ────────────────── */
+:where(button, a, [role="button"], [role="tab"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-small);
+}
+.tab[role="tab"][aria-selected="true"] {
+  font-weight: 720;
+}
+
+/* ── A11y: 44px tap targets on touch devices ───── */
+@media (pointer: coarse) {
+  .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .tab {
+    min-height: 56px;
+  }
+  .toast button {
+    min-height: 40px;
+    padding: 0 14px;
+  }
+}
+
+/* ── Reduced motion: also kill hover transforms ── */
+@media (prefers-reduced-motion: reduce) {
+  .wallet-card:hover,
+  .kpi-card:hover,
+  .bill-list-card:hover,
+  .expense-row:hover,
+  .timeline-item:hover,
+  .metric-pill:hover,
+  .preset-pill:hover,
+  .icon-button:hover,
+  .primary-action:hover,
+  .secondary-action:hover {
+    transform: none !important;
+  }
+}
+
+/* ── Sync state indicator (top progress strip) ──── */
+.sync-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100;
+  background: transparent;
+  pointer-events: none;
+}
+body[data-sync="pending"] .sync-indicator {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--brand) 40%,
+    var(--brand) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: syncIndicatorSlide 1.4s linear infinite;
+}
+body[data-sync="error"] .sync-indicator {
+  background: var(--danger);
+  opacity: 0.7;
+}
+@keyframes syncIndicatorSlide {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-sync="pending"] .sync-indicator {
+    animation: none;
+    background: var(--brand);
+    opacity: 0.6;
+  }
+}
+
+/* ── Tablet breakpoint (600–679px) ──────────────── */
+@media (min-width: 600px) and (max-width: 679px) {
+  .app-shell {
+    max-width: 600px;
+  }
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+  }
+  .quick-sheet {
+    max-width: 560px;
+  }
+}
+
+/* ── Dual-submit visual differentiation ─────────── */
+.expense-form .control-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-3);
+}
+.expense-form .control-actions .secondary-action {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  font-weight: 650;
+}

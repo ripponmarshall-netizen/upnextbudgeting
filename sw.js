@@ -1,4 +1,4 @@
-const CACHE_NAME = "upnextbudgeting-shell-v29";
+const CACHE_NAME = "upnextbudgeting-shell-v30";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -17,7 +17,13 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
   );
-  self.skipWaiting();
+});
+
+// The active page asks the waiting worker to take over after the user clicks
+// the "reload to update" toast — keeps users in control of when the swap
+// happens rather than forcing it mid-session.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -63,7 +69,10 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => null);
   if (cached) return cached;
-  return networkResponse || Response.error();
+  if (networkResponse) return networkResponse;
+  // Offline with no cache hit — surface a real HTTP-like response so the
+  // caller can branch on .ok / status instead of crashing on Response.error().
+  return new Response("", { status: 504, statusText: "Offline" });
 }
 
 self.addEventListener("fetch", (event) => {
