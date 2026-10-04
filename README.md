@@ -1,41 +1,40 @@
 # UpNextBudgeting
 
-UpNextBudgeting is a mobile-first PWA for bill planning, due-date visibility, light budgeting, and Jamaica-first recurring expense reminders.
+A minimal, mobile-first PWA that budgets from payday to payday. It answers one question first — **how much is safe to spend before payday?** — and keeps bills, category plans, and spending in one consistent period.
 
-## Run Locally
+## How it works
 
-This is a static app. Serve the project root with any local static server:
+- **Budget period** runs from your payday to the day before the next one (set in Settings).
+- **Safe to spend** = take-home pay − spent this period − unpaid bills still due (including overdue ones).
+- **Budget** gives each category a plan per period. Expenses and paid bills count as *spent*; unpaid bills count as *due*.
+- **Recurring bills** schedule their next occurrence automatically when you mark them paid (with undo).
+
+Tabs: **Home** (safe to spend, upcoming bills, budget watchlist, recent) · **Budget** (plan vs. actual) · **+** (add expense or bill) · **Bills** (overdue / before payday / later, paid) · **Activity** (search, filter, edit transactions). Settings live behind the gear icon.
+
+## Run locally
+
+Static app — serve the project root:
 
 ```bash
 python3 -m http.server 4173
 ```
 
-Then open:
+Then open http://127.0.0.1:4173/. Add `?reset=1` to wipe local data, caches, and the service worker.
 
-```text
-http://127.0.0.1:4173/
+## Tests
+
+Budget math lives in `core.js` as pure functions:
+
+```bash
+node --test tests/*.test.mjs
 ```
 
-## GitHub Pages
+## Deploy (GitHub Pages)
 
-After pushing to GitHub, enable Pages:
-
-1. Open repo Settings.
-2. Go to Pages.
-3. Source: `Deploy from a branch`.
-4. Branch: `main`.
-5. Folder: `/root`.
-
-The app should become available at:
-
-```text
-https://YOUR_USERNAME.github.io/UpNextBudgeting/
-```
-
-
+Settings → Pages → Deploy from a branch → `main` / root.
 
 ## Notes
 
-- Local app data is stored in `localStorage`.
-- Monthly CSV/PDF export and JSON backup/restore are built in.
-- Real iPhone push notifications require HTTPS and installing the app to the iPhone Home Screen.
+- Data is stored in `localStorage` and synced to a private, anonymous Supabase profile per device (`supabase/`).
+- CSV export (per period) and JSON backup/restore are in Settings.
+- iPhone push notifications require HTTPS and installing the app to the Home Screen.

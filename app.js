@@ -1,5 +1,24 @@
-const DEMO_MODE = false;
-const DEMO_DATE = "2026-04-19";
+import {
+  addDays,
+  advanceDueDate,
+  categoryBreakdown,
+  clampStartDay,
+  daysBetween,
+  getBudgetPeriod,
+  isActiveBill,
+  newId,
+  openBillsFor,
+  parseDate,
+  parseMoneyInput,
+  periodSummary,
+  roundMoney,
+  shiftPeriod,
+  sortOpenBills,
+  sumMoney,
+  toDateInputValue,
+  transactionsFor
+} from "./core.js";
+
 const STORAGE_KEY = "upnextbudgeting:v1";
 const SYNC_KEY = "upnextbudgeting:sync";
 const BADGE_REMINDER_DAYS = 5;
@@ -9,6 +28,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const SUPABASE_CLIENT_SRC = "https://esm.sh/@supabase/supabase-js@2.48.1";
 const VAPID_PUBLIC_KEY = "BH7l15H00yaZzqxZBHORO0CFoM7zWkskDjdTmeyEYORYK5p3QfqySFE_pw_EuzZGIAX3nQwweyxraki-Wx4tLOY";
 const SYNC_DEBOUNCE_MS = 1600;
+const DEFAULT_SOURCES = ["Cash", "Debit card", "Credit card", "Bank transfer"];
+const REPEATS = { none: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+const MAX_PERIOD_OFFSET = 1;
 
 async function resetUpNextBrowserStateIfRequested() {
   const params = new URLSearchParams(window.location.search);
@@ -29,390 +51,129 @@ async function resetUpNextBrowserStateIfRequested() {
     console.warn("Could not fully reset UpNextBudgeting browser state", error);
   }
   params.delete("reset");
-  const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
-  window.location.replace(nextUrl);
+  window.location.replace(`${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`);
   return true;
 }
 
-function getToday() {
-  if (DEMO_MODE) return new Date(`${DEMO_DATE}T12:00:00`);
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
-}
-
-const today = getToday();
-
 const icons = {
-  plus: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
-  gear: `<svg viewBox="0 0 24 24"><path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z"/><path d="M19.3 13.8a7.9 7.9 0 0 0 .05-1.8l2-1.55-2-3.45-2.5 1a8.35 8.35 0 0 0-1.55-.9L14.9 4h-4l-.4 3.1c-.55.24-1.07.54-1.55.9l-2.5-1-2 3.45 2 1.55a7.9 7.9 0 0 0 .05 1.8l-2 1.55 2 3.45 2.5-1c.48.36 1 .66 1.55.9l.4 3.1h4l.4-3.1c.55-.24 1.07-.54 1.55-.9l2.5 1 2-3.45-2.1-1.55Z"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.4 4.8 3.2 17.3A2 2 0 0 0 4.9 20h14.2a2 2 0 0 0 1.7-2.7L13.6 4.8a1.85 1.85 0 0 0-3.2 0Z"/></svg>`,
-  chevron: `<svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>`,
-  back: `<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24"><path d="m4 20 4.5-1 9-9a2.12 2.12 0 0 0-3-3l-9 9L4 20Z"/><path d="m13 7 4 4"/></svg>`,
-  archive: `<svg viewBox="0 0 24 24"><path d="M4 7.5h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M3 7.5h18V4.75a1.25 1.25 0 0 0-1.25-1.25H4.25A1.25 1.25 0 0 0 3 4.75V7.5Z"/><path d="M10 12h4"/></svg>`,
-  restore: `<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.35-5.65"/><path d="M4 4v4h4"/></svg>`,
-  bell: `<svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2 7.5 2 7.5H4S6 15 6 9"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>`,
-  repeat: `<svg viewBox="0 0 24 24"><path d="M17 17H7a3 3 0 0 1 0-6h10"/><path d="m14 8 3-3 3 3"/><path d="M7 7h10a3 3 0 1 1 0 6H7"/><path d="m10 16-3 3-3-3"/></svg>`,
-  home: `<svg viewBox="0 0 24 24"><path d="m4 10 8-6 8 6"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-6h4v6"/></svg>`,
-  utilities: `<svg viewBox="0 0 24 24"><path d="M13 2 6 13h5l-1 9 8-13h-5l1-7Z"/></svg>`,
-  vehicle: `<svg viewBox="0 0 24 24"><path d="M5 16h14l-1.5-5.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5L5 16Z"/><path d="M7 16v2.5M17 16v2.5M7.5 13h.01M16.5 13h.01"/></svg>`,
-  life: `<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 10c0 5.65-7 10-7 10Z"/></svg>`,
-  savings: `<svg viewBox="0 0 24 24"><path d="M6 11.5c0-3 2.7-5.5 6-5.5s6 2.5 6 5.5S15.3 17 12 17s-6-2.5-6-5.5Z"/><path d="M12 17v4M8 21h8M12 8.25v6.5M9.5 11.5h5"/></svg>`,
-  calendar: `<svg viewBox="0 0 24 24"><path d="M6.5 4.5v3M17.5 4.5v3"/><rect x="4" y="6.5" width="16" height="13" rx="2"/><path d="M4 10h16M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01"/></svg>`,
-  tax: `<svg viewBox="0 0 24 24"><path d="M7 3.5h10l2 3.5v13.5H5V7l2-3.5Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>`,
-  phone: `<svg viewBox="0 0 24 24"><path d="M8 3.5h8a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V5A1.5 1.5 0 0 1 8 3.5Z"/><path d="M10.5 17.5h3"/></svg>`,
-  insurance: `<svg viewBox="0 0 24 24"><path d="M12 3.5 5.5 6v5.5c0 4.25 2.8 7.3 6.5 9 3.7-1.7 6.5-4.75 6.5-9V6L12 3.5Z"/><path d="m9 12 2 2 4-4"/></svg>`,
-  transport: `<svg viewBox="0 0 24 24"><path d="M6.5 5.5h11A2.5 2.5 0 0 1 20 8v7.5H4V8a2.5 2.5 0 0 1 2.5-2.5Z"/><path d="M7 18.5h.01M17 18.5h.01M4 11h16"/></svg>`,
-  subscriptions: `<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m10 9.5 5 2.5-5 2.5V9.5Z"/></svg>`,
-  wellness: `<svg viewBox="0 0 24 24"><path d="M5 14c4.5 0 7-2.5 7-7 0 4.5 2.5 7 7 7-4.5 0-7 2.5-7 7 0-4.5-2.5-7-7-7Z"/><path d="M5 6h4M15 6h4"/></svg>`,
-  loans: `<svg viewBox="0 0 24 24"><path d="M5 8.5h14v10H5z"/><path d="M7 6h10M8 12h8M8 15h5"/></svg>`,
-  school: `<svg viewBox="0 0 24 24"><path d="m3.5 8.5 8.5-4 8.5 4-8.5 4-8.5-4Z"/><path d="M6.5 10v4.5c1.7 1.4 3.5 2 5.5 2s3.8-.6 5.5-2V10"/></svg>`,
-  medical: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="4.5" y="4.5" width="15" height="15" rx="3"/></svg>`,
-  groceries: `<svg viewBox="0 0 24 24"><path d="M7 8h12l-1.5 11h-10L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0"/><path d="M5 8h2"/></svg>`,
-  category: `<svg viewBox="0 0 24 24"><path d="M4.5 5.5h6v6h-6zM13.5 5.5h6v6h-6zM4.5 14.5h6v6h-6zM13.5 14.5h6v6h-6z"/></svg>`,
-  check: `<svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg>`
+  gear: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`,
+  left: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`,
+  right: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`,
+  repeat: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg>`
 };
 
-function icon(name) {
-  return icons[name] || icons.category;
-}
+// New profiles start with empty plans: the user decides where income goes.
+const STARTER_CATEGORIES = [
+  ["Home", "#7c8cf8"], ["Utilities", "#f59e66"], ["Phone & internet", "#4cc3d9"], ["Groceries", "#5cc98a"],
+  ["Transport", "#e5b931"], ["Vehicle", "#a78bfa"], ["Insurance", "#f47c7c"], ["Loans", "#60a5fa"],
+  ["Subscriptions", "#e879c6"], ["Medical", "#fb923c"], ["Savings", "#34d399"], ["Other", "#94a3b8"]
+];
+const CATEGORY_COLORS = STARTER_CATEGORIES.map(([, color]) => color);
 
-const starterCategories = Object.freeze([
-  { name: "Home", color: "#c4b5fd", planned: 160000, assigned: 141500 },
-  { name: "Utilities", color: "#fed7aa", planned: 36000, assigned: 25370 },
-  { name: "Phone & internet", color: "#bae6fd", planned: 22000, assigned: 15000 },
-  { name: "Vehicle", color: "#ddd6fe", planned: 28000, assigned: 17100 },
-  { name: "Insurance", color: "#fecaca", planned: 50000, assigned: 42000 },
-  { name: "Transport", color: "#bbf7d0", planned: 24000, assigned: 22000 },
-  { name: "Subscriptions", color: "#f0abfc", planned: 7000, assigned: 3050 },
-  { name: "Wellness", color: "#99f6e4", planned: 12000, assigned: 7000 },
-  { name: "Loans", color: "#fef08a", planned: 56000, assigned: 37500 },
-  { name: "School", color: "#a5f3fc", planned: 30000, assigned: 18000 },
-  { name: "Medical", color: "#fed7aa", planned: 16000, assigned: 12000 },
-  { name: "Groceries", color: "#d9f99d", planned: 46000, assigned: 42000 },
-  { name: "Savings", color: "#6ee7b7", planned: 45000, assigned: 45000 },
-  { name: "Tax planning", color: "#e9d5ff", planned: 24000, assigned: 18000 }
-]);
+// Demo records shipped by earlier versions. Only used to offer a one-tap cleanup.
+const LEGACY_SAMPLE_BILL_IDS = new Set([...Array.from({ length: 12 }, (_, i) => i + 1), ...Array.from({ length: 27 }, (_, i) => i + 101)]);
+const LEGACY_SAMPLE_EXPENSE_IDS = new Set([3001, 3002, 3003, 3004, 3005]);
 
-function cloneCategory(category) {
-  return {
-    name: category.name,
-    color: category.color,
-    planned: category.planned,
-    assigned: category.assigned,
-    updatedAt: category.updatedAt,
-    deletedAt: category.deletedAt || null
-  };
-}
-
-function normalizeActivity(events) {
-  if (!Array.isArray(events)) return [];
-  return events
-    .filter((event) => event && typeof event.type === "string")
-    .map((event) => ({ ...event, at: event.at || new Date().toISOString() }));
-}
-
-function cloneBill(bill) {
-  return {
-    ...bill,
-    activity: normalizeActivity(bill.activity)
-  };
-}
-
-function cloneExpense(expense) {
-  return {
-    ...expense
-  };
-}
-
-let categories = starterCategories.map(cloneCategory);
-
-const categoryColors = [
-  "#c4b5fd",
-  "#fed7aa",
-  "#bae6fd",
-  "#ddd6fe",
-  "#fecaca",
-  "#bbf7d0",
-  "#f0abfc",
-  "#99f6e4",
-  "#fef08a",
-  "#a5f3fc",
-  "#fed7aa",
-  "#d9f99d",
-  "#6ee7b7",
-  "#e9d5ff"
+const PRESETS = [
+  { name: "JPS electricity", category: "Utilities", amount: 18500, repeat: "monthly" },
+  { name: "NWC water", category: "Utilities", amount: 6800, repeat: "monthly" },
+  { name: "Rent", category: "Home", amount: 95000, repeat: "monthly" },
+  { name: "Mortgage", category: "Home", amount: 135000, repeat: "monthly" },
+  { name: "Internet", category: "Phone & internet", amount: 9500, repeat: "monthly" },
+  { name: "Phone", category: "Phone & internet", amount: 5500, repeat: "monthly" },
+  { name: "Property tax", category: "Home", amount: 18000, repeat: "yearly" },
+  { name: "Vehicle insurance", category: "Insurance", amount: 42000, repeat: "yearly" },
+  { name: "Vehicle fitness", category: "Vehicle", amount: 4500, repeat: "yearly" },
+  { name: "Vehicle registration", category: "Vehicle", amount: 12600, repeat: "yearly" },
+  { name: "Student loan / SLB", category: "Loans", amount: 14500, repeat: "monthly" },
+  { name: "Credit union loan", category: "Loans", amount: 18000, repeat: "monthly" },
+  { name: "Netflix", category: "Subscriptions", amount: 1850, repeat: "monthly" },
+  { name: "Spotify", category: "Subscriptions", amount: 1200, repeat: "monthly" },
+  { name: "Gym", category: "Other", amount: 7000, repeat: "monthly" }
 ];
 
-const presets = [
-  { name: "JPS electricity", category: "Utilities", amount: 18500, note: "Monthly electricity bill." },
-  { name: "NWC water", category: "Utilities", amount: 6800, note: "Monthly or catch-up water bill." },
-  { name: "Rent", category: "Home", amount: 95000, note: "Monthly housing payment." },
-  { name: "Mortgage", category: "Home", amount: 135000, note: "Monthly home loan payment." },
-  { name: "Property tax", category: "Tax planning", amount: 18000, note: "Due April 1 yearly; full, half-yearly, or quarterly. First payments after April 30 may attract 10% penalty." },
-  { name: "Vehicle insurance", category: "Insurance", amount: 42000, note: "Keep current before licensing." },
-  { name: "Vehicle fitness", category: "Vehicle", amount: 4500, note: "Validity can vary by vehicle type and age." },
-  { name: "Vehicle registration", category: "Vehicle", amount: 12600, note: "Registration depends on valid insurance and fitness; licensing periods can vary." },
-  { name: "Internet", category: "Phone & internet", amount: 9500, note: "Monthly home internet." },
-  { name: "Phone", category: "Phone & internet", amount: 5500, note: "Mobile plan or top-up." },
-  { name: "Taxi / transport", category: "Transport", amount: 22000, note: "Route taxi, bus, rides, fuel, or parking." },
-  { name: "Netflix", category: "Subscriptions", amount: 1850, note: "Streaming subscription." },
-  { name: "Spotify", category: "Subscriptions", amount: 1200, note: "Music subscription." },
-  { name: "Gym / fitness", category: "Wellness", amount: 7000, note: "Membership or classes." },
-  { name: "Student loan / SLB", category: "Loans", amount: 14500, note: "Monthly loan payment." },
-  { name: "Personal loan", category: "Loans", amount: 23000, note: "Bank or private loan." },
-  { name: "Credit union loan", category: "Loans", amount: 18000, note: "Credit union repayment." },
-  { name: "School costs", category: "School", amount: 30000, note: "Fees, books, uniforms, lunch money." },
-  { name: "Medical", category: "Medical", amount: 12000, note: "Pharmacy, doctor visit, insurance gaps." },
-  { name: "Groceries", category: "Groceries", amount: 42000, note: "Weekly food planning." },
-  { name: "Savings", category: "Savings", amount: 30000, note: "Pay yourself first." },
-  { name: "GCT / tax planning", category: "Tax planning", amount: 15000, note: "For business-related reminders; standard GCT is currently 15% for many taxable items." }
-];
-
-const starterBills = Object.freeze([
-  { id: 101, name: "Rent", category: "Home", amount: 95000, due: "2026-01-05", paid: true },
-  { id: 102, name: "JPS electricity", category: "Utilities", amount: 17200, due: "2026-01-22", paid: true },
-  { id: 103, name: "NWC water", category: "Utilities", amount: 6400, due: "2026-01-25", paid: true },
-  { id: 104, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-01-28", paid: true },
-  { id: 105, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-01-20", paid: true },
-  { id: 106, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-01-23", paid: true },
-  { id: 107, name: "Groceries", category: "Groceries", amount: 41000, due: "2026-01-31", paid: true },
-  { id: 108, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-01-18", paid: true },
-  { id: 109, name: "Taxi / transport", category: "Transport", amount: 21500, due: "2026-01-30", paid: true },
-  { id: 110, name: "Rent", category: "Home", amount: 95000, due: "2026-02-05", paid: true },
-  { id: 111, name: "JPS electricity", category: "Utilities", amount: 18100, due: "2026-02-22", paid: true },
-  { id: 112, name: "NWC water", category: "Utilities", amount: 6700, due: "2026-02-25", paid: true },
-  { id: 113, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-02-28", paid: true },
-  { id: 114, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-02-20", paid: true },
-  { id: 115, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-02-23", paid: true },
-  { id: 116, name: "Groceries", category: "Groceries", amount: 42500, due: "2026-02-28", paid: true },
-  { id: 117, name: "Vehicle insurance", category: "Insurance", amount: 42000, due: "2026-02-09", paid: true },
-  { id: 118, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-02-18", paid: true },
-  { id: 119, name: "Rent", category: "Home", amount: 95000, due: "2026-03-05", paid: true },
-  { id: 120, name: "JPS electricity", category: "Utilities", amount: 17950, due: "2026-03-22", paid: true },
-  { id: 121, name: "NWC water", category: "Utilities", amount: 6500, due: "2026-03-25", paid: true },
-  { id: 122, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-03-28", paid: true },
-  { id: 123, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-03-20", paid: true },
-  { id: 124, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-03-23", paid: true },
-  { id: 125, name: "Groceries", category: "Groceries", amount: 43000, due: "2026-03-31", paid: true },
-  { id: 126, name: "Medical", category: "Medical", amount: 12000, due: "2026-03-15", paid: true },
-  { id: 127, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-03-18", paid: true },
-  { id: 1, name: "Property tax", category: "Tax planning", amount: 18000, due: "2026-04-01", paid: false },
-  { id: 2, name: "Netflix", category: "Subscriptions", amount: 1850, due: "2026-04-20", paid: false },
-  { id: 3, name: "JPS electricity", category: "Utilities", amount: 18470, due: "2026-04-22", paid: false },
-  { id: 4, name: "Spotify", category: "Subscriptions", amount: 1200, due: "2026-04-23", paid: false },
-  { id: 5, name: "NWC water", category: "Utilities", amount: 6900, due: "2026-04-25", paid: false },
-  { id: 6, name: "Internet", category: "Phone & internet", amount: 9500, due: "2026-04-28", paid: false },
-  { id: 7, name: "Gym / fitness", category: "Wellness", amount: 7000, due: "2026-04-30", paid: false },
-  { id: 8, name: "Vehicle insurance", category: "Insurance", amount: 42000, due: "2026-05-09", paid: false },
-  { id: 9, name: "Vehicle fitness", category: "Vehicle", amount: 4500, due: "2026-05-12", paid: false },
-  { id: 10, name: "Vehicle registration", category: "Vehicle", amount: 12600, due: "2026-05-14", paid: false },
-  { id: 11, name: "SLB loan payment", category: "Loans", amount: 14500, due: "2026-04-29", paid: false },
-  { id: 12, name: "Rent", category: "Home", amount: 95000, due: "2026-04-05", paid: true }
-]);
-
-let bills = starterBills.map(cloneBill);
-const starterExpenses = Object.freeze([
-  { id: 3001, amount: 8200, category: "Groceries", merchant: "Hi-Lo groceries", note: "Weekly shop", date: "2026-04-18", paymentSource: "Debit card" },
-  { id: 3002, amount: 1800, category: "Transport", merchant: "Taxi", note: "Town errands", date: "2026-04-19", paymentSource: "Cash" },
-  { id: 3003, amount: 2600, category: "Medical", merchant: "Pharmacy", note: "Prescription refill", date: "2026-04-20", paymentSource: "Debit card" },
-  { id: 3004, amount: 4200, category: "Groceries", merchant: "Market run", note: "Produce", date: "2026-04-21", paymentSource: "Cash" },
-  { id: 3005, amount: 1500, category: "Wellness", merchant: "Juice bar", note: "Post-gym", date: "2026-04-22", paymentSource: "Debit card" }
-]);
-let expenses = starterExpenses.map(cloneExpense);
-let expenseCategories = starterCategories.map((category) => category.name);
-const starterBillIds = new Set(starterBills.map((bill) => bill.id));
-const starterCategoryNames = new Set(starterCategories.map((category) => category.name));
-
-const repeatLabels = {
-  none: "Does not repeat",
-  monthly: "Monthly",
-  quarterly: "Quarterly",
-  yearly: "Yearly"
-};
-
-const themeColorMeta = document.querySelector("meta[name='theme-color']");
 const app = document.querySelector("#app");
 const tabbar = document.querySelector("#tabbar");
-const tabs = document.querySelectorAll(".tab");
-const sheet = document.querySelector("#quickSheet");
-const settingsSheet = document.querySelector("#settingsSheet");
-const actionSheet = document.querySelector("#actionSheet");
-const settingsContent = document.querySelector("#settingsContent");
-const actionSheetTitle = document.querySelector("#actionSheetTitle");
-const actionSheetContent = document.querySelector("#actionSheetContent");
-const expenseSheet = document.querySelector("#expenseSheet");
-const expenseForm = document.querySelector("#expenseForm");
-const expenseAmount = document.querySelector("#expenseAmount");
-const expenseCategory = document.querySelector("#expenseCategory");
-const expenseMerchant = document.querySelector("#expenseMerchant");
-const expenseDate = document.querySelector("#expenseDate");
-const expenseSource = document.querySelector("#expenseSource");
-const printExport = document.querySelector("#printExport");
-const toastRegion = document.querySelector("#toastRegion");
-const backdrop = document.querySelector("#sheetBackdrop");
-const billForm = document.querySelector("#billForm");
-const presetRail = document.querySelector("#presetRail");
-const billName = document.querySelector("#billName");
-const billAmount = document.querySelector("#billAmount");
-const billDate = document.querySelector("#billDate");
-const billCategory = document.querySelector("#billCategory");
-const billRepeat = document.querySelector("#billRepeat");
-const propertyTaxPlanRow = document.querySelector("#propertyTaxPlanRow");
-const propertyTaxPlan = document.querySelector("#propertyTaxPlan");
-const billPaid = document.querySelector("#billPaid");
-const paidRow = document.querySelector("#paidRow");
-const deleteBillButton = document.querySelector("#deleteBill");
-const MAX_TOASTS = 3;
-const SHEET_TRANSITION_MS = 260;
-const toastTimers = new WeakMap();
-const sheetTimers = new WeakMap();
+const sheet = document.querySelector("#sheet");
+const sheetTitle = document.querySelector("#sheetTitle");
+const sheetBody = document.querySelector("#sheetBody");
+const toastRegion = document.querySelector("#toasts");
+const themeColorMeta = document.querySelector("meta[name='theme-color']");
 
-function initialTab() {
-  const params = new URLSearchParams(window.location.search);
-  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
-  if (requested === "bills" || requested === "expenses") return "spending";
-  const normalized = requested === "budget" ? "insights" : requested;
-  return [...tabs].some((tab) => tab.dataset.tab === normalized) ? normalized : "home";
-}
-
-function initialSpendingMode() {
-  const params = new URLSearchParams(window.location.search);
-  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "") || "").toLowerCase();
-  return requested === "expenses" ? "expenses" : "bills";
-}
-
-let activeTab = initialTab();
-let activeBillId = null;
-let editingBillId = null;
-let pendingRecurringBillId = null;
-let selectedBudgetCategory = categories[0].name;
-let selectedHistoryMonth = monthKey(toDateInputValue(today));
-let visibleCalendarMonth = monthKey(toDateInputValue(today));
-let spendingMode = initialSpendingMode();
-let spendingBillFiltersOpen = false;
-let spendingExpenseFiltersOpen = false;
-let selectedExpenseCategory = "All";
-let selectedCalendarDay = null;
-let billFilter = "all";
-let billSearch = "";
-let billSort = "due";
-let lastTrigger = null;
-let actionBillId = null;
-let onboardingStep = "landing";
-let settings = {
-  initialized: true,
-  reminderDays: 3,
-  theme: "system",
-  profile: defaultProfile(),
-  cashflow: {
-    monthlyStartingBalance: 260000,
-    safeSpendBuffer: 0,
-    budgetPeriodStartDay: 25,
-    paymentSources: ["Cash", "Debit card", "Credit card", "Bank transfer"]
-  }
-};
+let today = toDateInputValue(new Date());
+let categories = [];
+let bills = [];
+let expenses = [];
+let settings = defaultSettings();
 let syncMeta = loadSyncMeta();
 let supabaseClient = null;
 let supabaseClientPromise = null;
 let syncTimer = null;
 let syncInFlight = false;
 let syncStarted = false;
+let mutationToken = 0;
 
-if (typeof window !== "undefined") {
-  // Two tabs each writing SYNC_KEY can drop each other's flags. Reload the
-  // metadata when another tab persists a change so this tab sees the merged truth.
-  window.addEventListener("storage", (event) => {
-    if (event.key === SYNC_KEY) syncMeta = loadSyncMeta();
-  });
-}
+const ui = {
+  tab: initialTab(),
+  offset: 0,
+  billsView: "upcoming",
+  search: "",
+  category: "All",
+  lastCategory: "",
+  sheet: null
+};
 
-const money = new Intl.NumberFormat("en-JM", {
-  style: "currency",
-  currency: "JMD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
+window.addEventListener("storage", (event) => {
+  if (event.key === SYNC_KEY) syncMeta = loadSyncMeta();
 });
 
-const moneyInputFormat = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
+/* ---------- formatting ---------- */
 
-const dateFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "short",
-  day: "numeric"
-});
+const money0 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JMD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const money2 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JMD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const inputMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dayMonth = new Intl.DateTimeFormat("en-JM", { day: "numeric", month: "short" });
+const weekdayDate = new Intl.DateTimeFormat("en-JM", { weekday: "long", day: "numeric", month: "short" });
+const dateTime = new Intl.DateTimeFormat("en-JM", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
-const longDateFormat = new Intl.DateTimeFormat("en-JM", {
-  weekday: "short",
-  month: "short",
-  day: "numeric"
-});
-
-const monthFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "long",
-  year: "numeric"
-});
-
-const timelineFormat = new Intl.DateTimeFormat("en-JM", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
-
-function parseDate(value) {
-  return new Date(`${value}T12:00:00`);
+function money(value) {
+  const n = roundMoney(value);
+  return (Number.isInteger(n) ? money0 : money2).format(n);
 }
 
-function toDateInputValue(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function formatMoneyInput(value) {
+  const n = parseMoneyInput(value);
+  return n ? inputMoney.format(n) : "";
 }
 
-function nowIso() {
-  return new Date().toISOString();
+function shortDate(value) {
+  return dayMonth.format(parseDate(value));
 }
 
-function monthKey(value) {
-  return value.slice(0, 7);
+function periodLabel(period) {
+  return `${shortDate(period.startDate)} – ${shortDate(period.endDate)}`;
 }
 
-function budgetPeriodStartDay() {
-  const day = Number(settings.cashflow?.budgetPeriodStartDay);
-  return Number.isFinite(day) ? Math.max(1, Math.min(28, Math.round(day))) : 25;
+function dueLabel(bill) {
+  if (bill.paid) return `Paid · ${shortDate(bill.due)}`;
+  const days = daysBetween(today, bill.due);
+  if (days < 0) return `${Math.abs(days)} day${days === -1 ? "" : "s"} overdue`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  if (days <= 14) return `Due in ${days} days`;
+  return `Due ${shortDate(bill.due)}`;
 }
 
-function getBudgetPeriod(reference = today) {
-  const day = budgetPeriodStartDay();
-  const ref = reference instanceof Date ? reference : parseDate(reference);
-  const refMonth = ref.getMonth();
-  const refYear = ref.getFullYear();
-  const start = new Date(refYear, ref.getDate() >= day ? refMonth : refMonth - 1, day, 12);
-  const next = new Date(start.getFullYear(), start.getMonth() + 1, day, 12);
-  const last = new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1, 12);
-  return {
-    startDate: toDateInputValue(start),
-    endDate: toDateInputValue(last),
-    nextStartDate: toDateInputValue(next),
-    key: toDateInputValue(start)
-  };
+function dueTone(bill) {
+  if (bill.paid) return "";
+  const days = daysBetween(today, bill.due);
+  if (days < 0) return "is-danger";
+  if (days <= settings.reminderDays) return "is-warning";
+  return "";
 }
 
-function isInPeriod(value, period = getBudgetPeriod()) {
-  if (!value) return false;
-  return value >= period.startDate && value < period.nextStartDate;
-}
-
-function periodLabel(period = getBudgetPeriod()) {
-  return `${dateFormat.format(parseDate(period.startDate))} – ${dateFormat.format(parseDate(period.endDate))}`;
-}
-
-function escapeHtml(value) {
+function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -421,449 +182,71 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function monthLabel(key) {
-  return monthFormat.format(new Date(`${key}-01T12:00:00`));
+// Category/avatar colors come from storage, backups, and sync. Only allow
+// plain color shapes so a crafted value cannot break out of a style attribute.
+const CSS_COLOR_RE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\(\s*[\d.,%\s/-]+\s*\))$/;
+function safeCssColor(value, fallback = "#94a3b8") {
+  const text = String(value ?? "").trim();
+  return CSS_COLOR_RE.test(text) ? text : fallback;
+}
+
+function nowIso() {
+  return new Date().toISOString();
 }
 
 function slugify(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "item";
+  return String(value || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
 function makeSeriesKey(source) {
   return `${slugify(source?.name)}::${slugify(source?.category || "general")}`;
 }
 
-function shiftMonth(key, offset) {
-  const date = new Date(`${key}-01T12:00:00`);
-  date.setMonth(date.getMonth() + offset);
-  return toDateInputValue(date).slice(0, 7);
-}
+/* ---------- model ---------- */
 
-function getAvailableMonths() {
-  const months = [...new Set([
-    ...bills.map((bill) => monthKey(bill.due)),
-    ...expenses.map((expense) => monthKey(expense.date))
-  ])].sort();
-  return months.length ? months : [monthKey(toDateInputValue(today))];
-}
-
-function getMonthBills(key) {
-  return sortBills(bills.filter((bill) => monthKey(bill.due) === key));
-}
-
-function getMonthSummary(key) {
-  const items = getMonthBills(key).filter((bill) => !bill.archived && !bill.deletedAt);
-  const total = sumMoney(items.map((bill) => bill.amount));
-  const paid = sumMoney(items.filter((bill) => bill.paid).map((bill) => bill.amount));
-  const unpaidItems = items.filter((bill) => !bill.paid);
-  const overdueItems = unpaidItems.filter((bill) => daysUntil(bill.due) < 0);
-  return { items, total, paid, unpaidItems, overdueItems };
-}
-
-function getMonthExpenses(key = monthKey(toDateInputValue(today))) {
-  return [...expenses]
-    .filter((expense) => monthKey(expense.date) === key)
-    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id);
-}
-
-function getExpenseTotal(key = monthKey(toDateInputValue(today)), category = "All") {
-  return sumMoney(
-    getMonthExpenses(key)
-      .filter((expense) => category === "All" || expense.category === category)
-      .map((expense) => expense.amount)
-  );
-}
-
-function getUnpaidBillTotal(key = monthKey(toDateInputValue(today))) {
-  return sumMoney(
-    bills
-      .filter((bill) => !bill.paid && !bill.archived && monthKey(bill.due) === key)
-      .map((bill) => bill.amount)
-  );
-}
-
-function getPeriodExpenseTotal(period = getBudgetPeriod()) {
-  return sumMoney(
-    expenses
-      .filter((expense) => !expense.deletedAt && isInPeriod(expense.date, period))
-      .map((expense) => expense.amount)
-  );
-}
-
-function getPeriodPaidBillTotal(period = getBudgetPeriod()) {
-  return sumMoney(
-    bills
-      .filter((bill) => bill.paid && !bill.archived && !bill.deletedAt && isInPeriod(bill.due, period))
-      .map((bill) => bill.amount)
-  );
-}
-
-function getPeriodUnpaidBillTotal(period = getBudgetPeriod()) {
-  return sumMoney(
-    bills
-      .filter((bill) => !bill.paid && !bill.archived && !bill.deletedAt && isInPeriod(bill.due, period))
-      .map((bill) => bill.amount)
-  );
-}
-
-function getMoneyLeft(period = getBudgetPeriod()) {
-  const budget = settings.cashflow?.monthlyStartingBalance || 0;
-  return roundMoney(budget - getPeriodPaidBillTotal(period) - getPeriodExpenseTotal(period));
-}
-
-function getMoneyLeftAfterBills(period = getBudgetPeriod()) {
-  return roundMoney(getMoneyLeft(period) - getPeriodUnpaidBillTotal(period));
-}
-
-function getRecentExpenses(limit = 5) {
-  return [...expenses]
-    .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.id - a.id)
-    .slice(0, limit);
-}
-
-function expensesByDate(items) {
-  return items.reduce((groups, expense) => {
-    groups[expense.date] = groups[expense.date] || [];
-    groups[expense.date].push(expense);
-    return groups;
-  }, {});
-}
-
-function topExpenseCategories(key = monthKey(toDateInputValue(today)), limit = 4) {
-  const totals = getMonthExpenses(key).reduce((map, expense) => {
-    map[expense.category] = roundMoney((map[expense.category] || 0) + expense.amount);
-    return map;
-  }, {});
-  return Object.entries(totals)
-    .map(([name, amount]) => ({ name, amount, color: getCategory(name)?.color || "#4d8dff" }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, limit);
-}
-
-function getMonthAnalytics(key = monthKey(toDateInputValue(today))) {
-  const monthBills = getMonthBills(key).filter((bill) => !bill.archived);
-  const monthExpenses = getMonthExpenses(key);
-  const fixedBills = sumMoney(monthBills.map((bill) => bill.amount));
-  const paidBills = sumMoney(monthBills.filter((bill) => bill.paid).map((bill) => bill.amount));
-  const openBills = sumMoney(monthBills.filter((bill) => !bill.paid).map((bill) => bill.amount));
-  const variableSpent = sumMoney(monthExpenses.map((expense) => expense.amount));
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const projected = roundMoney(starting - openBills - variableSpent);
-  const safeToSpend = projected;
-  const topCategory = topExpenseCategories(key, 1)[0] || null;
-  const propertyTaxDue = monthBills.some(isPropertyTaxBill);
+function defaultSettings() {
   return {
-    key,
-    fixedBills,
-    paidBills,
-    openBills,
-    variableSpent,
-    starting,
-    projected,
-    safeToSpend,
-    topCategory,
-    propertyTaxDue,
-    billCount: monthBills.length,
-    expenseCount: monthExpenses.length
+    initialized: true,
+    reminderDays: 3,
+    theme: "system",
+    profile: { onboardingComplete: false },
+    cashflow: normalizeCashflowSettings({ monthlyStartingBalance: 0 })
   };
-}
-
-function getPreviousMonthComparison(key = monthKey(toDateInputValue(today))) {
-  const previousKey = shiftMonth(key, -1);
-  const hasPrevious = getAvailableMonths().includes(previousKey);
-  const current = getMonthAnalytics(key);
-  const previous = hasPrevious ? getMonthAnalytics(previousKey) : null;
-  const expenseDelta = previous ? current.variableSpent - previous.variableSpent : 0;
-  const fixedDelta = previous ? current.fixedBills - previous.fixedBills : 0;
-  const safeDelta = previous ? current.safeToSpend - previous.safeToSpend : 0;
-  return { current, previous, previousKey, hasPrevious, expenseDelta, fixedDelta, safeDelta };
-}
-
-function getDailyOutflow(date) {
-  const dayBills = sumMoney(
-    bills.filter((bill) => bill.due === date && !bill.archived).map((bill) => bill.amount)
-  );
-  const dayExpenses = sumMoney(
-    expenses.filter((expense) => expense.date === date).map((expense) => expense.amount)
-  );
-  return roundMoney(dayBills + dayExpenses);
-}
-
-function getProjectedBalanceSeries(days = 30) {
-  const starting = settings.cashflow?.monthlyStartingBalance || 0;
-  const period = getBudgetPeriod();
-  let projected = starting;
-  return Array.from({ length: days }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    const valueDate = toDateInputValue(date);
-    if (index === 0) {
-      const expensesToDate = sumMoney(
-        expenses
-          .filter((expense) => !expense.deletedAt && parseDate(expense.date) <= parseDate(valueDate) && isInPeriod(expense.date, period))
-          .map((expense) => expense.amount)
-      );
-      const paidToDate = sumMoney(
-        bills
-          .filter((bill) => bill.paid && !bill.archived && !bill.deletedAt && parseDate(bill.due) <= parseDate(valueDate) && isInPeriod(bill.due, period))
-          .map((bill) => bill.amount)
-      );
-      projected = roundMoney(starting - expensesToDate - paidToDate);
-    } else {
-      projected = roundMoney(projected - getDailyOutflow(valueDate));
-    }
-    return { date: valueDate, value: projected };
-  });
-}
-
-function getSpendingRhythm(key = monthKey(toDateInputValue(today))) {
-  const weeks = [
-    { label: "W1", amount: 0 },
-    { label: "W2", amount: 0 },
-    { label: "W3", amount: 0 },
-    { label: "W4", amount: 0 },
-    { label: "W5", amount: 0 }
-  ];
-  getMonthExpenses(key).forEach((expense) => {
-    const day = parseDate(expense.date).getDate();
-    const index = Math.min(4, Math.floor((day - 1) / 7));
-    weeks[index].amount = roundMoney(weeks[index].amount + expense.amount);
-  });
-  return weeks;
-}
-
-function getUpcomingPressure() {
-  const openBills = bills.filter((bill) => !bill.paid && !bill.archived);
-  return [7, 14, 30].map((days) => ({
-    days,
-    label: `${days} days`,
-    amount: openBills
-      .filter((bill) => {
-        const due = daysUntil(bill.due);
-        return due >= 0 && due <= days;
-      })
-      .map((bill) => bill.amount)
-      .reduce((sum, value) => roundMoney(sum + value), 0)
-  }));
-}
-
-function getCategoryMovers(key = monthKey(toDateInputValue(today)), limit = 3) {
-  const previousKey = shiftMonth(key, -1);
-  const hasPrevious = getAvailableMonths().includes(previousKey);
-  const currentTotals = topExpenseCategories(key, 24).reduce((map, item) => {
-    map[item.name] = item.amount;
-    return map;
-  }, {});
-  const previousTotals = hasPrevious ? topExpenseCategories(previousKey, 24).reduce((map, item) => {
-    map[item.name] = item.amount;
-    return map;
-  }, {}) : {};
-  return Object.keys({ ...currentTotals, ...previousTotals })
-    .map((name) => ({
-      name,
-      amount: currentTotals[name] || 0,
-      previous: previousTotals[name] || 0,
-      delta: (currentTotals[name] || 0) - (previousTotals[name] || 0),
-      color: getCategory(name)?.color || "#4d8dff",
-      hasPrevious
-    }))
-    .filter((item) => item.amount || item.previous)
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, limit);
-}
-
-function getVisibleBills() {
-  return sortBills(bills.filter((bill) => !bill.archived && !bill.paid));
-}
-
-function getArchivedBills() {
-  return [...bills]
-    .filter((bill) => bill.archived)
-    .sort((a, b) => new Date(b.archivedAt || `${b.due}T12:00:00`) - new Date(a.archivedAt || `${a.due}T12:00:00`));
-}
-
-function getReminderBadgeItems() {
-  return sortBills(bills.filter((bill) => {
-    if (bill.paid || bill.archived) return false;
-    const days = daysUntil(bill.due);
-    return days >= 0 && days <= BADGE_REMINDER_DAYS;
-  }));
 }
 
 function validTheme(value) {
-  return ["system", "dark", "light", "pastel"].includes(value) ? value : "system";
+  // "pastel" was retired; fold it into light.
+  if (value === "pastel") return "light";
+  return ["system", "dark", "light"].includes(value) ? value : "system";
 }
 
-function resolvedTheme() {
-  const theme = validTheme(settings.theme);
-  if (theme !== "system") return theme;
-  // pastel is an explicit choice, system falls back to dark/light
-  const media = window.matchMedia?.("(prefers-color-scheme: light)");
-  return media?.matches ? "light" : "dark";
-}
-
-function applyTheme() {
-  settings.theme = validTheme(settings.theme);
-  const theme = resolvedTheme();
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.themePreference = settings.theme;
-  themeColorMeta?.setAttribute("content", (theme === "light" || theme === "pastel") ? "#fcf8ff" : "#111315");
-}
-
-function showToast(message, options = {}) {
-  Array.from(toastRegion.children)
-    .slice(0, Math.max(0, toastRegion.children.length - MAX_TOASTS + 1))
-    .forEach((item) => dismissToast(item));
-
-  const toast = document.createElement("section");
-  toast.className = "toast";
-  toast.setAttribute("role", "status");
-  const body = document.createElement("span");
-  body.textContent = message;
-  toast.append(body);
-  if (typeof options.undo === "function") {
-    const undoButton = document.createElement("button");
-    undoButton.type = "button";
-    undoButton.textContent = options.undoLabel || "Undo";
-    undoButton.addEventListener("click", () => {
-      options.undo();
-      dismissToast(toast);
-    });
-    toast.append(undoButton);
-  }
-  toastRegion.append(toast);
-  const revealTimer = window.setTimeout(() => toast.classList.add("is-visible"), 20);
-  const dismissTimer = window.setTimeout(() => dismissToast(toast), options.duration || 5200);
-  toastTimers.set(toast, { revealTimer, dismissTimer });
-}
-
-function dismissToast(toast) {
-  if (!toast || toast.classList.contains("is-leaving")) return;
-  const timers = toastTimers.get(toast);
-  if (timers) {
-    window.clearTimeout(timers.revealTimer);
-    window.clearTimeout(timers.dismissTimer);
-    toastTimers.delete(toast);
-  }
-  toast.classList.remove("is-visible");
-  toast.classList.add("is-leaving");
-  window.setTimeout(() => toast.remove(), 220);
-}
-
-function parseMoneyInput(value) {
-  const text = String(value ?? "").trim();
-  if (text.startsWith("-")) return 0;
-  let normalized = "";
-  let hasDecimal = false;
-  for (const char of text) {
-    if (char >= "0" && char <= "9") {
-      normalized += char;
-      continue;
-    }
-    if (char === "." && !hasDecimal) {
-      normalized += char;
-      hasDecimal = true;
-    }
-  }
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.round(parsed * 100) / 100);
-}
-
-function formatMoneyInput(value) {
-  return moneyInputFormat.format(parseMoneyInput(value));
-}
-
-function cleanAmount(value) {
-  return parseMoneyInput(value);
-}
-
-function roundMoney(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100) / 100;
-}
-
-function sumMoney(values) {
-  return roundMoney(values.reduce((sum, value) => sum + (Number(value) || 0), 0));
-}
-
-let _idCounter = 0;
-function newId() {
-  // Date.now() alone collides on rapid creation (e.g., starter-data import).
-  // Mix in a session counter so two records made in the same ms can't share an id.
-  return Date.now() * 1e6 + (_idCounter++ % 1e6);
-}
-
-function formatMoneyField(input) {
-  input.value = formatMoneyInput(input.value);
-}
-
-function setupMoneyInputFormatting() {
-  document.addEventListener("focusout", (event) => {
-    if (event.target.matches(".money-input")) formatMoneyField(event.target);
-  });
-}
-
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-function createActivity(type, extra = {}) {
+function normalizeCashflowSettings(source = {}) {
   return {
-    type,
-    at: extra.at || nowIso(),
-    ...extra
+    ...source,
+    monthlyStartingBalance: parseMoneyInput(source.monthlyStartingBalance ?? 0),
+    safeSpendBuffer: parseMoneyInput(source.safeSpendBuffer ?? 0),
+    budgetPeriodStartDay: clampStartDay(source.budgetPeriodStartDay),
+    paymentSources: Array.isArray(source.paymentSources) && source.paymentSources.length ? source.paymentSources : DEFAULT_SOURCES
   };
 }
 
-function appendActivity(bill, type, extra = {}) {
-  bill.activity = [...normalizeActivity(bill.activity), createActivity(type, extra)];
-  bill.updatedAt = nowIso();
-}
-
-function inferRepeat(bill) {
-  const normalized = `${bill.name} ${bill.category}`.toLowerCase();
-  if (normalized.includes("property tax") || normalized.includes("insurance") || normalized.includes("fitness") || normalized.includes("registration")) return "yearly";
-  if (normalized.includes("groceries") || normalized.includes("transport")) return "none";
-  if (normalized.includes("rent") || normalized.includes("jps") || normalized.includes("nwc") || normalized.includes("internet") || normalized.includes("netflix") || normalized.includes("spotify") || normalized.includes("gym") || normalized.includes("loan") || normalized.includes("slb")) return "monthly";
-  return bill.repeat || "none";
-}
-
-function isPropertyTaxBill(source) {
-  return `${source?.name || ""} ${source?.category || ""}`.toLowerCase().includes("property tax");
-}
-
-function advanceDueDate(value, repeat) {
-  const next = parseDate(value);
-  const targetDay = next.getDate();
-  if (repeat === "monthly") next.setMonth(next.getMonth() + 1);
-  if (repeat === "quarterly") next.setMonth(next.getMonth() + 3);
-  if (repeat === "yearly") next.setFullYear(next.getFullYear() + 1);
-  // setMonth on Jan 31 silently rolls forward to Mar 3; clamp back to the
-  // last day of the intended month so a monthly bill due the 31st lands on
-  // Feb 28/29, Apr 30, etc.
-  if (next.getDate() !== targetDay) next.setDate(0);
-  return toDateInputValue(next);
+function normalizeActivity(events) {
+  if (!Array.isArray(events)) return [];
+  return events.filter((event) => event && typeof event.type === "string").map((event) => ({ ...event, at: event.at || nowIso() }));
 }
 
 function normalizeBill(bill) {
-  const due = bill.due || toDateInputValue(today);
+  const due = bill.due || today;
   const paid = Boolean(bill.paid);
   const createdAt = bill.createdAt || bill.updatedAt || nowIso();
   return {
-    id: bill.id || newId(),
-    name: bill.name || "Untitled bill",
-    category: bill.category || categories[0]?.name || "Home",
-    amount: cleanAmount(bill.amount),
+    id: bill.id ?? newId(),
+    name: String(bill.name || "Untitled bill"),
+    category: bill.category || categories[0]?.name || "Other",
+    amount: parseMoneyInput(bill.amount),
     due,
     paid,
-    repeat: ["none", "monthly", "quarterly", "yearly"].includes(bill.repeat) ? bill.repeat : inferRepeat(bill),
+    repeat: REPEATS[bill.repeat] ? bill.repeat : "none",
     propertyTaxPlan: ["full", "half-yearly", "quarterly"].includes(bill.propertyTaxPlan) ? bill.propertyTaxPlan : "full",
     seriesKey: bill.seriesKey || makeSeriesKey(bill),
     archived: Boolean(bill.archived),
@@ -879,103 +262,119 @@ function normalizeBill(bill) {
 function normalizeExpense(expense) {
   const createdAt = expense.createdAt || nowIso();
   return {
-    id: expense.id || newId(),
-    amount: cleanAmount(expense.amount),
-    category: expense.category || defaultCategory().name,
-    merchant: expense.merchant || expense.note || "Expense",
+    id: expense.id ?? newId(),
+    amount: parseMoneyInput(expense.amount),
+    category: expense.category || categories[0]?.name || "Other",
+    merchant: String(expense.merchant || expense.note || expense.category || "Expense"),
     note: expense.note || "",
-    date: expense.date || toDateInputValue(today),
-    paymentSource: expense.paymentSource || settings.cashflow?.paymentSources?.[0] || "Cash",
+    date: expense.date || today,
+    paymentSource: expense.paymentSource || settings.cashflow.paymentSources[0] || "Cash",
     createdAt,
     updatedAt: expense.updatedAt || createdAt,
     deletedAt: expense.deletedAt || null
   };
 }
 
-function normalizeExpenseCategories(items) {
-  const names = [...new Set([...(Array.isArray(items) ? items : []), ...categories.map((category) => category.name)])]
-    .filter(Boolean);
-  return names.length ? names : ["General"];
-}
-
-function profileInitials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  const initials = parts.length > 1
-    ? `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`
-    : (parts[0] || "M").slice(0, 2);
-  return initials.toUpperCase() || "M";
-}
-
-function defaultProfile() {
+function normalizeCategory(category, index = 0, savedAt = nowIso()) {
   return {
-    name: "",
-    initials: "M",
-    avatarColor: "#5cae9f",
-    createdAt: "",
-    updatedAt: "",
-    onboardingComplete: false
+    name: String(category.name),
+    color: safeCssColor(category.color, CATEGORY_COLORS[index % CATEGORY_COLORS.length]),
+    planned: parseMoneyInput(category.planned),
+    assigned: parseMoneyInput(category.assigned),
+    updatedAt: category.updatedAt || savedAt,
+    deletedAt: category.deletedAt || null
   };
 }
 
-function normalizeProfile(source = {}) {
-  const fallback = defaultProfile();
-  const name = String(source.name || "").trim();
-  const initials = String(source.initials || profileInitials(name || "Marshall"))
-    .replace(/[^a-z0-9]/gi, "")
-    .slice(0, 2)
-    .toUpperCase() || profileInitials(name || "Marshall");
-  const avatarColor = /^#[0-9a-f]{6}$/i.test(source.avatarColor || "") ? source.avatarColor : fallback.avatarColor;
-  return {
-    ...fallback,
-    ...source,
-    name,
-    initials,
-    avatarColor,
-    createdAt: source.createdAt || "",
-    updatedAt: source.updatedAt || "",
-    onboardingComplete: Boolean(source.onboardingComplete && name)
-  };
+function starterCategories() {
+  return STARTER_CATEGORIES.map(([name, color]) => ({ name, color, planned: 0, assigned: 0, updatedAt: nowIso(), deletedAt: null }));
 }
 
-function profileDisplayName() {
-  return settings.profile?.name || "Marshall";
+function cloneBill(bill) {
+  return { ...bill, activity: normalizeActivity(bill.activity) };
 }
 
-function normalizeCashflowSettings(source = {}) {
-  const sources = Array.isArray(source.paymentSources) && source.paymentSources.length
-    ? source.paymentSources
-    : ["Cash", "Debit card", "Credit card", "Bank transfer"];
-  const rawDay = Number(source.budgetPeriodStartDay);
-  const startDay = Number.isFinite(rawDay) ? Math.max(1, Math.min(28, Math.round(rawDay))) : 25;
-  return {
-    monthlyStartingBalance: cleanAmount(source.monthlyStartingBalance ?? 260000),
-    safeSpendBuffer: cleanAmount(source.safeSpendBuffer ?? 0),
-    budgetPeriodStartDay: startDay,
-    paymentSources: sources
-  };
+function appendActivity(bill, type, extra = {}) {
+  bill.activity = [...normalizeActivity(bill.activity), { type, at: nowIso(), ...extra }];
+  bill.updatedAt = nowIso();
 }
 
-function createNextBillFrom(bill) {
-  const repeat = bill.repeat || "none";
-  if (repeat === "none") return null;
-  return normalizeBill({
-    id: newId(),
-    name: bill.name,
-    category: bill.category,
-    amount: bill.amount,
-    due: advanceDueDate(bill.due, repeat),
-    paid: false,
-    repeat,
-    propertyTaxPlan: bill.propertyTaxPlan || "full",
-    seriesKey: bill.seriesKey,
-    archived: false,
-    archivedAt: null,
-    completedAt: null,
-    activity: [createActivity("created", { note: "Next bill created from recurrence." })]
+function categoryByName(name) {
+  return categories.find((category) => category.name === name);
+}
+
+function categoryColor(name) {
+  return safeCssColor(categoryByName(name)?.color);
+}
+
+function fallbackCategoryName() {
+  return (categoryByName("Other") || categories[0])?.name || "Other";
+}
+
+// Records pointing at a removed category move to the fallback. Touch
+// updatedAt so the reassignment syncs instead of being overwritten.
+function ensureCategorySafety() {
+  if (!categories.length) categories = [normalizeCategory({ name: "Other", color: "#94a3b8" })];
+  const names = new Set(categories.map((category) => category.name));
+  const fallback = fallbackCategoryName();
+  const stamp = nowIso();
+  bills.forEach((bill) => {
+    if (!names.has(bill.category)) Object.assign(bill, { category: fallback, updatedAt: stamp });
   });
+  expenses.forEach((expense) => {
+    if (!names.has(expense.category)) Object.assign(expense, { category: fallback, updatedAt: stamp });
+  });
+}
+
+function billById(id) {
+  return bills.find((bill) => String(bill.id) === String(id));
+}
+
+function expenseById(id) {
+  return expenses.find((expense) => String(expense.id) === String(id));
+}
+
+function income() {
+  return settings.cashflow.monthlyStartingBalance || 0;
+}
+
+function paydayStart() {
+  return settings.cashflow.budgetPeriodStartDay;
+}
+
+function currentPeriod() {
+  return getBudgetPeriod(paydayStart(), today);
+}
+
+function viewPeriod() {
+  return shiftPeriod(currentPeriod(), ui.offset, paydayStart());
+}
+
+function activeBills() {
+  return bills.filter(isActiveBill);
+}
+
+function hasCompletedOnboarding() {
+  return Boolean(settings.profile?.onboardingComplete);
+}
+
+function hasSampleData() {
+  return bills.some((bill) => LEGACY_SAMPLE_BILL_IDS.has(bill.id)) || expenses.some((expense) => LEGACY_SAMPLE_EXPENSE_IDS.has(expense.id));
+}
+
+/* ---------- persistence ---------- */
+
+function appState() {
+  return {
+    version: 5,
+    savedAt: nowIso(),
+    bills,
+    categories,
+    expenses,
+    expenseCategories: categories.map((category) => category.name),
+    settings,
+    metadata: { starterDataLoaded: true }
+  };
 }
 
 function isValidState(state) {
@@ -987,40 +386,62 @@ function isValidState(state) {
     (!state.expenses || Array.isArray(state.expenses));
 }
 
-function appState() {
-  return {
-    version: 4,
-    savedAt: new Date().toISOString(),
-    bills,
-    categories,
-    expenses,
-    expenseCategories,
-    settings,
-    selectedBudgetCategory,
-    selectedExpenseCategory,
-    selectedHistoryMonth,
-    visibleCalendarMonth,
-    metadata: {
-      starterDataLoaded: true
+function hydrate(state) {
+  const fresh = defaultSettings();
+  settings = { ...fresh, ...(state.settings || {}) };
+  settings.theme = validTheme(settings.theme);
+  settings.profile = { ...(settings.profile || {}), onboardingComplete: Boolean(settings.profile?.onboardingComplete) };
+  settings.cashflow = normalizeCashflowSettings(settings.cashflow);
+  settings.reminderDays = Math.max(0, Math.min(30, Math.round(Number(settings.reminderDays ?? 3)) || 0));
+  ["notificationToken", "pushEnabled", "pushEndpoint", "pushStatus", "lastPushSync"].forEach((key) => delete settings[key]);
+  categories = state.categories.map((category, index) => normalizeCategory(category, index, state.savedAt));
+  bills = state.bills.map(normalizeBill);
+  expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
+  ensureCategorySafety();
+}
+
+let quotaToastShown = false;
+function reportQuotaFailure(error) {
+  console.warn("UpNextBudgeting localStorage write failed", error);
+  if (quotaToastShown) return;
+  if (error && (error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014)) {
+    quotaToastShown = true;
+    showToast("Storage is full. Export a backup from Settings.", { duration: 9000 });
+  }
+}
+
+function saveState(markDirty = true) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
+    if (markDirty) {
+      syncMeta.dirty = true;
+      mutationToken += 1;
+      saveSyncMeta();
+      scheduleSync();
     }
-  };
+  } catch (error) {
+    reportQuotaFailure(error);
+  }
 }
 
-function removeBackendSettings() {
-  [
-    "notificationToken",
-    "pushEnabled",
-    "pushEndpoint",
-    "pushStatus",
-    "lastPushSync"
-  ].forEach((key) => delete settings[key]);
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const state = JSON.parse(raw);
+      if (!isValidState(state)) throw new Error("Invalid saved state");
+      hydrate(state);
+    } else {
+      categories = starterCategories();
+    }
+  } catch (error) {
+    console.warn("Could not load saved UpNextBudgeting state", error);
+    categories = starterCategories();
+  }
+  applyTheme();
 }
 
-function localReminderStatus() {
-  const count = getReminderBadgeItems().length;
-  if (!count) return "No due-soon bills in the local badge window.";
-  return `${count} due-soon bill${count === 1 ? "" : "s"} tracked locally for badge-ready browsers.`;
-}
+/* ---------- cloud sync (Supabase, anonymous per device) ---------- */
 
 function newDeviceId() {
   return globalThis.crypto?.randomUUID?.() || `device-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -1053,18 +474,6 @@ function loadSyncMeta() {
   }
 }
 
-let quotaToastShown = false;
-function reportQuotaFailure(error) {
-  console.warn("UpNextBudgeting localStorage write failed", error);
-  if (quotaToastShown) return;
-  if (error && (error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014)) {
-    quotaToastShown = true;
-    try {
-      showToast("Local storage is full. Sign in to back up, then clear browser data.", { duration: 9000 });
-    } catch { /* toast region may not exist yet during early init */ }
-  }
-}
-
 function saveSyncMeta() {
   try {
     localStorage.setItem(SYNC_KEY, JSON.stringify(syncMeta));
@@ -1073,56 +482,29 @@ function saveSyncMeta() {
   }
 }
 
-const SYNC_STATE_BY_STATUS = {
-  "Syncing": "pending",
-  "Synced": "ok",
-  "Pending": "pending",
-  "Offline": "offline",
-  "Sync issue": "error"
-};
-
 function updateSyncStatus(status, detail = "", extra = {}) {
-  syncMeta = {
-    ...syncMeta,
-    status,
-    detail,
-    lastError: status === "Sync issue" ? detail : "",
-    ...extra
-  };
+  syncMeta = { ...syncMeta, status, detail, lastError: status === "Sync issue" ? detail : "", ...extra };
   saveSyncMeta();
-  // Surface sync state as a body data-attr so CSS can show a thin progress
-  // strip / dim the cloud chip without each render needing to know about it.
-  if (typeof document !== "undefined") {
-    document.body.dataset.sync = SYNC_STATE_BY_STATUS[status] || "idle";
-  }
-  if (!settingsSheet.hidden) renderSettingsContent();
-}
-
-let _mutationToken = 0;
-function markSyncDirty() {
-  syncMeta.dirty = true;
-  _mutationToken += 1;
-  saveSyncMeta();
+  if (ui.sheet?.kind === "settings") refreshSettingsStatus();
 }
 
 function supportsWebPush() {
   return Boolean("serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
 }
 
-function cloudStatusCopy() {
-  if (!navigator.onLine) return "Offline. Local changes will sync when this device is online.";
-  if (!syncMeta.userId) return "Ready to create a private anonymous sync profile.";
-  if (syncMeta.lastSyncAt) return `Last synced ${timelineFormat.format(new Date(syncMeta.lastSyncAt))}.`;
-  return syncMeta.detail || "Cloud sync is ready.";
+function syncStatusCopy() {
+  if (!navigator.onLine) return "Offline — changes sync when you reconnect.";
+  if (syncMeta.status === "Sync issue") return "Couldn't reach the backup server. Your data is safe here; it'll retry.";
+  if (syncMeta.status === "Syncing") return "Syncing…";
+  if (syncMeta.lastSyncAt) return `Backed up ${dateTime.format(new Date(syncMeta.lastSyncAt))}`;
+  return "Not backed up yet.";
 }
 
 function scheduleSync(reason = "change") {
   if (!syncStarted || !navigator.onLine) return;
   window.clearTimeout(syncTimer);
   syncTimer = window.setTimeout(() => {
-    syncUpNextState({ reason }).catch((error) => {
-      updateSyncStatus("Sync issue", error.message || "Could not sync right now.");
-    });
+    syncUpNextState({ reason }).catch((error) => updateSyncStatus("Sync issue", error.message || "Could not sync right now."));
   }, SYNC_DEBOUNCE_MS);
 }
 
@@ -1131,14 +513,12 @@ async function getSupabaseClient() {
   if (!supabaseClientPromise) {
     supabaseClientPromise = import(SUPABASE_CLIENT_SRC).then(({ createClient }) => {
       supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: false,
-          storageKey: "upnextbudgeting:supabase-auth"
-        }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: "upnextbudgeting:supabase-auth" }
       });
       return supabaseClient;
+    }).catch((error) => {
+      supabaseClientPromise = null;
+      throw error;
     });
   }
   return supabaseClientPromise;
@@ -1164,49 +544,41 @@ async function ensureSupabaseSession() {
   return { client, userId };
 }
 
-function billClientId(bill) {
-  return String(bill.id);
-}
-
-function expenseClientId(expense) {
-  return String(expense.id);
-}
-
 function toRemoteBill(bill, userId) {
-  const normalized = normalizeBill(bill);
+  const b = normalizeBill(bill);
   return {
     user_id: userId,
-    client_id: billClientId(normalized),
-    name: normalized.name,
-    category: normalized.category,
-    amount: normalized.amount,
-    due: normalized.due,
-    paid: normalized.paid,
-    repeat: normalized.repeat,
-    property_tax_plan: normalized.propertyTaxPlan,
-    series_key: normalized.seriesKey,
-    archived: normalized.archived,
-    archived_at: normalized.archivedAt,
-    completed_at: normalized.completedAt,
-    activity: normalized.activity,
-    updated_at: normalized.updatedAt || nowIso(),
-    deleted_at: normalized.deletedAt || null
+    client_id: String(b.id),
+    name: b.name,
+    category: b.category,
+    amount: b.amount,
+    due: b.due,
+    paid: b.paid,
+    repeat: b.repeat,
+    property_tax_plan: b.propertyTaxPlan,
+    series_key: b.seriesKey,
+    archived: b.archived,
+    archived_at: b.archivedAt,
+    completed_at: b.completedAt,
+    activity: b.activity,
+    updated_at: b.updatedAt || nowIso(),
+    deleted_at: b.deletedAt || null
   };
 }
 
 function toRemoteExpense(expense, userId) {
-  const normalized = normalizeExpense(expense);
+  const e = normalizeExpense(expense);
   return {
     user_id: userId,
-    client_id: expenseClientId(normalized),
-    amount: normalized.amount,
-    category: normalized.category,
-    merchant: normalized.merchant,
-    note: normalized.note,
-    expense_date: normalized.date,
-    payment_source: normalized.paymentSource,
-    updated_at: normalized.updatedAt || nowIso(),
-    deleted_at: normalized.deletedAt || null
+    client_id: String(e.id),
+    amount: e.amount,
+    category: e.category,
+    merchant: e.merchant,
+    note: e.note,
+    expense_date: e.date,
+    payment_source: e.paymentSource,
+    updated_at: e.updatedAt || nowIso(),
+    deleted_at: e.deletedAt || null
   };
 }
 
@@ -1214,9 +586,9 @@ function toRemoteCategory(category, userId, index = 0) {
   return {
     user_id: userId,
     name: category.name,
-    color: category.color || categoryColors[index % categoryColors.length],
-    planned: cleanAmount(category.planned),
-    assigned: cleanAmount(category.assigned),
+    color: category.color || CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+    planned: parseMoneyInput(category.planned),
+    assigned: parseMoneyInput(category.assigned),
     sort_order: index,
     updated_at: category.updatedAt || nowIso(),
     deleted_at: category.deletedAt || null
@@ -1271,39 +643,17 @@ async function pushLocalChanges(client, userId) {
   const expenseRows = expenses.map((expense) => toRemoteExpense(expense, userId));
   const categoryRows = categories.map((category, index) => toRemoteCategory(category, userId, index));
   const deletedBillRows = syncMeta.deletedBills.map((item) => ({
-    user_id: userId,
-    client_id: item.clientId,
-    name: item.name || "Deleted bill",
-    category: item.category || defaultCategory().name,
-    amount: cleanAmount(item.amount),
-    due: item.due || toDateInputValue(today),
-    paid: Boolean(item.paid),
-    repeat: item.repeat || "none",
-    property_tax_plan: item.propertyTaxPlan || "full",
-    archived: Boolean(item.archived),
-    activity: [],
+    ...toRemoteBill({ ...item, id: item.clientId, activity: [] }, userId),
     updated_at: item.deletedAt,
     deleted_at: item.deletedAt
   }));
   const deletedExpenseRows = syncMeta.deletedExpenses.map((item) => ({
-    user_id: userId,
-    client_id: item.clientId,
-    amount: cleanAmount(item.amount),
-    category: item.category || defaultCategory().name,
-    merchant: item.merchant || "Deleted expense",
-    note: item.note || "",
-    expense_date: item.date || toDateInputValue(today),
-    payment_source: item.paymentSource || "Cash",
+    ...toRemoteExpense({ ...item, id: item.clientId }, userId),
     updated_at: item.deletedAt,
     deleted_at: item.deletedAt
   }));
   const deletedCategoryRows = syncMeta.deletedCategories.map((item) => ({
-    user_id: userId,
-    name: item.name,
-    color: item.color || categoryColors[0],
-    planned: cleanAmount(item.planned),
-    assigned: cleanAmount(item.assigned),
-    sort_order: 0,
+    ...toRemoteCategory(item, userId, 0),
     updated_at: item.deletedAt,
     deleted_at: item.deletedAt
   }));
@@ -1317,7 +667,10 @@ async function pushLocalChanges(client, userId) {
     if (error) throw error;
   }
   if (categoryRows.length || deletedCategoryRows.length) {
-    const { error } = await client.from("upnext_categories").upsert([...categoryRows, ...deletedCategoryRows], { onConflict: "user_id,name" });
+    // A tombstone and a live row can share a name after delete+re-add; the live row wins.
+    const liveNames = new Set(categoryRows.map((row) => row.name));
+    const rows = [...categoryRows, ...deletedCategoryRows.filter((row) => !liveNames.has(row.name))];
+    const { error } = await client.from("upnext_categories").upsert(rows, { onConflict: "user_id,name" });
     if (error) throw error;
   }
   const { error: settingsError } = await client.from("upnext_settings").upsert({
@@ -1325,9 +678,22 @@ async function pushLocalChanges(client, userId) {
     reminder_days: settings.reminderDays,
     theme: settings.theme,
     cashflow: settings.cashflow,
-    updated_at: nowIso()
+    updated_at: settings.updatedAt || nowIso()
   }, { onConflict: "user_id" });
   if (settingsError) throw settingsError;
+}
+
+function mergeRemote(list, rows, idOf, rowId, fromRemote) {
+  for (const row of rows || []) {
+    const index = list.findIndex((item) => idOf(item) === rowId(row));
+    if (row.deleted_at) {
+      if (index >= 0 && remoteIsNewer(row.deleted_at, list[index].updatedAt)) list.splice(index, 1);
+      continue;
+    }
+    const remote = fromRemote(row);
+    if (index < 0) list.push(remote);
+    else if (remoteIsNewer(remote.updatedAt, list[index].updatedAt)) list[index] = remote;
+  }
 }
 
 async function pullRemoteChanges(client, userId) {
@@ -1340,70 +706,20 @@ async function pullRemoteChanges(client, userId) {
   [remoteBills, remoteExpenses, remoteCategories, remoteSettings].forEach((result) => {
     if (result.error) throw result.error;
   });
-
-  for (const row of remoteBills.data || []) {
-    const localIndex = bills.findIndex((bill) => billClientId(bill) === row.client_id);
-    if (row.deleted_at) {
-      if (localIndex >= 0 && remoteIsNewer(row.deleted_at, bills[localIndex].updatedAt)) bills.splice(localIndex, 1);
-      continue;
-    }
-    const remote = fromRemoteBill(row);
-    if (localIndex < 0) {
-      bills.push(remote);
-    } else if (remoteIsNewer(remote.updatedAt, bills[localIndex].updatedAt)) {
-      bills[localIndex] = remote;
-    }
-  }
-
-  for (const row of remoteExpenses.data || []) {
-    const localIndex = expenses.findIndex((expense) => expenseClientId(expense) === row.client_id);
-    if (row.deleted_at) {
-      if (localIndex >= 0 && remoteIsNewer(row.deleted_at, expenses[localIndex].updatedAt)) expenses.splice(localIndex, 1);
-      continue;
-    }
-    const remote = fromRemoteExpense(row);
-    if (localIndex < 0) {
-      expenses.push(remote);
-    } else if (remoteIsNewer(remote.updatedAt, expenses[localIndex].updatedAt)) {
-      expenses[localIndex] = remote;
-    }
-  }
-
-  for (const row of remoteCategories.data || []) {
-    const localIndex = categories.findIndex((category) => category.name === row.name);
-    if (row.deleted_at) {
-      if (localIndex >= 0 && remoteIsNewer(row.deleted_at, categories[localIndex].updatedAt)) categories.splice(localIndex, 1);
-      continue;
-    }
-    const remote = {
-      name: row.name,
-      color: safeCssColor(row.color),
-      planned: cleanAmount(row.planned),
-      assigned: cleanAmount(row.assigned),
-      updatedAt: row.updated_at,
-      deletedAt: null
-    };
-    if (localIndex < 0) {
-      categories.push(remote);
-    } else if (remoteIsNewer(remote.updatedAt, categories[localIndex].updatedAt)) {
-      categories[localIndex] = remote;
-    }
-  }
-
-  if (remoteSettings.data && remoteIsNewer(remoteSettings.data.updated_at, syncMeta.lastSettingsPullAt)) {
+  mergeRemote(bills, remoteBills.data, (b) => String(b.id), (r) => r.client_id, fromRemoteBill);
+  mergeRemote(expenses, remoteExpenses.data, (e) => String(e.id), (r) => r.client_id, fromRemoteExpense);
+  mergeRemote(categories, remoteCategories.data, (c) => c.name, (r) => r.name, (row) => normalizeCategory({
+    name: row.name, color: row.color, planned: row.planned, assigned: row.assigned, updatedAt: row.updated_at
+  }));
+  if (remoteSettings.data && remoteIsNewer(remoteSettings.data.updated_at, settings.updatedAt || syncMeta.lastSettingsPullAt)) {
     settings.reminderDays = Math.max(0, Math.min(30, Number(remoteSettings.data.reminder_days ?? settings.reminderDays)));
     settings.theme = validTheme(remoteSettings.data.theme);
     settings.cashflow = normalizeCashflowSettings(remoteSettings.data.cashflow);
+    settings.updatedAt = remoteSettings.data.updated_at;
     syncMeta.lastSettingsPullAt = remoteSettings.data.updated_at;
+    applyTheme();
   }
-
   ensureCategorySafety();
-  expenseCategories = normalizeExpenseCategories(expenseCategories);
-}
-
-async function syncNotificationSnapshot() {
-  const { client, userId } = await ensureSupabaseSession();
-  await pushLocalChanges(client, userId);
 }
 
 async function syncUpNextState({ reason = "manual" } = {}) {
@@ -1413,8 +729,8 @@ async function syncUpNextState({ reason = "manual" } = {}) {
     return;
   }
   syncInFlight = true;
-  const tokenAtStart = _mutationToken;
-  updateSyncStatus("Syncing", reason === "manual" ? "Syncing cloud backup now." : "Syncing latest local changes.");
+  const tokenAtStart = mutationToken;
+  updateSyncStatus("Syncing", reason);
   try {
     const { client, userId } = await ensureSupabaseSession();
     await pushLocalChanges(client, userId);
@@ -1422,16 +738,13 @@ async function syncUpNextState({ reason = "manual" } = {}) {
     syncMeta.deletedBills = pruneTombstones(syncMeta.deletedBills);
     syncMeta.deletedExpenses = pruneTombstones(syncMeta.deletedExpenses);
     syncMeta.deletedCategories = pruneTombstones(syncMeta.deletedCategories);
-    // Only mark clean if no UI mutation happened during the round-trip.
-    // Otherwise a follow-up sync (already scheduled by the mutation) will flush.
-    if (_mutationToken === tokenAtStart) syncMeta.dirty = false;
+    // A mutation during the round-trip already scheduled a follow-up sync.
+    if (mutationToken === tokenAtStart) syncMeta.dirty = false;
     syncMeta.lastSyncAt = nowIso();
-    syncMeta.userId = userId;
     saveSyncMeta();
     saveState(false);
-    render();
-    if (!settingsSheet.hidden) renderSettingsContent();
-    updateSyncStatus(syncMeta.dirty ? "Pending" : "Synced", syncMeta.dirty ? "New local changes will sync shortly." : "Cloud backup is current.");
+    if (!ui.sheet) render();
+    updateSyncStatus(syncMeta.dirty ? "Pending" : "Synced", "");
   } catch (error) {
     syncMeta.dirty = true;
     saveSyncMeta();
@@ -1443,41 +756,29 @@ async function syncUpNextState({ reason = "manual" } = {}) {
 
 function urlBase64ToUint8Array(value) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
+  const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
 async function enablePushNotifications() {
-  if (!supportsWebPush()) {
-    updateSyncStatus("Push unsupported", "Install the app to your Home Screen on supported iOS or use a push-capable browser.");
-    return;
-  }
-  if (!window.isSecureContext) {
-    updateSyncStatus("Push needs HTTPS", "iPhone push requires the installed app from an HTTPS origin.");
-    return;
-  }
+  if (!supportsWebPush()) throw new Error("This browser can't receive push. On iPhone, add the app to your Home Screen first.");
+  if (!window.isSecureContext) throw new Error("Notifications need the app to be served over HTTPS.");
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") {
-    updateSyncStatus("Push not enabled", "Notification permission was not granted.");
-    return;
-  }
+  if (permission !== "granted") throw new Error("Notification permission was not granted.");
   const { client, userId } = await ensureSupabaseSession();
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
   });
-  if (!subscription.endpoint || !subscription.endpoint.startsWith("https://") || subscription.endpoint.length > 1024) {
-    updateSyncStatus("Push not enabled", "The browser returned an unexpected push endpoint.");
+  if (!subscription.endpoint?.startsWith("https://") || subscription.endpoint.length > 1024) {
     try { await subscription.unsubscribe(); } catch { /* ignore */ }
-    return;
+    throw new Error("The browser returned an unexpected push endpoint.");
   }
-  const subscriptionJson = subscription.toJSON();
   const { error } = await client.from("upnext_web_push_subscriptions").upsert({
     user_id: userId,
     endpoint: subscription.endpoint,
-    subscription: subscriptionJson,
+    subscription: subscription.toJSON(),
     enabled: true,
     user_agent: navigator.userAgent,
     last_seen_at: nowIso(),
@@ -1487,2964 +788,1150 @@ async function enablePushNotifications() {
   syncMeta.pushEnabled = true;
   syncMeta.pushEndpoint = subscription.endpoint;
   saveSyncMeta();
-  await syncNotificationSnapshot();
-  updateSyncStatus("Notifications on", "Due bill summaries can be sent to this installed app.");
+  await pushLocalChanges(client, userId);
 }
 
 function startSupabaseSync() {
   if (syncStarted) return;
   syncStarted = true;
   window.addEventListener("online", () => syncUpNextState({ reason: "online" }));
-  window.addEventListener("offline", () => updateSyncStatus("Offline", "Local changes will sync when this device is online."));
+  window.addEventListener("offline", () => updateSyncStatus("Offline", ""));
   if (navigator.onLine) scheduleSync("startup");
 }
 
-function saveState(markDirty = true) {
-  removeBackendSettings();
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
-    if (markDirty) {
-      markSyncDirty();
-      scheduleSync();
-    }
-  } catch (error) {
-    reportQuotaFailure(error);
-  }
-}
+/* ---------- mutations ---------- */
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      bills = bills.map(normalizeBill);
-      expenses = expenses.map(normalizeExpense);
-      expenseCategories = normalizeExpenseCategories(expenseCategories);
-      settings.profile = normalizeProfile(settings.profile);
-      settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-      removeBackendSettings();
-      saveState();
-      applyTheme();
-      return;
-    }
-    const state = JSON.parse(raw);
-    if (!isValidState(state)) throw new Error("Invalid saved state");
-    categories = state.categories.map((category, index) => ({
-      name: category.name,
-      color: safeCssColor(category.color, categoryColors[index % categoryColors.length]),
-      planned: cleanAmount(category.planned),
-      assigned: cleanAmount(category.assigned),
-      updatedAt: category.updatedAt || state.savedAt || nowIso(),
-      deletedAt: category.deletedAt || null
-    }));
-    bills = state.bills.map(normalizeBill);
-    settings = { ...settings, ...(state.settings || {}) };
-    settings.theme = validTheme(settings.theme);
-    settings.profile = normalizeProfile(settings.profile);
-    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-    removeBackendSettings();
-    expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : starterExpenses.map(normalizeExpense);
-    expenseCategories = normalizeExpenseCategories(state.expenseCategories);
-    selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
-    selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
-    selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
-    visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
-    ensureCategorySafety();
-  } catch (error) {
-    console.warn("Could not load saved UpNextBudgeting state", error);
-    bills = bills.map(normalizeBill);
-    expenses = expenses.map(normalizeExpense);
-    settings.profile = normalizeProfile(settings.profile);
-    settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-    removeBackendSettings();
-    ensureCategorySafety();
-    saveState();
-  }
-  applyTheme();
-}
-
-function daysUntil(value) {
-  const ms = parseDate(value) - today;
-  return Math.round(ms / 86400000);
-}
-
-function getCategory(name) {
-  return categories.find((category) => category.name === name) || categories[0];
-}
-
-function defaultCategory() {
-  return categories.find((category) => category.name === "Home") || categories[0] || {
-    name: "General",
-    color: "#4d8dff",
-    planned: 0,
-    assigned: 0
-  };
-}
-
-function ensureCategorySafety() {
-  if (!categories.length) {
-    categories = [{ name: "General", color: "#4d8dff", planned: 0, assigned: 0 }];
-  }
-  const fallback = defaultCategory().name;
-  bills = bills.map((bill) => categories.some((category) => category.name === bill.category) ? bill : { ...bill, category: fallback });
-  expenses = expenses.map((expense) => categories.some((category) => category.name === expense.category) ? expense : { ...expense, category: fallback });
-  expenseCategories = normalizeExpenseCategories(expenseCategories);
-  selectedBudgetCategory = categories.some((category) => category.name === selectedBudgetCategory) ? selectedBudgetCategory : fallback;
-  selectedExpenseCategory = selectedExpenseCategory === "All" || expenseCategories.includes(selectedExpenseCategory) ? selectedExpenseCategory : "All";
-}
-
-function categoryIconName(name) {
-  const normalized = name.toLowerCase();
-  if (normalized.includes("home")) return "home";
-  if (normalized.includes("util")) return "utilities";
-  if (normalized.includes("phone") || normalized.includes("internet")) return "phone";
-  if (normalized.includes("vehicle")) return "vehicle";
-  if (normalized.includes("insurance")) return "insurance";
-  if (normalized.includes("transport")) return "transport";
-  if (normalized.includes("subscription")) return "subscriptions";
-  if (normalized.includes("wellness")) return "wellness";
-  if (normalized.includes("loan")) return "loans";
-  if (normalized.includes("school")) return "school";
-  if (normalized.includes("medical")) return "medical";
-  if (normalized.includes("grocer")) return "groceries";
-  if (normalized.includes("saving")) return "savings";
-  if (normalized.includes("tax")) return "tax";
-  if (normalized.includes("life")) return "life";
-  return "category";
-}
-
-function sortBills(items) {
-  return [...items].sort((a, b) => {
-    if (a.archived !== b.archived) return a.archived ? 1 : -1;
-    if (a.paid !== b.paid) return a.paid ? 1 : -1;
-    const aOverdue = !a.paid && daysUntil(a.due) < 0;
-    const bOverdue = !b.paid && daysUntil(b.due) < 0;
-    if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-    return parseDate(a.due) - parseDate(b.due);
-  });
-}
-
-function statusText(bill) {
-  if (bill.paid) return "Paid";
-  const days = daysUntil(bill.due);
-  if (days < 0) return `${Math.abs(days)} days overdue`;
-  if (days === 0) return "Due today";
-  if (days === 1) return "Due tomorrow";
-  return `Due in ${days} days`;
-}
-
-function recordStatusText(bill) {
-  if (bill.archived && !bill.paid) return "Archived";
-  return statusText(bill);
-}
-
-function statusClass(bill) {
-  if (bill.archived && !bill.paid) return "is-archived";
-  if (bill.paid) return "is-paid";
-  const days = daysUntil(bill.due);
-  if (days < 0) return "is-overdue";
-  if (days <= 1) return "is-tomorrow";
-  if (days <= settings.reminderDays) return "is-soon";
-  return "is-scheduled";
-}
-
-function statusTone(bill) {
-  const state = statusClass(bill);
-  if (state === "is-overdue") return "danger";
-  if (state === "is-tomorrow" || state === "is-soon") return "warning";
-  if (state === "is-paid") return "success";
-  if (state === "is-archived") return "neutral";
-  return "info";
-}
-
-function monthName(date = today) {
-  return new Intl.DateTimeFormat("en-JM", { month: "long", year: "numeric" }).format(date);
-}
-
-function replaceOrInsertBill(record) {
-  const normalized = normalizeBill(record);
-  const index = bills.findIndex((bill) => bill.id === normalized.id);
-  if (index >= 0) {
-    bills[index] = normalized;
-  } else {
-    bills.push(normalized);
-  }
-}
-
-function getBillById(billId) {
-  return bills.find((bill) => bill.id === billId);
-}
-
-function openBillDetail(billId) {
-  const bill = getBillById(billId);
-  if (!bill) return;
-  lastTrigger = document.activeElement;
-  activeBillId = billId;
-  document.body.classList.add("detail-zooming");
+function commit({ sync = true } = {}) {
+  saveState(sync);
   render();
-  window.setTimeout(() => document.body.classList.remove("detail-zooming"), sheetMotionDuration());
 }
 
-function closeBillDetail(restoreFocus = true) {
-  activeBillId = null;
-  document.body.classList.add("detail-closing");
-  render();
-  window.setTimeout(() => document.body.classList.remove("detail-closing"), sheetMotionDuration());
-  if (restoreFocus) {
-    window.setTimeout(() => lastTrigger?.focus?.(), 0);
-  }
+function tombstoneBill(bill) {
+  syncMeta.deletedBills.push({ ...cloneBill(bill), clientId: String(bill.id), deletedAt: nowIso() });
+  saveSyncMeta();
 }
 
-function markBillPaid(billId, { quiet = false } = {}) {
-  const bill = getBillById(billId);
+function tombstoneExpense(expense) {
+  syncMeta.deletedExpenses.push({ ...expense, clientId: String(expense.id), deletedAt: nowIso() });
+  saveSyncMeta();
+}
+
+function forgetTombstone(listKey, clientId) {
+  syncMeta[listKey] = syncMeta[listKey].filter((item) => item.clientId !== String(clientId));
+  saveSyncMeta();
+}
+
+function removeBill(id) {
+  const bill = billById(id);
+  if (!bill) return null;
+  tombstoneBill(bill);
+  bills = bills.filter((item) => item !== bill);
+  return bill;
+}
+
+function restoreBill(snapshot) {
+  forgetTombstone("deletedBills", snapshot.id);
+  const index = bills.findIndex((item) => String(item.id) === String(snapshot.id));
+  const record = { ...cloneBill(snapshot), updatedAt: nowIso() };
+  if (index >= 0) bills[index] = record;
+  else bills.push(record);
+}
+
+function removeExpense(id) {
+  const expense = expenseById(id);
+  if (!expense) return null;
+  tombstoneExpense(expense);
+  expenses = expenses.filter((item) => item !== expense);
+  return expense;
+}
+
+function restoreExpense(snapshot) {
+  forgetTombstone("deletedExpenses", snapshot.id);
+  expenses = expenses.filter((item) => String(item.id) !== String(snapshot.id));
+  expenses.push({ ...snapshot, updatedAt: nowIso() });
+}
+
+// Paying a recurring bill queues its next occurrence so the plan never
+// silently drops a monthly bill.
+function markPaid(id) {
+  const bill = billById(id);
   if (!bill || bill.paid) return;
-  const snapshot = cloneBill(bill);
-  const previousPending = pendingRecurringBillId;
+  const before = cloneBill(bill);
   bill.paid = true;
   bill.completedAt = nowIso();
-  appendActivity(bill, "paid", { note: "Marked paid from the app." });
-  pendingRecurringBillId = bill.repeat && bill.repeat !== "none" ? bill.id : null;
-  saveState();
-  render();
-  if (!quiet) {
-    showToast(`${bill.name} marked paid.`, {
-      undo: () => {
-        replaceOrInsertBill(snapshot);
-        pendingRecurringBillId = previousPending;
-        saveState();
-        render();
-        showToast(`${bill.name} marked unpaid.`);
-      }
-    });
+  appendActivity(bill, "paid");
+  let next = null;
+  if (bill.repeat !== "none") {
+    const due = advanceDueDate(bill.due, bill.repeat);
+    const exists = activeBills().some((item) => item !== bill && item.seriesKey === bill.seriesKey && item.due === due);
+    if (!exists) {
+      next = normalizeBill({
+        id: newId(),
+        name: bill.name,
+        category: bill.category,
+        amount: bill.amount,
+        due,
+        repeat: bill.repeat,
+        propertyTaxPlan: bill.propertyTaxPlan,
+        seriesKey: bill.seriesKey,
+        activity: [{ type: "created", at: nowIso(), note: "Next occurrence of a recurring bill." }]
+      });
+      bills.push(next);
+    }
   }
-}
-
-function archiveBill(billId) {
-  const bill = getBillById(billId);
-  if (!bill || bill.archived) return;
-  const snapshot = cloneBill(bill);
-  bill.archived = true;
-  bill.archivedAt = nowIso();
-  appendActivity(bill, "archived", { note: "Archived from bill detail." });
-  if (activeBillId === billId) activeBillId = null;
-  if (pendingRecurringBillId === billId) pendingRecurringBillId = null;
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(`${bill.name} archived.`, {
+  commit();
+  showToast(next ? `${bill.name} paid · next due ${shortDate(next.due)}` : `${bill.name} paid`, {
     undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      if (!settingsSheet.hidden) renderSettingsContent();
-      showToast(`${bill.name} restored.`);
+      restoreBill(before);
+      if (next) removeBill(next.id);
+      commit();
     }
   });
 }
 
-function restoreArchivedBill(billId) {
-  const bill = getBillById(billId);
-  if (!bill || !bill.archived) return;
-  const snapshot = cloneBill(bill);
-  bill.archived = false;
-  bill.archivedAt = null;
-  appendActivity(bill, "restored", { note: "Restored from archive." });
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(`${bill.name} restored.`, {
-    undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      if (!settingsSheet.hidden) renderSettingsContent();
-      showToast(`${bill.name} archived again.`);
+function readForm(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function formError(form, message) {
+  const el = form.querySelector(".form-error");
+  if (el) {
+    el.textContent = message;
+    el.hidden = !message;
+  }
+  return false;
+}
+
+function saveBill(form) {
+  const data = readForm(form);
+  const name = String(data.name || "").trim();
+  const amount = parseMoneyInput(data.amount);
+  if (!name) return formError(form, "Give the bill a name.");
+  if (!amount) return formError(form, "Enter an amount above zero.");
+  if (!data.due) return formError(form, "Pick a due date.");
+  const payload = { name, amount, due: data.due, category: data.category, repeat: REPEATS[data.repeat] ? data.repeat : "none" };
+  const existing = billById(form.dataset.id);
+  if (existing) {
+    const changed = ["name", "amount", "due", "category", "repeat"].some((key) => existing[key] !== payload[key]);
+    Object.assign(existing, payload);
+    const paid = data.paid === "on";
+    if (paid !== existing.paid) {
+      existing.paid = paid;
+      existing.completedAt = paid ? nowIso() : null;
+      appendActivity(existing, paid ? "paid" : "unpaid");
+    } else if (changed) {
+      appendActivity(existing, "edited");
     }
-  });
+  } else {
+    bills.push(normalizeBill({
+      id: newId(),
+      ...payload,
+      seriesKey: makeSeriesKey(payload),
+      activity: [{ type: "created", at: nowIso() }]
+    }));
+  }
+  closeSheet();
+  commit();
+  showToast(existing ? `${name} updated` : `${name} added`);
+  return true;
 }
 
-function snoozeBill(billId, nextDue) {
-  const bill = getBillById(billId);
-  if (!bill || bill.paid || bill.archived || !nextDue || nextDue === bill.due) return;
-  const snapshot = cloneBill(bill);
-  const previousDue = bill.due;
-  bill.due = nextDue;
-  appendActivity(bill, "snoozed", {
-    from: previousDue,
-    to: nextDue,
-    note: `Snoozed from ${dateFormat.format(parseDate(previousDue))} to ${dateFormat.format(parseDate(nextDue))}.`
-  });
-  saveState();
-  closeActionSheet(false);
-  render();
-  showToast(`${bill.name} moved to ${dateFormat.format(parseDate(nextDue))}.`, {
-    undo: () => {
-      replaceOrInsertBill(snapshot);
-      saveState();
-      render();
-      showToast(`${bill.name} due date restored.`);
-    }
-  });
+function deleteBill(id) {
+  const removed = removeBill(id);
+  if (!removed) return;
+  const snapshot = cloneBill(removed);
+  closeSheet();
+  commit();
+  showToast(`${snapshot.name} deleted`, { undo: () => { restoreBill(snapshot); commit(); } });
 }
 
-function createNextRecurringBill() {
-  const bill = getBillById(pendingRecurringBillId);
-  const nextBill = bill ? createNextBillFrom(bill) : null;
-  if (nextBill) bills.push(nextBill);
-  pendingRecurringBillId = null;
-  saveState();
-  render();
-  if (nextBill) {
-    showToast(`Next ${nextBill.name} created.`, {
-      undo: () => {
-        bills = bills.filter((item) => item.id !== nextBill.id);
-        saveState();
-        render();
-        showToast("Next bill removed.");
-      }
-    });
+function saveExpense(form) {
+  const data = readForm(form);
+  const amount = parseMoneyInput(data.amount);
+  if (!amount) return formError(form, "Enter an amount above zero.");
+  if (!data.date) return formError(form, "Pick a date.");
+  const note = String(data.note || "").trim();
+  const payload = { amount, category: data.category, merchant: note || data.category, note, date: data.date };
+  ui.lastCategory = data.category;
+  const existing = expenseById(form.dataset.id);
+  let created = null;
+  if (existing) {
+    Object.assign(existing, payload, { updatedAt: nowIso() });
+  } else {
+    created = normalizeExpense({ id: newId(), ...payload, createdAt: nowIso() });
+    expenses.push(created);
   }
+  closeSheet();
+  commit();
+  showToast(existing ? "Expense updated" : `${money(amount)} · ${payload.merchant}`, created ? {
+    undo: () => { removeExpense(created.id); commit(); }
+  } : {});
+  return true;
 }
 
-function dismissRecurringPrompt() {
-  pendingRecurringBillId = null;
-  saveState();
-  render();
-  showToast("Recurring prompt skipped.");
+function deleteExpense(id) {
+  const removed = removeExpense(id);
+  if (!removed) return;
+  const snapshot = { ...removed };
+  closeSheet();
+  commit();
+  showToast("Expense deleted", { undo: () => { restoreExpense(snapshot); commit(); } });
 }
 
-function getRelatedBills(seriesKey) {
-  return [...bills]
-    .filter((bill) => bill.seriesKey === seriesKey)
-    .sort((a, b) => parseDate(b.due) - parseDate(a.due));
-}
-
-function activityToTimelineEntry(item, event) {
-  if (event.type === "created") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Bill created",
-      detail: event.note || `${item.name} was added to your plan.`
-    };
-  }
-  if (event.type === "edited") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Bill updated",
-      detail: event.note || `${item.name} details were changed.`
-    };
-  }
-  if (event.type === "paid") {
-    return {
-      at: event.at,
-      tone: "success",
-      title: "Marked paid",
-      detail: `${money.format(item.amount)} cleared.`
-    };
-  }
-  if (event.type === "unpaid") {
-    return {
-      at: event.at,
-      tone: "warning",
-      title: "Marked unpaid",
-      detail: "Returned to active planning."
-    };
-  }
-  if (event.type === "snoozed") {
-    return {
-      at: event.at,
-      tone: "warning",
-      title: "Due date moved",
-      detail: `${dateFormat.format(parseDate(event.from))} to ${dateFormat.format(parseDate(event.to))}`
-    };
-  }
-  if (event.type === "archived") {
-    return {
-      at: event.at,
-      tone: "neutral",
-      title: "Archived",
-      detail: "Removed from daily triage."
-    };
-  }
-  if (event.type === "restored") {
-    return {
-      at: event.at,
-      tone: "info",
-      title: "Restored",
-      detail: "Returned to active planning."
-    };
-  }
+function snapshotAll() {
   return {
-    at: event.at,
-    tone: "info",
-    title: event.type,
-    detail: event.note || item.name
+    bills: bills.map(cloneBill),
+    expenses: expenses.map((expense) => ({ ...expense })),
+    categories: categories.map((category) => ({ ...category })),
+    tombstones: {
+      deletedBills: [...syncMeta.deletedBills],
+      deletedExpenses: [...syncMeta.deletedExpenses],
+      deletedCategories: [...syncMeta.deletedCategories]
+    }
   };
 }
 
-function getBillTimeline(bill) {
-  const entries = [];
-  getRelatedBills(bill.seriesKey).forEach((item) => {
-    entries.push({
-      at: `${item.due}T12:00:00`,
-      tone: "info",
-      title: "Scheduled",
-      detail: `${dateFormat.format(parseDate(item.due))} · ${money.format(item.amount)}`
-    });
-    const activityTypes = new Set(normalizeActivity(item.activity).map((event) => event.type));
-    if (item.paid && !activityTypes.has("paid")) {
-      entries.push({
-        at: item.completedAt || `${item.due}T12:00:00`,
-        tone: "success",
-        title: "Marked paid",
-        detail: `${money.format(item.amount)} cleared.`
-      });
+function restoreAll(snapshot) {
+  const stamp = nowIso();
+  bills = snapshot.bills.map((bill) => ({ ...bill, updatedAt: stamp }));
+  expenses = snapshot.expenses.map((expense) => ({ ...expense, updatedAt: stamp }));
+  categories = snapshot.categories.map((category) => ({ ...category, updatedAt: stamp }));
+  Object.assign(syncMeta, snapshot.tombstones);
+  saveSyncMeta();
+  commit();
+}
+
+function saveCategory(form) {
+  const data = readForm(form);
+  const name = String(data.name || "").trim();
+  const planned = parseMoneyInput(data.planned);
+  const originalName = form.dataset.name || "";
+  if (!name) return formError(form, "Give the category a name.");
+  const clash = categories.find((category) => category.name.toLowerCase() === name.toLowerCase() && category.name !== originalName);
+  if (clash) return formError(form, `${clash.name} already exists.`);
+  const existing = categoryByName(originalName);
+  const stamp = nowIso();
+  if (existing) {
+    if (existing.name !== name) {
+      // Remote categories are keyed by name: retire the old row and re-point records.
+      syncMeta.deletedCategories.push({ ...existing, deletedAt: stamp });
+      saveSyncMeta();
+      bills.forEach((bill) => { if (bill.category === existing.name) Object.assign(bill, { category: name, updatedAt: stamp }); });
+      expenses.forEach((expense) => { if (expense.category === existing.name) Object.assign(expense, { category: name, updatedAt: stamp }); });
     }
-    if (item.archived && !activityTypes.has("archived")) {
-      entries.push({
-        at: item.archivedAt || `${item.due}T12:00:00`,
-        tone: "neutral",
-        title: "Archived",
-        detail: "Removed from daily triage."
-      });
+    Object.assign(existing, { name, planned, updatedAt: stamp });
+  } else {
+    categories.push(normalizeCategory({ name, planned, color: CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length], updatedAt: stamp }));
+  }
+  syncMeta.deletedCategories = syncMeta.deletedCategories.filter((item) => item.name !== name);
+  closeSheet();
+  commit();
+  showToast(existing ? `${name} updated` : `${name} added`);
+  return true;
+}
+
+function deleteCategory(name) {
+  const category = categoryByName(name);
+  if (!category || categories.length <= 1) return;
+  const snapshot = snapshotAll();
+  syncMeta.deletedCategories.push({ ...category, deletedAt: nowIso() });
+  saveSyncMeta();
+  categories = categories.filter((item) => item !== category);
+  ensureCategorySafety();
+  closeSheet();
+  commit();
+  showToast(`${name} removed`, { undo: () => restoreAll(snapshot) });
+}
+
+function saveBudgetSettings(form) {
+  const data = readForm(form);
+  settings.cashflow.monthlyStartingBalance = parseMoneyInput(data.income);
+  settings.cashflow.budgetPeriodStartDay = clampStartDay(data.payday);
+  settings.reminderDays = Math.max(0, Math.min(30, Math.round(Number(data.reminderDays)) || 0));
+  settings.updatedAt = nowIso();
+  commit();
+  showToast("Budget settings saved");
+  return true;
+}
+
+function finishOnboarding(form) {
+  const data = readForm(form);
+  const amount = parseMoneyInput(data.income);
+  if (!amount) return formError(form, "Enter your take-home pay to calculate what's safe to spend.");
+  settings.cashflow.monthlyStartingBalance = amount;
+  settings.cashflow.budgetPeriodStartDay = clampStartDay(data.payday);
+  settings.profile = { ...settings.profile, onboardingComplete: true, createdAt: settings.profile.createdAt || nowIso() };
+  settings.updatedAt = nowIso();
+  if (!categories.length) categories = starterCategories();
+  ui.tab = "budget";
+  commit();
+  showToast("Next: give each category a plan.");
+  return true;
+}
+
+function setTheme(theme) {
+  settings.theme = validTheme(theme);
+  settings.updatedAt = nowIso();
+  applyTheme();
+  saveState();
+  renderSheet();
+}
+
+function removeSampleData() {
+  const snapshot = snapshotAll();
+  bills.filter((bill) => LEGACY_SAMPLE_BILL_IDS.has(bill.id)).forEach((bill) => removeBill(bill.id));
+  expenses.filter((expense) => LEGACY_SAMPLE_EXPENSE_IDS.has(expense.id)).forEach((expense) => removeExpense(expense.id));
+  commit();
+  renderSheet();
+  showToast("Sample data removed", { undo: () => { restoreAll(snapshot); renderSheet(); } });
+}
+
+/* ---------- export / backup ---------- */
+
+function download(filename, type, content) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const anchor = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  // Leading =,+,-,@ would be evaluated as a formula by spreadsheet apps.
+  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return /[",\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+}
+
+function exportCsv() {
+  const period = viewPeriod();
+  const rows = [
+    ["Date", "Type", "Name", "Category", "Amount JMD", "Status"],
+    ...transactionsFor({ bills, expenses, period }).reverse().map((tx) => [tx.date, tx.kind === "bill" ? "Bill" : "Expense", tx.name, tx.category, tx.amount, "Paid"]),
+    ...sortOpenBills(openBillsFor(bills, period, today)).map((bill) => [bill.due, "Bill", bill.name, bill.category, bill.amount, "Unpaid"])
+  ];
+  download(`upnext-${period.startDate}.csv`, "text/csv;charset=utf-8", rows.map((row) => row.map(csvCell).join(",")).join("\n"));
+  showToast(`Exported ${periodLabel(period)}`);
+}
+
+function exportBackup() {
+  download(`upnext-backup-${today}.json`, "application/json", JSON.stringify(appState(), null, 2));
+  showToast("Backup downloaded");
+}
+
+function restoreBackup(file) {
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    try {
+      const state = JSON.parse(String(reader.result));
+      if (!isValidState(state)) throw new Error("That file isn't an UpNextBudgeting backup.");
+      if (!confirm("Replace the data on this device with this backup?")) return;
+      const keepProfile = settings.profile;
+      hydrate(state);
+      settings.profile = { ...keepProfile, ...settings.profile, onboardingComplete: true };
+      const stamp = nowIso();
+      [...bills, ...expenses, ...categories].forEach((item) => { item.updatedAt = stamp; });
+      settings.updatedAt = stamp;
+      applyTheme();
+      closeSheet();
+      commit();
+      showToast("Backup restored");
+    } catch (error) {
+      showToast(error.message || "Could not restore that backup.");
     }
-    normalizeActivity(item.activity).forEach((event) => {
-      entries.push(activityToTimelineEntry(item, event));
-    });
   });
-  return entries.sort((a, b) => new Date(b.at) - new Date(a.at));
+  reader.readAsText(file);
 }
 
-function renderRecurringPrompt() {
-  const bill = getBillById(pendingRecurringBillId);
-  if (!bill) return "";
+/* ---------- theme, toasts, badge ---------- */
+
+function applyTheme() {
+  const pref = validTheme(settings.theme);
+  const resolved = pref === "system" ? (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark") : pref;
+  document.documentElement.dataset.theme = resolved;
+  themeColorMeta?.setAttribute("content", resolved === "light" ? "#f5f5f2" : "#0b0c0e");
+}
+
+function showToast(message, { undo = null, undoLabel = "Undo", duration = 5000 } = {}) {
+  // A modal dialog renders in the top layer and makes the rest of the page
+  // inert, so toasts move inside it while a sheet is open.
+  const host = sheet.open ? sheet : document.body;
+  if (toastRegion.parentElement !== host) host.append(toastRegion);
+  while (toastRegion.children.length >= 2) toastRegion.firstElementChild.remove();
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.append(text);
+  const dismiss = () => {
+    window.clearTimeout(timer);
+    toast.classList.add("is-leaving");
+    window.setTimeout(() => toast.remove(), 200);
+  };
+  if (typeof undo === "function") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = undoLabel;
+    button.addEventListener("click", () => {
+      undo();
+      dismiss();
+    });
+    toast.append(button);
+  }
+  toastRegion.append(toast);
+  const timer = window.setTimeout(dismiss, duration);
+}
+
+async function updateAppBadge() {
+  const count = activeBills().filter((bill) => !bill.paid && daysBetween(today, bill.due) <= BADGE_REMINDER_DAYS).length;
+  try {
+    if (count && "setAppBadge" in navigator) await navigator.setAppBadge(count);
+    if (!count && "clearAppBadge" in navigator) await navigator.clearAppBadge();
+  } catch {
+    /* badge API is best-effort */
+  }
+}
+
+/* ---------- view pieces ---------- */
+
+function topbar(title, eyebrow = "") {
   return `
-    <section class="recurring-prompt home-reveal" style="--delay: 160ms" aria-label="Recurring bill follow-up">
+    <header class="topbar">
       <div>
-        <p class="mini-label">Repeats ${escapeHtml(bill.repeat)}</p>
-        <strong>Create next ${escapeHtml(bill.name)}?</strong>
-        <p class="small-note">Next due date would be ${dateFormat.format(parseDate(advanceDueDate(bill.due, bill.repeat)))}.</p>
+        ${eyebrow ? `<p class="eyebrow">${esc(eyebrow)}</p>` : ""}
+        <h1>${esc(title)}</h1>
       </div>
-      <div class="prompt-actions">
-        <button class="primary-action small" id="createNextBill" type="button">Create next</button>
-        <button class="secondary-action" id="dismissRecurring" type="button">Skip</button>
-      </div>
-    </section>
-  `;
-}
-
-function renderWalletCard(bill, index) {
-  return renderBillListCard(bill, index);
-}
-
-function renderTopAppBar({ kicker, title, subtitle = "" }) {
-  return `
-    <header class="topbar app-topbar home-reveal" style="--delay: 0ms">
-      <div class="brand-line">
-        <button class="brandmark-button" data-open-settings type="button" aria-label="Open settings">
-          <img class="brandmark" src="assets/icon.svg" alt="">
-        </button>
-        <div class="hero-copy">
-          <p class="kicker">${escapeHtml(kicker)}</p>
-          <h1>${escapeHtml(title)}</h1>
-          ${subtitle ? `<p class="hero-note">${escapeHtml(subtitle)}</p>` : ""}
-        </div>
-      </div>
+      <button class="icon-btn" data-action="settings" type="button" aria-label="Settings">${icons.gear}</button>
     </header>
   `;
 }
 
-function hasCompletedOnboarding() {
-  return Boolean(settings.profile?.onboardingComplete);
-}
-
-function renderFeaturePreview({ iconName, label, title, detail, tone = "" }) {
+function periodSwitch(period) {
+  const offsetCopy = ui.offset === 0 ? "This period" : ui.offset === -1 ? "Last period" : ui.offset === 1 ? "Next period" : `${Math.abs(ui.offset)} periods ago`;
   return `
-    <article class="landing-feature ${tone}">
-      <span class="card-icon">${icon(iconName)}</span>
-      <div>
-        <p class="mini-label">${label}</p>
-        <strong>${title}</strong>
-        <span>${detail}</span>
+    <div class="period-switch">
+      <button class="icon-btn" data-action="period" data-step="-1" type="button" aria-label="Previous period">${icons.left}</button>
+      <div class="period-label" aria-live="polite">
+        <strong>${periodLabel(period)}</strong>
+        <span>${offsetCopy}</span>
       </div>
-    </article>
+      <button class="icon-btn" data-action="period" data-step="1" type="button" aria-label="Next period" ${ui.offset >= MAX_PERIOD_OFFSET ? "disabled" : ""}>${icons.right}</button>
+    </div>
   `;
 }
 
-function renderProfileForm({ mode = "onboarding" } = {}) {
-  const profile = normalizeProfile(settings.profile);
-  const isOnboarding = mode === "onboarding";
-  const title = isOnboarding ? "Create your profile" : "Edit profile";
-  const action = isOnboarding ? "Start planning" : "Save profile";
-  const colors = ["#5cae9f", "#6f9fd1", "#b88ac0", "#d5ad49"];
+function sectionHead(title, action = "", target = "") {
   return `
-    <form id="profileForm" class="profile-form" data-profile-mode="${mode}">
-      <div class="profile-form-head">
-        <span class="profile-token onboarding-profile-token" style="--profile-color:${safeCssColor(profile.avatarColor)}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
-        <div>
-          <p class="mini-label">Local profile</p>
-          <h2>${title}</h2>
-          <p class="settings-copy">Saved on this device with your bills, expenses, and settings.</p>
-        </div>
-      </div>
-      <label>
-        <span>Name</span>
-        <input id="profileName" name="profileName" autocomplete="name" required placeholder="Marshall" value="${escapeHtml(profile.name)}">
-      </label>
-      <div class="form-row">
-        <label>
-          <span>Initials</span>
-          <input id="profileInitials" name="profileInitials" maxlength="2" autocomplete="off" required value="${escapeHtml(profile.initials)}">
-        </label>
-        <label>
-          <span>Avatar color</span>
-          <select id="profileAvatarColor" name="profileAvatarColor">
-            ${colors.map((color) => `<option value="${color}" ${profile.avatarColor === color ? "selected" : ""}>${color === "#5cae9f" ? "Teal" : color === "#6f9fd1" ? "Blue" : color === "#b88ac0" ? "Mauve" : "Gold"}</option>`).join("")}
-          </select>
-        </label>
-      </div>
-      <div class="form-row">
-        <label>
-          <span>Period budget</span>
-          <input class="money-input" id="profileStartingBalance" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}">
-        </label>
-        <label>
-          <span>Period starts on</span>
-          <input id="profileBudgetStartDay" type="number" min="1" max="28" inputmode="numeric" value="${escapeAttribute(String(settings.cashflow.budgetPeriodStartDay || 25))}">
-        </label>
-      </div>
-      <p class="settings-copy">The budget period runs from day ${settings.cashflow.budgetPeriodStartDay || 25} of one month to the day before in the next.</p>
-      <button class="primary-action profile-submit" type="submit">${action}</button>
-    </form>
+    <div class="section-head">
+      <h2>${esc(title)}</h2>
+      ${action ? `<button class="link-btn" data-goto="${target}" type="button">${esc(action)}</button>` : ""}
+    </div>
   `;
 }
+
+function meter(parts, total) {
+  const segs = parts
+    .filter((part) => part.value > 0)
+    .map((part) => `<i class="${part.cls}" style="width:${Math.min(100, (part.value / Math.max(total, 1)) * 100).toFixed(2)}%"></i>`)
+    .join("");
+  return `<div class="meter" aria-hidden="true">${segs}</div>`;
+}
+
+function billRow(bill) {
+  const action = bill.paid
+    ? `<span class="row-done" aria-hidden="true">${icons.check}</span>`
+    : `<button class="check-btn" data-action="pay" data-id="${esc(bill.id)}" type="button" aria-label="Mark ${esc(bill.name)} paid">${icons.check}</button>`;
+  return `
+    <li class="row">
+      <button class="row-main" data-action="edit-bill" data-id="${esc(bill.id)}" type="button">
+        <span class="dot" style="--c:${categoryColor(bill.category)}" aria-hidden="true"></span>
+        <span class="row-text">
+          <span class="row-title">${esc(bill.name)}${bill.repeat !== "none" ? `<span class="repeat" title="${REPEATS[bill.repeat]}">${icons.repeat}<span class="sr-only">${REPEATS[bill.repeat]}</span></span>` : ""}</span>
+          <span class="row-sub ${dueTone(bill)}">${esc(dueLabel(bill))} · ${esc(bill.category)}</span>
+        </span>
+        <span class="row-amount">${money(bill.amount)}</span>
+      </button>
+      ${action}
+    </li>
+  `;
+}
+
+function txRow(tx) {
+  return `
+    <li class="row">
+      <button class="row-main" data-action="${tx.kind === "bill" ? "edit-bill" : "edit-expense"}" data-id="${esc(tx.id)}" type="button">
+        <span class="dot" style="--c:${categoryColor(tx.category)}" aria-hidden="true"></span>
+        <span class="row-text">
+          <span class="row-title">${esc(tx.name)}</span>
+          <span class="row-sub">${esc(tx.category)}${tx.kind === "bill" ? ` · Bill` : ""} · ${shortDate(tx.date)}</span>
+        </span>
+        <span class="row-amount">${money(tx.amount)}</span>
+      </button>
+    </li>
+  `;
+}
+
+function categoryStatus(row) {
+  const committed = roundMoney(row.spent + row.scheduled);
+  if (!row.planned && !committed) return { text: "No plan", cls: "is-muted" };
+  if (!row.planned) return { text: `${money(committed)} unplanned`, cls: "is-warning" };
+  if (row.remaining < 0) return { text: `${money(-row.remaining)} over`, cls: "is-danger" };
+  return { text: `${money(row.remaining)} left`, cls: "" };
+}
+
+function categoryRow(row, { compact = false } = {}) {
+  const status = categoryStatus(row);
+  const idle = !row.planned && !row.spent && !row.scheduled;
+  const base = Math.max(row.planned, row.spent + row.scheduled);
+  const detail = idle
+    ? "Tap to set a plan"
+    : [`${money(row.spent)} spent`, row.scheduled ? `${money(row.scheduled)} due` : "", row.planned ? `of ${money(row.planned)}` : ""].filter(Boolean).join(" · ");
+  const over = row.planned > 0 && row.remaining < 0;
+  return `
+    <li class="row">
+      <button class="row-main cat-row" data-action="edit-category" data-name="${esc(row.name)}" type="button">
+        <span class="dot" style="--c:${safeCssColor(row.color)}" aria-hidden="true"></span>
+        <span class="row-text">
+          <span class="row-title">${esc(row.name)}</span>
+          ${compact ? "" : `<span class="row-sub">${detail}</span>`}
+          ${idle ? "" : meter([
+            { value: row.spent, cls: over ? "is-over" : "is-spent" },
+            { value: row.scheduled, cls: "is-scheduled" }
+          ], base)}
+        </span>
+        <span class="row-amount ${status.cls}">${status.text}</span>
+      </button>
+    </li>
+  `;
+}
+
+function emptyState(title, body, action = "") {
+  return `<div class="empty"><p class="empty-title">${esc(title)}</p><p>${esc(body)}</p>${action}</div>`;
+}
+
+/* ---------- screens ---------- */
 
 function renderOnboarding() {
-  if (onboardingStep === "profile") {
-    app.innerHTML = `
-      <section class="onboarding-screen home-reveal">
-        <button class="secondary-action small onboarding-back" data-onboarding-back type="button">${icon("back")} Back</button>
-        ${renderProfileForm({ mode: "onboarding" })}
-      </section>
-    `;
-  } else {
-    app.innerHTML = `
-      <section class="landing-screen home-reveal">
-        <header class="landing-hero">
-          <img class="landing-brandmark" src="assets/icon.svg" alt="">
-          <p class="kicker">Local-first cashflow</p>
-          <h1>UpNextBudgeting</h1>
-          <p class="landing-copy">A clean place to see what is due, what you spent, and what is still safe to use.</p>
-          <button class="primary-action landing-cta" data-start-onboarding type="button">${icon("plus")} Create local profile</button>
-        </header>
-        <section class="landing-preview-grid" aria-label="What UpNextBudgeting offers">
-          ${renderFeaturePreview({ iconName: "home", label: "Home", title: "Bills that need action", detail: "Projected cashflow, due dates, and quick adds." })}
-          ${renderFeaturePreview({ iconName: "loans", label: "Spending", title: "Bills and expenses together", detail: "Toggle between open bills and variable spending." })}
-          ${renderFeaturePreview({ iconName: "calendar", label: "Calendar", title: "A monthly money map", detail: "Tap days to see bills, expenses, and pressure." })}
-          ${renderFeaturePreview({ iconName: "savings", label: "Insights", title: "Budget and money health", detail: "Simple charts for safe-to-spend decisions.", tone: "is-featured" })}
-        </section>
-      </section>
-    `;
-  }
-  bindOnboardingActions();
-}
-
-function renderKpiCard(label, value, detail = "", tone = "") {
-  return `
-    <article class="kpi-card ${escapeAttribute(tone)}">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
-    </article>
-  `;
-}
-
-function sparklinePath(series, width = 260, height = 92, padding = 10) {
-  if (!series.length) return "";
-  const values = series.map((point) => point.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(max - min, 1);
-  return series.map((point, index) => {
-    const x = padding + (index / Math.max(series.length - 1, 1)) * (width - padding * 2);
-    const y = height - padding - ((point.value - min) / range) * (height - padding * 2);
-    return `${index ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-}
-
-function renderSparklineChart({ title, summary, series, tone = "is-safe" }) {
-  const path = sparklinePath(series);
-  const first = series[0]?.value || 0;
-  const last = series[series.length - 1]?.value || 0;
-  const delta = last - first;
-  const deltaLabel = `${delta >= 0 ? "up" : "down"} ${money.format(Math.abs(delta))}`;
-  return `
-    <section class="analytics-card money-health-card home-reveal ${tone}" style="--delay: 78ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Money health</p>
-          <h2>${title}</h2>
-        </div>
-        <span class="state-pill ${tone}">${deltaLabel}</span>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <svg class="sparkline-chart" viewBox="0 0 260 92" role="img" aria-label="${escapeAttribute(`${title}. ${summary}. Projected balance changes ${deltaLabel} over 30 days.`)}">
-        <path class="sparkline-grid" d="M 10 24 H 250 M 10 68 H 250"></path>
-        <path class="sparkline-fill" d="${path} L 250 82 L 10 82 Z"></path>
-        <path class="sparkline-line" d="${path}"></path>
-      </svg>
+  app.innerHTML = `
+    <section class="onboard">
+      <img class="onboard-logo" src="assets/icon.svg" alt="" width="56" height="56">
+      <h1>Budget from payday to payday.</h1>
+      <p class="onboard-copy">Know what's safe to spend after your bills. Everything stays on your device, with a private cloud backup.</p>
+      <form class="form" data-form="onboard" novalidate>
+        <label class="field">
+          <span>Monthly take-home pay</span>
+          <input class="money" name="income" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
+        </label>
+        <label class="field">
+          <span>Payday</span>
+          <select name="payday">
+            ${Array.from({ length: 28 }, (_, i) => i + 1).map((day) => `<option value="${day}" ${day === 25 ? "selected" : ""}>${ordinal(day)} of the month</option>`).join("")}
+          </select>
+        </label>
+        <p class="hint">Paid at month-end? Pick the 28th. Your period runs from payday to the day before the next one.</p>
+        <p class="form-error" role="alert" hidden></p>
+        <button class="btn btn-primary" type="submit">Start budgeting</button>
+      </form>
     </section>
   `;
 }
 
-function renderStackedBarChart({ title, summary, parts }) {
-  const total = sumMoney(parts.map((part) => part.amount));
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 52ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Composition</p>
-          <h2>${title}</h2>
-        </div>
-        <strong>${money.format(total)}</strong>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <div class="stacked-bar" role="img" aria-label="${escapeAttribute(`${title}. Total ${money.format(total)}.`)}">
-        ${parts.map((part) => `<i style="--value:${total ? (part.amount / total) * 100 : 0}%; --accent:${safeCssColor(part.color)}" title="${escapeAttribute(`${part.label}: ${money.format(part.amount)}`)}"></i>`).join("")}
-      </div>
-      <div class="chart-legend">
-        ${parts.map((part) => `<span><i style="--accent:${safeCssColor(part.color)}"></i>${part.label} ${money.format(part.amount)}</span>`).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderCategoryBars({ title, summary, items, total, emptyText = "Add expenses to unlock this view." }) {
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 66ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Categories</p>
-          <h2>${title}</h2>
-        </div>
-        <span class="mini-label">${items.length} shown</span>
-      </div>
-      <p class="settings-copy">${summary}</p>
-      <div class="premium-bars">
-        ${items.length ? items.map((item) => `<article style="--accent:${safeCssColor(item.color)}; --value:${Math.min(100, Math.round((item.amount / Math.max(total, 1)) * 100))}%"><span>${escapeHtml(item.name)}</span><strong>${money.format(item.amount)}</strong><i></i></article>`).join("") : `<p class="settings-copy">${escapeHtml(emptyText)}</p>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderSpendingRhythmChart(key = monthKey(toDateInputValue(today))) {
-  const rhythm = getSpendingRhythm(key);
-  const total = sumMoney(rhythm.map((item) => item.amount));
-  const max = Math.max(...rhythm.map((item) => item.amount), 1);
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 52ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Rhythm</p>
-          <h2>Weekly spending rhythm</h2>
-        </div>
-        <strong>${money.format(total)}</strong>
-      </div>
-      <p class="settings-copy">Variable expenses grouped by week so spikes are easier to spot.</p>
-      <div class="rhythm-chart" role="img" aria-label="${escapeAttribute(`Weekly spending rhythm for ${monthLabel(key)}. Total ${money.format(total)}.`)}">
-        ${rhythm.map((item) => `<article style="--value:${Math.max(4, Math.round((item.amount / max) * 100))}%"><i></i><span>${item.label}</span><strong>${money.format(item.amount)}</strong></article>`).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderCategoryMovers(key = monthKey(toDateInputValue(today))) {
-  const movers = getCategoryMovers(key, 3);
-  return `
-    <section class="analytics-card home-reveal" style="--delay: 58ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Trend</p>
-          <h2>Category movers</h2>
-        </div>
-        <span class="mini-label">${monthLabel(key)}</span>
-      </div>
-      <p class="settings-copy">${movers[0]?.hasPrevious ? "Largest category changes compared with last month." : "Not enough history yet for category movement."}</p>
-      <div class="mover-list">
-        ${movers.length ? movers.map((item) => `<article style="--accent:${safeCssColor(item.color)}">
-          <span>${escapeHtml(item.name)}</span>
-          <strong>${item.hasPrevious ? `${item.delta >= 0 ? "up" : "down"} ${money.format(Math.abs(item.delta))}` : money.format(item.amount)}</strong>
-        </article>`).join("") : `<p class="settings-copy">Add expenses to see category movement.</p>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderUpcomingPressureStrip() {
-  const pressure = getUpcomingPressure();
-  const max = Math.max(...pressure.map((item) => item.amount), 1);
-  return `
-    <section class="analytics-card pressure-strip home-reveal" style="--delay: 34ms">
-      <div class="analytics-card-head">
-        <div>
-          <p class="mini-label">Upcoming pressure</p>
-          <h2>Committed bills</h2>
-        </div>
-        <span class="mini-label">open only</span>
-      </div>
-      <p class="settings-copy">How much cash is already committed by due date window.</p>
-      <div class="pressure-bars" role="img" aria-label="Upcoming bill pressure for 7, 14, and 30 days.">
-        ${pressure.map((item) => `<article style="--value:${Math.max(6, Math.round((item.amount / max) * 100))}%"><span>${item.label}</span><i></i><strong>${money.format(item.amount)}</strong></article>`).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderPressureCalendarMarks(date) {
-  const amount = getDailyOutflow(date);
-  const maxOutflow = Math.max(...getCalendarDays(visibleCalendarMonth).map(getDailyOutflow), 1);
-  const ratio = amount / maxOutflow;
-  const level = !amount ? "none" : ratio > 0.66 ? "high" : ratio > 0.33 ? "medium" : "low";
-  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
-  const expensesForDay = expenses.filter((expense) => expense.date === date);
-  return `
-    <div class="day-dots" aria-hidden="true">
-      ${billsForDay.length ? `<i class="bill-dot"></i>` : ""}
-      ${expensesForDay.length ? `<i class="expense-dot-small"></i>` : ""}
-    </div>
-    ${amount ? `<i class="pressure-mark is-${level}" style="--pressure:${Math.max(18, Math.round(ratio * 100))}%"></i>` : ""}
-  `;
-}
-
-function renderInsightHighlight(analytics, comparison = getPreviousMonthComparison(analytics.key)) {
-  const safe = analytics.safeToSpend >= 0;
-  const top = analytics.topCategory ? `${escapeHtml(analytics.topCategory.name)} is the largest variable category.` : "No variable category is leading yet.";
-  const comparisonText = comparison.hasPrevious
-    ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
-    : "Not enough history yet for a month-over-month trend.";
-  return `
-    <section class="insight-highlight ${safe ? "is-safe" : "is-alert"} home-reveal" style="--delay: 44ms">
-      <div>
-        <p class="mini-label">Highlight</p>
-        <h2>${safe ? "Steady after bills" : "Upcoming pressure"}</h2>
-        <p>${safe ? "Projected balance stays positive after open bills and recorded expenses." : "Open bills and spending push the projected balance below zero."}</p>
-      </div>
-      <div class="highlight-notes">
-        <span>${top}</span>
-        <span>${comparisonText}</span>
-        ${analytics.propertyTaxDue ? `<span>Property tax is active in this month’s plan.</span>` : ""}
-      </div>
-    </section>
-  `;
-}
-
-function renderExpenseRow(expense) {
-  const category = getCategory(expense.category);
-  return `
-    <article class="expense-row" style="--accent:${safeCssColor(category.color)}">
-      <span class="expense-dot" aria-hidden="true"></span>
-      <div>
-        <strong>${escapeHtml(expense.merchant)}</strong>
-        <span>${escapeHtml(expense.category)} · ${dateFormat.format(parseDate(expense.date))}${expense.paymentSource ? ` · ${escapeHtml(expense.paymentSource)}` : ""}</span>
-      </div>
-      <strong>${money.format(expense.amount)}</strong>
-      <button class="icon-button light expense-delete-button" data-delete-expense="${expense.id}" type="button" aria-label="Remove ${escapeAttribute(expense.merchant)}" title="Remove expense">${icon("trash")}</button>
-    </article>
-  `;
-}
-
-function renderBillListCard(bill, index = 0) {
-  const category = getCategory(bill.category);
-  const paidLabel = bill.paid ? `${bill.name} paid` : `Mark ${bill.name} paid`;
-  return `
-    <article class="bill-list-card home-reveal ${statusClass(bill)}" style="--accent:${safeCssColor(category.color)}; --delay:${Math.min(40 + index * 24, 260)}ms">
-      <button class="bill-card-main" data-open-bill="${bill.id}" type="button" aria-label="Open ${escapeAttribute(bill.name)}">
-        <span class="budget-row-icon">${icon(categoryIconName(bill.category))}</span>
-        <span class="budget-row-copy">
-          <strong>${escapeHtml(bill.name)}</strong>
-          <small>${escapeHtml(bill.category)} · ${repeatLabels[bill.repeat] || repeatLabels.none}</small>
-        </span>
-        <span class="bill-card-amount">${money.format(bill.amount)}</span>
-      </button>
-      <div class="bill-card-meta">
-        <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
-        <span>${longDateFormat.format(parseDate(bill.due))}</span>
-      </div>
-      <div class="bill-card-actions">
-        <button class="secondary-action" data-edit-bill="${bill.id}" type="button">Edit</button>
-        <button class="secondary-action" data-snooze-bill="${bill.id}" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
-        <button class="mark-button mark-button-icon" data-paid="${bill.id}" type="button" aria-label="${escapeAttribute(paidLabel)}" title="${escapeAttribute(paidLabel)}" ${bill.paid || bill.archived ? "disabled" : ""}>${icon("check")}</button>
-      </div>
-    </article>
-  `;
+function ordinal(n) {
+  const suffix = n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th";
+  return `${n}${suffix}`;
 }
 
 function renderHome() {
-  const unpaid = getVisibleBills();
-  const overdueCount = unpaid.filter((bill) => daysUntil(bill.due) < 0).length;
-  const dueSevenCount = unpaid.filter((bill) => daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= 7).length;
-  const period = getBudgetPeriod();
-  const dueThisPeriod = unpaid.filter((bill) => isInPeriod(bill.due, period)).length;
-  const spent = getPeriodExpenseTotal(period);
-  const moneyLeft = getMoneyLeft(period);
-  const afterBills = getMoneyLeftAfterBills(period);
-  const periodCopy = periodLabel(period);
-  const recentExpenses = getRecentExpenses(4);
+  const period = currentPeriod();
+  const s = periodSummary({ bills, expenses, income: income(), period, today });
+  const upcoming = sortOpenBills(openBillsFor(bills, { startDate: "0000-01-01", nextStartDate: addDays(today, 15) }, today)).slice(0, 5);
+  const { rows } = categoryBreakdown({ categories, bills, expenses, period, today });
+  const watched = rows
+    .filter((row) => row.planned > 0)
+    .map((row) => ({ ...row, ratio: (row.spent + row.scheduled) / row.planned }))
+    .sort((a, b) => b.ratio - a.ratio)
+    .slice(0, 3);
+  const recent = transactionsFor({ bills, expenses, period }).slice(0, 5);
+  const negative = s.safeToSpend < 0;
 
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: monthName(), title: "UpNextBudgeting" })}
+    ${topbar("Overview", `${periodLabel(period)} · ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} to payday`)}
 
-    <section class="quick-actions home-reveal" style="--delay: 20ms" aria-label="Quick actions">
-      <button class="primary-action" data-open-bill-sheet type="button">${icon("plus")} Add bill</button>
-      <button class="secondary-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
+    <section class="card hero" aria-label="Safe to spend">
+      <p class="hero-label">Safe to spend</p>
+      <p class="hero-amount ${negative ? "is-danger" : ""}">${money(s.safeToSpend)}</p>
+      <p class="hero-sub">${!s.income
+        ? `<button class="link-btn" data-action="settings" type="button">Set your income</button> to see what's safe to spend.`
+        : negative
+          ? `You're ${money(-s.safeToSpend)} short before payday.`
+          : `About ${money(s.perDay)} a day until payday.`}</p>
+      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(s.income, s.spent + s.billsLeft))}
+      <dl class="stats">
+        <div><dt>Income</dt><dd>${money(s.income)}</dd></div>
+        <div><dt><i class="key is-spent"></i>Spent</dt><dd>${money(s.spent)}</dd></div>
+        <div><dt><i class="key is-scheduled"></i>Bills left</dt><dd>${money(s.billsLeft)}</dd></div>
+      </dl>
     </section>
 
-    <section class="kpi-grid home-reveal" style="--delay: 40ms" aria-label="Budget period summary">
-      ${renderKpiCard("Overdue", overdueCount, "bills need action", overdueCount ? "is-alert" : "")}
-      ${renderKpiCard("Due in 7 days", dueSevenCount, `${dueThisPeriod} this period`)}
-      ${renderKpiCard("Spent", money.format(spent), periodCopy)}
-      ${renderKpiCard("Money left", money.format(moneyLeft), periodCopy, moneyLeft < 0 ? "is-alert" : "is-safe")}
+    <section class="section">
+      ${sectionHead("Upcoming bills", "All bills", "bills")}
+      ${upcoming.length
+        ? `<ul class="list card">${upcoming.map(billRow).join("")}</ul>`
+        : `<div class="card">${emptyState("Nothing due in the next two weeks", "Add rent, utilities, and loans so they never sneak up on you.", `<button class="btn btn-secondary" data-action="add-bill" type="button">Add a bill</button>`)}</div>`}
     </section>
 
-    <section class="cashflow-card home-reveal" style="--delay: 70ms">
-      <div>
-        <p class="mini-label">After all bills paid</p>
-        <h2>${money.format(afterBills)}</h2>
-        <p class="small-note">${escapeHtml(periodCopy)} · subtracts unpaid bills due this period.</p>
-      </div>
-      <span class="state-pill ${afterBills < 0 ? "is-overdue" : "is-paid"}">${afterBills < 0 ? "tight" : "steady"}</span>
+    <section class="section">
+      ${sectionHead("Budget", watched.length ? "See all" : "", "budget")}
+      ${watched.length
+        ? `<ul class="list card">${watched.map((row) => categoryRow(row, { compact: true })).join("")}</ul>`
+        : `<div class="card">${emptyState("No plan yet", "Decide how much each category gets this period.", `<button class="btn btn-secondary" data-goto="budget" type="button">Plan your budget</button>`)}</div>`}
     </section>
 
-    <section class="section-block">
-      <div class="section-heading home-reveal" style="--delay: 90ms">
-        <h2>Needs attention</h2>
-        <span class="mini-label">${unpaid.length} open</span>
-      </div>
-      <div class="wallet-stack" aria-label="Upcoming bills">
-      ${unpaid.length ? unpaid.map((bill, index) => renderWalletCard(bill, index)).join("") : `
-        <article class="empty-panel home-reveal" style="--delay: 70ms">
-          <p class="mini-label">Clear</p>
-          <h2>You are caught up.</h2>
-          <p class="small-note">Add a bill to keep your next due date visible.</p>
-        </article>
-      `}
-      </div>
+    <section class="section">
+      ${sectionHead("Recent", recent.length ? "All activity" : "", "activity")}
+      ${recent.length
+        ? `<ul class="list card">${recent.map(txRow).join("")}</ul>`
+        : `<div class="card">${emptyState("No spending yet this period", "Tap + to log an expense in a few seconds.")}</div>`}
     </section>
-
-    <section class="section-block">
-      <div class="section-heading home-reveal" style="--delay: 140ms">
-        <h2>Recent expenses</h2>
-      </div>
-      <div class="expense-list compact">
-        ${recentExpenses.length ? recentExpenses.map(renderExpenseRow).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>Track day-to-day spending here.</h2><p class="small-note">Fast capture keeps cashflow honest without turning this into accounting.</p></article>`}
-      </div>
-    </section>
-
-    ${renderRecurringPrompt()}
-  `;
-
-  bindScreenActions();
-  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
-  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
-  bindExpenseActions();
-}
-
-function renderUpcoming() {
-  renderHome();
-}
-
-function renderTimelineItem(entry) {
-  return `
-    <article class="timeline-item ${escapeAttribute(entry.tone)}">
-      <span class="timeline-dot" aria-hidden="true"></span>
-      <div>
-        <strong>${escapeHtml(entry.title)}</strong>
-        <p>${escapeHtml(entry.detail)}</p>
-      </div>
-      <time>${timelineFormat.format(new Date(entry.at))}</time>
-    </article>
   `;
 }
 
-function renderBillDetail() {
-  const bill = getBillById(activeBillId);
-  if (!bill) {
-    activeBillId = null;
-    render();
-    return;
-  }
-  const category = getCategory(bill.category);
-  const timeline = getBillTimeline(bill).slice(0, 12);
-  const isPropertyTax = isPropertyTaxBill(bill);
+function renderBudget() {
+  const period = viewPeriod();
+  const { rows, totalPlanned } = categoryBreakdown({ categories, bills, expenses, period, today });
+  const s = periodSummary({ bills, expenses, income: income(), period, today });
+  const unplanned = roundMoney(s.income - totalPlanned);
+  const committed = roundMoney(s.spent + s.billsLeft);
+  const headline = !s.income
+    ? { label: "Income not set", value: money(0), cls: "" }
+    : unplanned > 0
+      ? { label: "Left to plan", value: money(unplanned), cls: "is-accent" }
+      : unplanned < 0
+        ? { label: "Over-planned by", value: money(-unplanned), cls: "is-danger" }
+        : { label: "Every dollar has a job", value: money(s.income), cls: "is-accent" };
 
   app.innerHTML = `
-    <section class="detail-screen">
-      <header class="topbar detail-topbar home-reveal" style="--delay: 0ms">
-        <button class="icon-button light" id="closeDetail" type="button" aria-label="Back to bills">${icon("back")}</button>
-        <div class="detail-topbar-copy">
-          <p class="kicker">${escapeHtml(bill.category)}</p>
-          <h1>${escapeHtml(bill.name)}</h1>
-        </div>
-        <button class="icon-button light" id="detailEdit" type="button" aria-label="Edit bill">${icon("edit")}</button>
-      </header>
+    ${topbar("Budget", "Plan vs. actual")}
+    ${periodSwitch(period)}
 
-      <section class="detail-hero home-reveal ${statusClass(bill)}" style="--accent:${safeCssColor(category.color)}; --delay: 30ms">
-        <div class="detail-hero-head">
-          <span class="state-pill ${statusClass(bill)}">${recordStatusText(bill)}</span>
-          <span class="mini-label">${bill.archived ? "Archived" : "Active bill"}</span>
-        </div>
-        <p class="detail-amount">${money.format(bill.amount)}</p>
-        <div class="detail-inline-meta">
-          <div>
-            <span>Due date</span>
-            <strong>${longDateFormat.format(parseDate(bill.due))}</strong>
-          </div>
-          <div>
-            <span>Repeat</span>
-            <strong>${repeatLabels[bill.repeat] || repeatLabels.none}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="detail-actions home-reveal" style="--delay: 70ms">
-        <button class="primary-action" id="detailMarkPaid" type="button" ${bill.paid ? "disabled" : ""}>${bill.paid ? "Paid" : "Mark paid"}</button>
-        <button class="secondary-action" id="detailSnooze" type="button" ${bill.paid || bill.archived ? "disabled" : ""}>Snooze</button>
-        <button class="secondary-action" id="detailArchive" type="button" ${bill.archived ? "disabled" : ""}>Archive</button>
-      </section>
-
-      ${pendingRecurringBillId === bill.id ? renderRecurringPrompt() : ""}
-
-      <section class="detail-grid home-reveal" style="--delay: 110ms">
-        <article class="info-card">
-          <div class="info-card-head">
-            <span class="card-icon">${icon("repeat")}</span>
-            <h3>Schedule</h3>
-          </div>
-          <p class="small-note">Category</p>
-          <strong>${escapeHtml(bill.category)}</strong>
-          <p class="small-note detail-copy">${escapeHtml(statusText(bill))}${bill.completedAt ? ` · paid ${timelineFormat.format(new Date(bill.completedAt))}` : ""}</p>
-        </article>
-        <article class="info-card">
-          <div class="info-card-head">
-            <span class="card-icon">${icon("bell")}</span>
-            <h3>Reminders</h3>
-          </div>
-          <p class="small-note">In-app window</p>
-          <strong>${settings.reminderDays} day${settings.reminderDays === 1 ? "" : "s"}</strong>
-          <p class="small-note detail-copy">${localReminderStatus()}</p>
-        </article>
-      </section>
-
-      ${isPropertyTax ? `
-        <section class="property-note detail-note home-reveal" style="--delay: 130ms">
-          <strong>Jamaica property tax planning</strong>
-          <span>Due April 1 yearly. Current plan: ${escapeHtml(bill.propertyTaxPlan === "half-yearly" ? "half-yearly" : bill.propertyTaxPlan)}. Keep April 30 visible as the first-payment warning date.</span>
-        </section>
-      ` : ""}
-
-      <section class="detail-section home-reveal" style="--delay: 150ms">
-        <div class="section-heading">
-          <h2>Timeline</h2>
-          <span class="mini-label">${getRelatedBills(bill.seriesKey).length} entries</span>
-        </div>
-        <div class="timeline-list">
-          ${timeline.map(renderTimelineItem).join("")}
-        </div>
-      </section>
+    <section class="card hero hero-compact">
+      <p class="hero-label">${headline.label}</p>
+      <p class="hero-amount ${headline.cls}">${headline.value}</p>
+      <p class="hero-sub">${money(totalPlanned)} planned of ${money(s.income)} income · ${money(committed)} spent or due</p>
+      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(totalPlanned, committed))}
     </section>
-  `;
 
-  document.querySelector("#closeDetail").addEventListener("click", () => closeBillDetail());
-  document.querySelector("#detailEdit").addEventListener("click", () => openSheet(bill.id));
-  document.querySelector("#detailMarkPaid").addEventListener("click", () => markBillPaid(bill.id));
-  document.querySelector("#detailSnooze").addEventListener("click", () => openSnoozeSheet(bill.id));
-  document.querySelector("#detailArchive").addEventListener("click", () => archiveBill(bill.id));
-  document.querySelector("#createNextBill")?.addEventListener("click", createNextRecurringBill);
-  document.querySelector("#dismissRecurring")?.addEventListener("click", dismissRecurringPrompt);
-}
-
-function polarPoint(cx, cy, r, angle) {
-  const radians = (angle - 90) * (Math.PI / 180);
-  return {
-    x: cx + r * Math.cos(radians),
-    y: cy + r * Math.sin(radians)
-  };
-}
-
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  const span = Math.max(0.01, Math.min(359.99, endAngle - startAngle));
-  const start = polarPoint(cx, cy, r, endAngle);
-  const end = polarPoint(cx, cy, r, startAngle);
-  const largeArcFlag = span <= 180 ? 0 : 1;
-  return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
-}
-
-function escapeAttribute(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-// Only allow CSS color shapes we render with — anything else falls back to
-// brand teal. Prevents a malicious imported backup (or future sync payload)
-// from breaking out of a `style="--accent:${color}"` interpolation and
-// injecting arbitrary CSS via category/avatar color fields.
-const CSS_COLOR_RE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\(\s*[\d.,%\s/-]+\s*\))$/;
-function safeCssColor(value, fallback = "#5cae9f") {
-  const text = String(value ?? "").trim();
-  return CSS_COLOR_RE.test(text) ? text : fallback;
-}
-
-function renderBudgetChart() {
-  const totalPlanned = sumMoney(categories.map((category) => category.planned));
-  const totalAssigned = sumMoney(categories.map((category) => category.assigned));
-  const focus = getCategory(selectedBudgetCategory);
-  const focusAssigned = focus?.assigned || 0;
-  const focusPlanned = focus?.planned || 0;
-  const centerLabel = focus ? focus.name : "All categories";
-  const centerAssigned = focus ? focusAssigned : totalAssigned;
-  const centerPlanned = focus ? focusPlanned : totalPlanned;
-  const centerPercent = centerPlanned ? Math.round((centerAssigned / centerPlanned) * 100) : 0;
-
-  let cursor = -90;
-  const paths = categories
-    .filter((category) => category.planned > 0)
-    .map((category) => {
-      const span = totalPlanned ? (category.planned / totalPlanned) * 360 : 0;
-      const gap = categories.length > 1 ? 2.4 : 0;
-      const start = cursor + gap / 2;
-      const end = cursor + span - gap / 2;
-      cursor += span;
-      if (end <= start) return "";
-      const assignedEnd = start + (end - start) * Math.min(1, category.planned ? category.assigned / category.planned : 0);
-      const focused = category.name === selectedBudgetCategory;
-      const encodedName = encodeURIComponent(category.name);
-      return `
-        <g class="chart-segment ${focused ? "is-focused" : ""}" data-chart-category="${encodedName}" tabindex="0" focusable="true" role="button" aria-label="Show ${escapeAttribute(category.name)} budget details" style="--accent:${safeCssColor(category.color)}">
-          <path class="chart-segment-track" d="${describeArc(120, 120, 82, start, end)}"></path>
-          ${category.assigned ? `<path class="chart-segment-fill" d="${describeArc(120, 120, 82, start, assignedEnd)}"></path>` : ""}
-        </g>
-      `;
-    })
-    .join("");
-  const focusColor = focus ? safeCssColor(focus.color, "var(--info)") : "var(--info)";
-
-  return `
-    <section class="chart-panel home-reveal" style="--delay: 40ms">
-      <div class="chart-wrap" aria-label="Budget overview chart">
-        <svg viewBox="0 0 240 240" class="budget-chart" role="img" aria-label="Assigned versus planned budget chart">
-          <circle cx="120" cy="120" r="82" class="chart-ring"></circle>
-          ${paths}
-        </svg>
-        <div class="chart-center">
-          <span><i class="chart-center-swatch" style="--accent:${focusColor}" aria-hidden="true"></i>${centerLabel}</span>
-          <strong>${money.format(centerAssigned)}</strong>
-          <small>${centerPercent}% of ${money.format(centerPlanned || 0)}</small>
-        </div>
+    <section class="section">
+      <div class="section-head">
+        <h2>Categories</h2>
+        <span class="legend"><i class="key is-spent"></i>Spent <i class="key is-scheduled"></i>Due</span>
       </div>
+      <ul class="list card">${rows.map((row) => categoryRow(row)).join("")}</ul>
+      <button class="btn btn-secondary btn-block" data-action="add-category" type="button">Add category</button>
     </section>
   `;
-}
-
-function decodeCategoryDataset(value) {
-  try {
-    return decodeURIComponent(value || "");
-  } catch {
-    return value || "";
-  }
-}
-
-function focusBudgetCategory(categoryName, options = {}) {
-  const category = getCategory(categoryName);
-  if (!category) return;
-  if (options.openIfFocused && selectedBudgetCategory === category.name) {
-    openBudgetCategorySheet(category.name);
-    return;
-  }
-  selectedBudgetCategory = category.name;
-  saveState(false);
-  render();
-}
-
-function bindBudgetCategorySelection() {
-  document.querySelectorAll("[data-focus-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      focusBudgetCategory(decodeCategoryDataset(button.dataset.focusCategory), { openIfFocused: true });
-    });
-  });
-  document.querySelectorAll("[data-chart-category]").forEach((segment) => {
-    const categoryName = decodeCategoryDataset(segment.dataset.chartCategory);
-    segment.addEventListener("click", () => {
-      focusBudgetCategory(categoryName);
-    });
-    segment.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
-      event.preventDefault();
-      focusBudgetCategory(categoryName);
-    });
-  });
-}
-
-function filteredBills() {
-  const search = billSearch.trim().toLowerCase();
-  const filtered = bills.filter((bill) => {
-    if (billFilter === "overdue" && !(daysUntil(bill.due) < 0 && !bill.paid && !bill.archived)) return false;
-    if (billFilter === "due-soon" && !(daysUntil(bill.due) >= 0 && daysUntil(bill.due) <= settings.reminderDays && !bill.paid && !bill.archived)) return false;
-    if (billFilter === "paid" && !bill.paid) return false;
-    if (billFilter === "recurring" && (!bill.repeat || bill.repeat === "none")) return false;
-    if (!search) return true;
-    return `${bill.name} ${bill.category}`.toLowerCase().includes(search);
-  });
-  if (billSort === "amount") return filtered.sort((a, b) => b.amount - a.amount);
-  if (billSort === "name") return filtered.sort((a, b) => a.name.localeCompare(b.name));
-  return sortBills(filtered);
-}
-
-function renderSpendingToggle() {
-  return `
-    <section class="spending-switch home-reveal" style="--delay: 20ms" aria-label="Spending view">
-      <span class="spending-switch-indicator ${spendingMode === "expenses" ? "is-expenses" : ""}" aria-hidden="true"></span>
-      <button class="${spendingMode === "bills" ? "is-active" : ""}" data-spending-mode="bills" type="button">Bills</button>
-      <button class="${spendingMode === "expenses" ? "is-active" : ""}" data-spending-mode="expenses" type="button">Expenses</button>
-    </section>
-  `;
-}
-
-function renderSpendingBillsContent() {
-  const filters = [
-    ["all", "All"],
-    ["overdue", "Overdue"],
-    ["due-soon", "Due soon"],
-    ["paid", "Paid"],
-    ["recurring", "Recurring"]
-  ];
-  const items = filteredBills();
-  return `
-    <section class="screen-controls spending-controls home-reveal" style="--delay: 60ms">
-      <button class="filter-disclosure" data-toggle-bill-filters type="button" aria-expanded="${spendingBillFiltersOpen}">
-        <span>
-          <strong>Filters</strong>
-          <small>${filters.find(([value]) => value === billFilter)?.[1] || "All"} · ${billSort === "due" ? "Due date" : billSort === "amount" ? "Amount" : "Name"}${billSearch ? ` · ${escapeHtml(billSearch)}` : ""}</small>
-        </span>
-        ${icon("chevron")}
-      </button>
-      ${spendingBillFiltersOpen ? `
-        <div class="filter-panel is-open">
-          <div class="chip-row" aria-label="Bill filters">
-            ${filters.map(([value, label]) => `<button class="filter-chip ${billFilter === value ? "is-active" : ""}" data-bill-filter="${value}" type="button">${label}</button>`).join("")}
-          </div>
-          <label class="search-box">
-            <span class="mini-label">Search</span>
-            <input id="billSearch" value="${escapeAttribute(billSearch)}" placeholder="JPS, rent, tax...">
-          </label>
-          <label class="search-box">
-            <span class="mini-label">Sort</span>
-            <select id="billSort">
-              <option value="due" ${billSort === "due" ? "selected" : ""}>Due date</option>
-              <option value="amount" ${billSort === "amount" ? "selected" : ""}>Amount</option>
-              <option value="name" ${billSort === "name" ? "selected" : ""}>Name</option>
-            </select>
-          </label>
-        </div>
-      ` : ""}
-    </section>
-    ${renderUpcomingPressureStrip()}
-    <section class="bill-list">
-      ${items.length ? items.map(renderBillListCard).join("") : `<article class="empty-panel"><p class="mini-label">No matches</p><h2>No bills found.</h2><p class="small-note">Adjust filters or add a new bill.</p></article>`}
-    </section>
-  `;
-}
-
-function bindSpendingBills() {
-  document.querySelector("[data-toggle-bill-filters]")?.addEventListener("click", () => {
-    spendingBillFiltersOpen = !spendingBillFiltersOpen;
-    render();
-  });
-  document.querySelectorAll("[data-bill-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      billFilter = button.dataset.billFilter;
-      render();
-    });
-  });
-  document.querySelector("#billSearch")?.addEventListener("input", (event) => {
-    billSearch = event.target.value;
-    renderBills();
-  });
-  document.querySelector("#billSort")?.addEventListener("change", (event) => {
-    billSort = event.target.value;
-    render();
-  });
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
 }
 
 function renderBills() {
-  spendingMode = "bills";
-  activeTab = "spending";
-  renderSpending();
-}
+  const open = sortOpenBills(activeBills().filter((bill) => !bill.paid));
+  const period = currentPeriod();
+  const groups = [
+    ["Overdue", open.filter((bill) => bill.due < today)],
+    ["Due before payday", open.filter((bill) => bill.due >= today && bill.due < period.nextStartDate)],
+    ["Later", open.filter((bill) => bill.due >= period.nextStartDate)]
+  ].filter(([, items]) => items.length);
+  const paid = activeBills().filter((bill) => bill.paid).sort((a, b) => b.due.localeCompare(a.due)).slice(0, 60);
+  const totalOpen = sumMoney(open.map((bill) => bill.amount));
 
-function renderExpenseCategoryChips() {
-  return ["All", ...expenseCategories].map((category) => `
-    <button class="filter-chip ${selectedExpenseCategory === category ? "is-active" : ""}" data-expense-filter="${encodeURIComponent(category)}" type="button">${escapeHtml(category)}</button>
-  `).join("");
-}
+  const upcomingHtml = groups.length
+    ? groups.map(([title, items]) => `
+        <section class="section">
+          <div class="section-head"><h2>${title}</h2><span class="muted">${money(sumMoney(items.map((bill) => bill.amount)))}</span></div>
+          <ul class="list card">${items.map(billRow).join("")}</ul>
+        </section>`).join("")
+    : `<div class="card section">${emptyState("No upcoming bills", "Add recurring bills once — they roll forward each time you mark them paid.", `<button class="btn btn-primary" data-action="add-bill" type="button">Add a bill</button>`)}</div>`;
 
-function renderSpendingExpensesContent() {
-  const currentMonth = monthKey(toDateInputValue(today));
-  const monthExpenses = getMonthExpenses(currentMonth)
-    .filter((expense) => selectedExpenseCategory === "All" || expense.category === selectedExpenseCategory);
-  const grouped = expensesByDate(monthExpenses);
-  const total = getExpenseTotal(currentMonth, selectedExpenseCategory);
-  const topCategories = topExpenseCategories(currentMonth, 3);
-  return `
-    <section class="expense-summary-grid home-reveal" style="--delay: 60ms">
-      ${renderKpiCard("Spent this month", money.format(total), selectedExpenseCategory)}
-      ${renderKpiCard("Transactions", monthExpenses.length, "recorded")}
-      ${(() => { const ml = getMoneyLeft(); return renderKpiCard("Money left", money.format(ml), periodLabel(), ml < 0 ? "is-alert" : "is-safe"); })()}
-    </section>
-    <section class="screen-controls spending-controls home-reveal" style="--delay: 72ms">
-      <button class="filter-disclosure" data-toggle-expense-filters type="button" aria-expanded="${spendingExpenseFiltersOpen}">
-        <span>
-          <strong>Category</strong>
-          <small>${escapeHtml(selectedExpenseCategory)}</small>
-        </span>
-        ${icon("chevron")}
-      </button>
-      ${spendingExpenseFiltersOpen ? `
-        <div class="filter-panel is-open">
-          <div class="chip-row" aria-label="Expense category filters">${renderExpenseCategoryChips()}</div>
-        </div>
-      ` : ""}
-    </section>
-    ${renderSpendingRhythmChart(currentMonth)}
-    ${renderCategoryBars({
-      title: "Top categories",
-      summary: topCategories.length ? `${escapeHtml(topCategories[0].name)} is the largest variable category this month.` : "Add expenses to see category patterns.",
-      items: topCategories,
-      total,
-      emptyText: "Add expenses to see category patterns."
-    })}
-    ${renderCategoryMovers(currentMonth)}
-    <section class="section-block">
-      <div class="section-heading">
-        <h2>Recent transactions</h2>
-        <span class="mini-label">${monthExpenses.length}</span>
-      </div>
-      <div class="date-groups">
-        ${Object.keys(grouped).length ? Object.entries(grouped).map(([date, items]) => `
-          <section class="date-group">
-            <p class="mini-label">${longDateFormat.format(parseDate(date))}</p>
-            <div class="expense-list">${items.map(renderExpenseRow).join("")}</div>
-          </section>
-        `).join("") : `<article class="empty-panel"><p class="mini-label">No expenses</p><h2>No spending recorded yet.</h2><p class="small-note">Use Add expense to capture a transaction in seconds.</p></article>`}
-      </div>
-    </section>
-  `;
-}
+  const paidHtml = paid.length
+    ? `<section class="section"><ul class="list card">${paid.map(billRow).join("")}</ul></section>`
+    : `<div class="card section">${emptyState("No paid bills yet", "Bills you mark paid show up here.")}</div>`;
 
-function bindSpendingExpenses() {
-  document.querySelector("[data-toggle-expense-filters]")?.addEventListener("click", () => {
-    spendingExpenseFiltersOpen = !spendingExpenseFiltersOpen;
-    render();
-  });
-  document.querySelectorAll("[data-expense-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedExpenseCategory = decodeCategoryDataset(button.dataset.expenseFilter);
-      spendingExpenseFiltersOpen = false;
-      render();
-    });
-  });
-  bindExpenseActions();
-}
-
-function renderExpenses() {
-  spendingMode = "expenses";
-  activeTab = "spending";
-  renderSpending();
-}
-
-function renderSpending() {
-  const isBills = spendingMode === "bills";
   app.innerHTML = `
-    ${renderTopAppBar({
-      kicker: "Bills & expenses",
-      title: "Spending",
-      subtitle: isBills ? "Open bills, due dates, and committed cash." : "Variable spending, rhythm, and category movement."
-    })}
-    ${renderSpendingToggle()}
-    <section class="quick-actions spending-actions home-reveal" style="--delay: 40ms">
-      <button class="primary-action" ${isBills ? "data-open-bill-sheet" : "data-open-expense-sheet"} type="button">
-        ${icon("plus")} ${isBills ? "Add bill" : "Add expense"}
-      </button>
-    </section>
-    ${isBills ? renderSpendingBillsContent() : renderSpendingExpensesContent()}
+    ${topbar("Bills", open.length ? `${open.length} unpaid · ${money(totalOpen)}` : "All caught up")}
+    <div class="segmented" role="group" aria-label="Bill view">
+      <button type="button" data-action="bills-view" data-view="upcoming" aria-pressed="${ui.billsView === "upcoming"}">Upcoming</button>
+      <button type="button" data-action="bills-view" data-view="paid" aria-pressed="${ui.billsView === "paid"}">Paid</button>
+    </div>
+    ${ui.billsView === "paid" ? paidHtml : upcomingHtml}
+    ${groups.length && ui.billsView === "upcoming" ? `<button class="btn btn-secondary btn-block" data-action="add-bill" type="button">Add a bill</button>` : ""}
   `;
+}
 
-  bindScreenActions();
-  document.querySelectorAll("[data-spending-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      spendingMode = button.dataset.spendingMode === "expenses" ? "expenses" : "bills";
-      render();
-    });
-  });
-  if (isBills) {
-    bindSpendingBills();
-  } else {
-    bindSpendingExpenses();
+function filteredTransactions(period) {
+  const query = ui.search.trim().toLowerCase();
+  return transactionsFor({ bills, expenses, period }).filter((tx) =>
+    (ui.category === "All" || tx.category === ui.category) &&
+    (!query || `${tx.name} ${tx.category}`.toLowerCase().includes(query))
+  );
+}
+
+function activityListHtml(period) {
+  const items = filteredTransactions(period);
+  if (!items.length) {
+    const filtered = ui.search || ui.category !== "All";
+    return `<div class="card">${emptyState(filtered ? "No matches" : "Nothing recorded", filtered ? "Try a different search or category." : "Expenses and paid bills for this period appear here.")}</div>`;
   }
-}
-
-function getCalendarDays(key) {
-  const first = new Date(`${key}-01T12:00:00`);
-  const startOffset = first.getDay();
-  const gridStart = new Date(first);
-  gridStart.setDate(first.getDate() - startOffset);
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(gridStart);
-    date.setDate(gridStart.getDate() + index);
-    return toDateInputValue(date);
+  const groups = new Map();
+  items.forEach((tx) => {
+    if (!groups.has(tx.date)) groups.set(tx.date, []);
+    groups.get(tx.date).push(tx);
   });
-}
-
-function renderCalendarDay(date) {
-  const key = monthKey(date);
-  const billsForDay = bills.filter((bill) => bill.due === date && !bill.archived);
-  const expensesForDay = expenses.filter((expense) => expense.date === date);
-  const totalOut = roundMoney(
-    sumMoney(billsForDay.map((bill) => bill.amount)) + sumMoney(expensesForDay.map((expense) => expense.amount))
-  );
-  const isCurrentMonth = key === visibleCalendarMonth;
+  const total = sumMoney(items.map((tx) => tx.amount));
   return `
-    <button class="calendar-day ${isCurrentMonth ? "" : "is-muted"} ${date === toDateInputValue(today) ? "is-today" : ""}" data-calendar-day="${date}" type="button">
-      <span>${parseDate(date).getDate()}</span>
-      ${renderPressureCalendarMarks(date)}
-      ${totalOut ? `<small>${money.format(totalOut)}</small>` : ""}
-    </button>
+    <p class="list-summary">${items.length} transaction${items.length === 1 ? "" : "s"} · <strong>${money(total)}</strong></p>
+    ${[...groups].map(([date, txs]) => `
+      <section class="day-group">
+        <h2 class="day-head"><span>${date === today ? "Today" : weekdayDate.format(parseDate(date))}</span><span>${money(sumMoney(txs.map((tx) => tx.amount)))}</span></h2>
+        <ul class="list card">${txs.map(txRow).join("")}</ul>
+      </section>`).join("")}
   `;
 }
 
-function renderCalendar() {
-  const days = getCalendarDays(visibleCalendarMonth);
-  const dayBills = selectedCalendarDay ? bills.filter((bill) => bill.due === selectedCalendarDay && !bill.archived) : [];
-  const dayExpenses = selectedCalendarDay ? expenses.filter((expense) => expense.date === selectedCalendarDay) : [];
+function renderActivity() {
+  const period = viewPeriod();
+  if (ui.category !== "All" && !categoryByName(ui.category)) ui.category = "All";
   app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Monthly money map", title: "Calendar" })}
-    <section class="month-controls home-reveal" style="--delay: 20ms">
-      <button class="secondary-action" data-shift-calendar="-1" type="button">Previous</button>
-      <strong>${monthLabel(visibleCalendarMonth)}</strong>
-      <button class="secondary-action" data-shift-calendar="1" type="button">Next</button>
-    </section>
-    <section class="calendar-grid home-reveal" style="--delay: 40ms">
-      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<span class="calendar-weekday">${day}</span>`).join("")}
-      ${days.map(renderCalendarDay).join("")}
-    </section>
-    <section class="day-drawer home-reveal" style="--delay: 70ms">
-      <div class="section-heading">
-        <h2>${selectedCalendarDay ? longDateFormat.format(parseDate(selectedCalendarDay)) : "Select a day"}</h2>
-        <button class="primary-action small drawer-add-action" data-open-expense-sheet type="button">${icon("plus")} Add expense</button>
-      </div>
-      ${selectedCalendarDay ? `
-        <div class="bill-list compact">${dayBills.map(renderBillListCard).join("") || `<p class="settings-copy">No bills due.</p>`}</div>
-        <div class="expense-list compact">${dayExpenses.map(renderExpenseRow).join("") || `<p class="settings-copy">No expenses recorded.</p>`}</div>
-      ` : `<p class="settings-copy">Tap a day to see bills, expenses, and quick actions.</p>`}
-    </section>
-  `;
-  bindScreenActions();
-  document.querySelectorAll("[data-shift-calendar]").forEach((button) => {
-    button.addEventListener("click", () => {
-      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, Number(button.dataset.shiftCalendar));
-      selectedCalendarDay = null;
-      saveState(false);
-      render();
-    });
-  });
-  document.querySelectorAll("[data-calendar-day]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedCalendarDay = button.dataset.calendarDay;
-      render();
-    });
-  });
-  bindPaidButtons();
-  bindBillOpenButtons();
-  bindBillSecondaryActions();
-  bindExpenseActions();
-
-  // Swipe left/right on the calendar grid to navigate months.
-  (function attachCalendarSwipe() {
-    const grid = app.querySelector(".calendar-grid");
-    if (!grid) return;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    grid.addEventListener("touchstart", (event) => {
-      touchStartX = event.touches[0].clientX;
-      touchStartY = event.touches[0].clientY;
-    }, { passive: true });
-    grid.addEventListener("touchend", (event) => {
-      const dx = event.changedTouches[0].clientX - touchStartX;
-      const dy = event.changedTouches[0].clientY - touchStartY;
-      // Only act on predominantly horizontal swipes of at least 48px.
-      if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
-      visibleCalendarMonth = shiftMonth(visibleCalendarMonth, dx < 0 ? 1 : -1);
-      selectedCalendarDay = null;
-      saveState(false);
-      render();
-    }, { passive: true });
-  })();
-}
-
-function renderInsights() {
-  const currentMonth = monthKey(toDateInputValue(today));
-  const analytics = getMonthAnalytics(currentMonth);
-  const comparison = getPreviousMonthComparison(currentMonth);
-  const projectedSeries = getProjectedBalanceSeries(30);
-  const spent = getExpenseTotal(currentMonth);
-  const unpaidBills = getUnpaidBillTotal(currentMonth);
-  const subscriptions = sumMoney(
-    bills
-      .filter((bill) => bill.category === "Subscriptions" && !bill.archived && monthKey(bill.due) === currentMonth)
-      .map((bill) => bill.amount)
-  );
-  const paidThisMonth = bills.filter((bill) => bill.paid && monthKey(bill.due) === currentMonth);
-  const totalThisMonth = bills.filter((bill) => monthKey(bill.due) === currentMonth);
-  const onTimeRate = totalThisMonth.length ? Math.round((paidThisMonth.length / totalThisMonth.length) * 100) : 0;
-  const top = topExpenseCategories(currentMonth, 5);
-  app.innerHTML = `
-    ${renderTopAppBar({ kicker: "Decision support", title: "Insights" })}
-    <section class="insight-grid home-reveal" style="--delay: 30ms">
-      ${renderKpiCard("Fixed bills open", money.format(unpaidBills), "unpaid this month")}
-      ${renderKpiCard("Variable spent", money.format(spent), monthLabel(currentMonth))}
-      ${renderKpiCard("Subscriptions", money.format(subscriptions), "this month")}
-      ${renderKpiCard("Paid rate", `${onTimeRate}%`, "bills this month", onTimeRate >= 75 ? "is-safe" : "is-alert")}
-    </section>
-    ${renderInsightHighlight(analytics, comparison)}
-    <div class="section-heading budget-heading home-reveal" style="--delay: 36ms">
-      <h2>Budget</h2>
-      <span class="mini-label">tap chart to adjust</span>
-    </div>
-    ${renderBudgetChart()}
-    ${renderSparklineChart({
-      title: analytics.safeToSpend < 0 ? "Upcoming pressure" : "Steady after bills",
-      summary: comparison.hasPrevious
-        ? `${comparison.expenseDelta >= 0 ? "Variable spending is up" : "Variable spending is down"} ${money.format(Math.abs(comparison.expenseDelta))} from last month.`
-        : "Not enough history yet for a month-over-month trend.",
-      series: projectedSeries,
-      tone: analytics.safeToSpend < 0 ? "is-overdue" : "is-paid"
-    })}
-    ${renderStackedBarChart({
-      title: "Fixed vs variable",
-      summary: "Open fixed bills and recorded variable expenses for the current month.",
-      parts: [
-        { label: "Fixed", amount: analytics.openBills, color: "var(--info)" },
-        { label: "Variable", amount: analytics.variableSpent, color: "var(--danger)" }
-      ]
-    })}
-    ${renderCategoryBars({
-      title: "Top spending categories",
-      summary: top.length ? `${escapeHtml(top[0].name)} contributes the most variable spend this month.` : "Add expenses to unlock spending insights.",
-      items: top,
-      total: spent,
-      emptyText: "Add expenses to unlock spending insights."
-    })}
-    ${renderCategoryMovers(currentMonth)}
-  `;
-  bindScreenActions();
-  bindBudgetCategorySelection();
-}
-
-function renderHistoryBill(bill) {
-  return `
-    <div class="history-item">
-      <div>
-        <strong>${escapeHtml(bill.name)}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${escapeHtml(bill.category)}</span>
-      </div>
-      <div>
-        <strong>${money.format(bill.amount)}</strong>
-        <span>${escapeHtml(recordStatusText(bill))}</span>
-      </div>
-    </div>
-  `;
-}
-
-function renderArchivedBillRow(bill) {
-  return `
-    <div class="archived-item">
-      <div>
-        <strong>${escapeHtml(bill.name)}</strong>
-        <span>${dateFormat.format(parseDate(bill.due))} · ${escapeHtml(bill.category)}</span>
-      </div>
-      <button class="secondary-action" type="button" data-restore-bill="${bill.id}">Restore</button>
-    </div>
-  `;
-}
-
-function renderSettingsContent() {
-  const selected = getCategory(selectedBudgetCategory);
-  const months = getAvailableMonths();
-  const archivedBills = getArchivedBills();
-  const profile = normalizeProfile(settings.profile);
-  if (!months.includes(selectedHistoryMonth)) selectedHistoryMonth = months[months.length - 1] || monthKey(toDateInputValue(today));
-  const summary = getMonthSummary(selectedHistoryMonth);
-  settingsContent.innerHTML = `
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Profile & Appearance</h3>
-        <span class="mini-label">local</span>
-      </div>
-      <div class="settings-profile-card">
-        <span class="profile-token settings-profile-token" style="--profile-color:${safeCssColor(profile.avatarColor)}" aria-hidden="true"><span>${escapeHtml(profile.initials)}</span></span>
-        <div>
-          <strong>${escapeHtml(profile.name || "Local profile")}</strong>
-          <p class="settings-copy">${profile.onboardingComplete ? "Saved locally on this device." : "Create a local profile to personalize the app."} Cloud sync uses a silent private device identity.</p>
-        </div>
-        <button class="secondary-action small profile-edit-action" data-edit-profile type="button">Edit</button>
-      </div>
-      <p class="settings-copy">Choose a matte light or dark appearance, or follow your device.</p>
-      <label>
-        <span>Theme</span>
-        <select id="themePreference">
-          <option value="system" ${settings.theme === "system" ? "selected" : ""}>System</option>
-          <option value="dark" ${settings.theme === "dark" ? "selected" : ""}>Dark</option>
-          <option value="light" ${settings.theme === "light" ? "selected" : ""}>Light</option>
-          <option value="pastel" ${settings.theme === "pastel" ? "selected" : ""}>Pastel</option>
+    ${topbar("Activity", "Expenses and paid bills")}
+    ${periodSwitch(period)}
+    <div class="filters">
+      <label class="search">
+        <span class="sr-only">Search</span>
+        <input type="search" id="activitySearch" placeholder="Search" value="${esc(ui.search)}" autocomplete="off">
+      </label>
+      <label class="select-sm">
+        <span class="sr-only">Category</span>
+        <select id="activityCategory">
+          <option value="All">All categories</option>
+          ${categories.map((category) => `<option ${ui.category === category.name ? "selected" : ""}>${esc(category.name)}</option>`).join("")}
         </select>
       </label>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Cloud sync & notifications</h3>
-        <span class="mini-label">${syncMeta.status}</span>
-      </div>
-      <p class="settings-copy">${cloudStatusCopy()}</p>
-      <div class="history-summary sync-summary">
-        <article>
-          <span>Cloud</span>
-          <strong>${syncMeta.userId ? "Private" : "Ready"}</strong>
-        </article>
-        <article>
-          <span>Changes</span>
-          <strong>${syncMeta.dirty ? "Pending" : "Saved"}</strong>
-        </article>
-        <article>
-          <span>Push</span>
-          <strong>${syncMeta.pushEnabled ? "On" : "Off"}</strong>
-        </article>
-      </div>
-      <div class="export-actions">
-        <button class="primary-action small" id="syncNow" type="button">Sync now</button>
-        <button class="secondary-action" id="enableNotifications" type="button">Enable notifications</button>
-      </div>
-      <p class="settings-copy">${supportsWebPush() ? "iPhone push requires this PWA to be installed from an HTTPS address." : "This browser can keep in-app reminders, but does not expose Web Push here."}</p>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Cashflow</h3>
-        <span class="mini-label">budget period</span>
-      </div>
-      <p class="settings-copy">Set the period budget and the day each new period starts. Today's period: ${escapeHtml(periodLabel())}.</p>
-      <form id="cashflowForm" class="control-form">
-        <label>
-          <span>Period budget</span>
-          <input id="monthlyStartingBalance" class="money-input" inputmode="decimal" value="${formatMoneyInput(settings.cashflow.monthlyStartingBalance)}" aria-label="Period budget">
-        </label>
-        <label>
-          <span>Period starts on</span>
-          <input id="budgetPeriodStartDay" type="number" min="1" max="28" inputmode="numeric" value="${escapeAttribute(String(settings.cashflow.budgetPeriodStartDay || 25))}" aria-label="Budget period start day of month">
-        </label>
-        <button class="primary-action small" type="submit">Save cashflow</button>
-      </form>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Monthly history</h3>
-        <span class="mini-label">export</span>
-      </div>
-      <p class="settings-copy">Choose a month, review the record, then export it.</p>
-      <label class="history-select">
-        <span>Month</span>
-        <select id="historyMonth">
-          ${months.map((key) => `<option value="${key}" ${key === selectedHistoryMonth ? "selected" : ""}>${monthLabel(key)}</option>`).join("")}
-        </select>
-      </label>
-      <div class="history-summary">
-        <article>
-          <span>Total due</span>
-          <strong>${money.format(summary.total)}</strong>
-        </article>
-        <article>
-          <span>Paid</span>
-          <strong>${money.format(summary.paid)}</strong>
-        </article>
-        <article>
-          <span>Open</span>
-          <strong>${summary.unpaidItems.length}</strong>
-        </article>
-      </div>
-      <div class="history-list">
-        ${summary.items.slice(0, 6).map(renderHistoryBill).join("") || `<p class="settings-copy">No bills recorded for this month yet.</p>`}
-      </div>
-      <div class="export-actions">
-        <button class="primary-action small" id="exportPdf" type="button">Export PDF</button>
-        <button class="secondary-action" id="exportCsv" type="button">Export CSV</button>
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Reminders</h3>
-        <span class="mini-label">in-app</span>
-      </div>
-      <p class="settings-copy">Controls the due-soon status used across Upcoming, bill details, and local reminder checks.</p>
-      <form id="reminderForm" class="control-form">
-        <label>
-          <span>Reminder window</span>
-          <input id="reminderDays" inputmode="numeric" value="${settings.reminderDays}" aria-label="Reminder window in days">
-        </label>
-        <button class="primary-action small" type="submit">Save reminder</button>
-      </form>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Data & backup</h3>
-        <span class="mini-label">local</span>
-      </div>
-      <p class="settings-copy">Export a full backup for this device, or restore a backup file later.</p>
-      <div class="backup-actions">
-        <button class="secondary-action" id="exportBackup" type="button">Export backup</button>
-        <label class="file-action">
-          <input id="restoreBackup" type="file" accept="application/json,.json">
-          <span>Restore backup</span>
-        </label>
-      </div>
-      <div class="starter-actions">
-        <button class="secondary-action" id="clearStarterBills" type="button">Clear starter bills</button>
-        <button class="secondary-action" id="clearStarterCategories" type="button">Clear starter categories</button>
-        <button class="danger-action" id="clearStarterAll" type="button">Clear starter bills & categories</button>
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Archived bills</h3>
-        <span class="mini-label">${archivedBills.length}</span>
-      </div>
-      <p class="settings-copy">Archived bills stay out of triage, but you can restore them here.</p>
-      <div class="archived-list">
-        ${archivedBills.length ? archivedBills.map(renderArchivedBillRow).join("") : `<p class="settings-copy">No archived bills right now.</p>`}
-      </div>
-    </section>
-    <section class="settings-section">
-      <div class="section-heading compact">
-        <h3>Budget categories</h3>
-        <span class="mini-label">active</span>
-      </div>
-      <p class="settings-copy">Adjust planned amounts, add a category, or remove one from your budget plan.</p>
-      <form id="editCategoryForm" class="control-form">
-        <label>
-          <span>Category</span>
-          <select id="editCategory">${categories.map((category) => `<option ${category.name === selected.name ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}</select>
-        </label>
-        <label>
-          <span>Planned amount</span>
-          <input id="editPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for selected category">
-        </label>
-        <div class="control-actions">
-          <button class="primary-action small" type="submit">Update</button>
-          <button class="secondary-action" id="removeCategory" type="button">Remove</button>
-        </div>
-      </form>
-      <form id="addCategoryForm" class="add-category-form">
-        <label>
-          <span>New category</span>
-          <input id="newCategoryName" autocomplete="off" placeholder="Emergency">
-        </label>
-        <label>
-          <span>Amount</span>
-          <input id="newCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
-        </label>
-        <button class="secondary-action add" type="submit">Add</button>
-      </form>
-    </section>
-  `;
-  setupProfileSettings();
-  setupAppearanceControls();
-  setupCloudSyncControls();
-  setupCashflowControls();
-  setupMonthlyHistory();
-  setupReminderSettings();
-  setupBackupControls();
-  setupStarterClearControls();
-  setupArchivedControls();
-  setupBudgetControls();
-}
-
-function sheetMotionDuration() {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? 0 : SHEET_TRANSITION_MS;
-}
-
-function clearSheetTimer(element) {
-  const timer = sheetTimers.get(element);
-  if (timer) {
-    window.clearTimeout(timer);
-    sheetTimers.delete(element);
-  }
-}
-
-function visibleSheetCount() {
-  return [sheet, settingsSheet, actionSheet, expenseSheet]
-    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
-    .length;
-}
-
-function setBackgroundInert(inert) {
-  // Prevent the background app/tabbar from receiving focus or pointer input
-  // while a sheet is open — keeps keyboard users trapped inside the modal
-  // without each sheet path needing to manage focus boundaries manually.
-  [app, tabbar].forEach((element) => {
-    if (!element) return;
-    if (inert) element.setAttribute("inert", "");
-    else element.removeAttribute("inert");
-  });
-}
-
-function showBackdrop() {
-  clearSheetTimer(backdrop);
-  document.body.classList.add("sheet-zoom-active");
-  backdrop.hidden = false;
-  backdrop.classList.remove("is-closing");
-  setBackgroundInert(true);
-  window.requestAnimationFrame(() => backdrop.classList.add("is-open"));
-}
-
-function hideBackdropIfIdle() {
-  if (visibleSheetCount()) return;
-  clearSheetTimer(backdrop);
-  backdrop.classList.remove("is-open");
-  backdrop.classList.add("is-closing");
-  const timer = window.setTimeout(() => {
-    backdrop.hidden = true;
-    backdrop.classList.remove("is-closing");
-    document.body.classList.remove("sheet-zoom-active");
-    setBackgroundInert(false);
-    sheetTimers.delete(backdrop);
-  }, sheetMotionDuration());
-  sheetTimers.set(backdrop, timer);
-}
-
-function resolveFocusTarget(target) {
-  return typeof target === "function" ? target() : target;
-}
-
-function openModalSheet(element, { focusTarget = null } = {}) {
-  clearSheetTimer(element);
-  showBackdrop();
-  element.hidden = false;
-  element.classList.remove("is-closing", "is-open");
-  element.classList.add("is-opening");
-
-  window.requestAnimationFrame(() => {
-    element.classList.add("is-open");
-    const timer = window.setTimeout(() => {
-      element.classList.remove("is-opening");
-      sheetTimers.delete(element);
-      resolveFocusTarget(focusTarget)?.focus?.({ preventScroll: true });
-    }, sheetMotionDuration());
-    sheetTimers.set(element, timer);
-  });
-}
-
-function closeModalSheet(element, { afterClose = null, restoreFocus = true } = {}) {
-  if (element.hidden && !element.classList.contains("is-open")) {
-    afterClose?.();
-    hideBackdropIfIdle();
-    return;
-  }
-  clearSheetTimer(element);
-  element.classList.remove("is-opening", "is-open");
-  element.classList.add("is-closing");
-  const timer = window.setTimeout(() => {
-    element.hidden = true;
-    element.classList.remove("is-closing");
-    sheetTimers.delete(element);
-    afterClose?.();
-    hideBackdropIfIdle();
-    if (restoreFocus) lastTrigger?.focus?.({ preventScroll: true });
-  }, sheetMotionDuration());
-  sheetTimers.set(element, timer);
-}
-
-function visibleComposeCount() {
-  return [sheet, expenseSheet]
-    .filter((element) => !element.hidden && !element.classList.contains("is-closing"))
-    .length;
-}
-
-function openComposeModal(element, { focusTarget = null } = {}) {
-  document.body.classList.add("compose-active");
-  openModalSheet(element, { focusTarget });
-}
-
-function closeComposeModal(element, { afterClose = null, restoreFocus = true } = {}) {
-  closeModalSheet(element, {
-    restoreFocus,
-    afterClose: () => {
-      afterClose?.();
-      if (!visibleComposeCount()) document.body.classList.remove("compose-active");
-    }
-  });
-}
-
-function openSheet(billId = null) {
-  lastTrigger = document.activeElement;
-  editingBillId = billId;
-  const bill = getBillById(billId);
-  sheet.querySelector(".eyebrow").textContent = bill ? "Edit reminder" : "New reminder";
-  document.querySelector("#sheetTitle").textContent = bill ? "Edit bill" : "Add a bill";
-  billForm.querySelector(".primary-action").textContent = bill ? "Save changes" : "Add to Upcoming";
-  deleteBillButton.hidden = !bill;
-  paidRow.hidden = !bill;
-  if (bill) {
-    billName.value = bill.name;
-    billAmount.value = formatMoneyInput(bill.amount);
-    billDate.value = bill.due;
-    syncBillCategoryOptions(bill.category);
-    billRepeat.value = bill.repeat || "none";
-    propertyTaxPlan.value = bill.propertyTaxPlan || "full";
-    billPaid.checked = Boolean(bill.paid);
-  } else {
-    billForm.reset();
-    syncBillCategoryOptions();
-    billDate.value = toDateInputValue(today);
-    billRepeat.value = "none";
-    propertyTaxPlan.value = "full";
-    billPaid.checked = false;
-  }
-  updatePropertyTaxPlanVisibility();
-  openComposeModal(sheet, { focusTarget: billName });
-}
-
-function closeSheet() {
-  closeComposeModal(sheet, {
-    afterClose: () => {
-      billForm.reset();
-      editingBillId = null;
-      deleteBillButton.hidden = true;
-      paidRow.hidden = true;
-      sheet.querySelector(".eyebrow").textContent = "New reminder";
-      document.querySelector("#sheetTitle").textContent = "Add a bill";
-      billForm.querySelector(".primary-action").textContent = "Add to Upcoming";
-    }
-  });
-}
-
-function syncExpenseCategoryOptions(preferred = expenseCategory.value) {
-  expenseCategories = normalizeExpenseCategories(expenseCategories);
-  const fallback = expenseCategories[0] || defaultCategory().name;
-  expenseCategory.innerHTML = expenseCategories.map((category) => `<option>${escapeHtml(category)}</option>`).join("");
-  expenseCategory.value = expenseCategories.includes(preferred) ? preferred : fallback;
-  expenseSource.innerHTML = settings.cashflow.paymentSources.map((source) => `<option>${escapeHtml(source)}</option>`).join("");
-}
-
-function openExpenseSheet({ keepValues = false } = {}) {
-  lastTrigger = document.activeElement;
-  if (!keepValues) {
-    expenseForm.reset();
-    expenseDate.value = selectedCalendarDay || toDateInputValue(today);
-  }
-  syncExpenseCategoryOptions(selectedExpenseCategory === "All" ? undefined : selectedExpenseCategory);
-  openComposeModal(expenseSheet, { focusTarget: expenseAmount });
-}
-
-function closeExpenseSheet() {
-  closeComposeModal(expenseSheet, {
-    afterClose: () => expenseForm.reset()
-  });
-}
-
-function openSettingsSheet() {
-  lastTrigger = document.activeElement;
-  renderSettingsContent();
-  openModalSheet(settingsSheet);
-}
-
-function closeSettingsSheet() {
-  closeModalSheet(settingsSheet);
-}
-
-function openSnoozeSheet(billId) {
-  const bill = getBillById(billId);
-  if (!bill) return;
-  actionBillId = billId;
-  lastTrigger = document.activeElement;
-  actionSheetTitle.textContent = "Snooze bill";
-  actionSheetContent.innerHTML = `
-    <section class="action-group">
-      <button class="sheet-choice" type="button" data-snooze-offset="1">Tomorrow</button>
-      <button class="sheet-choice" type="button" data-snooze-offset="3">3 days</button>
-      <button class="sheet-choice" type="button" data-snooze-offset="7">1 week</button>
-    </section>
-    <form id="pickSnoozeDate" class="action-form">
-      <label>
-        <span>Pick date</span>
-        <input id="customSnoozeDate" type="date" value="${bill.due}" min="${toDateInputValue(today)}">
-      </label>
-      <button class="primary-action small" type="submit">Apply date</button>
-    </form>
-  `;
-  openModalSheet(actionSheet, { focusTarget: () => actionSheet.querySelector("[data-snooze-offset]") });
-  actionSheet.querySelectorAll("[data-snooze-offset]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextDate = parseDate(bill.due);
-      nextDate.setDate(nextDate.getDate() + Number(button.dataset.snoozeOffset));
-      snoozeBill(billId, toDateInputValue(nextDate));
-    });
-  });
-  document.querySelector("#pickSnoozeDate").addEventListener("submit", (event) => {
-    event.preventDefault();
-    snoozeBill(billId, document.querySelector("#customSnoozeDate").value);
-  });
-}
-
-function updateCategoryPlan(name, plannedValue) {
-  const selected = getCategory(name);
-  selected.planned = cleanAmount(plannedValue);
-  selected.updatedAt = nowIso();
-  selectedBudgetCategory = selected.name;
-  syncBillCategoryOptions(selected.name);
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return selected;
-}
-
-function removeCategoryByName(name) {
-  if (categories.length <= 1) return null;
-  const snapshot = snapshotForUndo();
-  const index = categories.findIndex((category) => category.name === name);
-  if (index < 0) return null;
-  const removedName = categories[index].name;
-  syncMeta.deletedCategories.push({ ...cloneCategory(categories[index]), deletedAt: nowIso() });
-  saveSyncMeta();
-  categories.splice(index, 1);
-  selectedBudgetCategory = categories[Math.max(0, index - 1)]?.name || defaultCategory().name;
-  ensureCategorySafety();
-  syncBillCategoryOptions(selectedBudgetCategory);
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return { snapshot, removedName };
-}
-
-function addCategoryByName(name, plannedValue) {
-  const trimmed = name.trim();
-  if (!trimmed) return { error: "Enter a category name." };
-  if (categories.some((category) => category.name.toLowerCase() === trimmed.toLowerCase())) {
-    return { error: `${trimmed} already exists.` };
-  }
-  categories.push({
-    name: trimmed,
-    color: categoryColors[categories.length % categoryColors.length],
-    planned: cleanAmount(plannedValue),
-    assigned: 0,
-    updatedAt: nowIso(),
-    deletedAt: null
-  });
-  if (!expenseCategories.includes(trimmed)) expenseCategories.push(trimmed);
-  selectedBudgetCategory = trimmed;
-  syncBillCategoryOptions(trimmed);
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  return { name: trimmed };
-}
-
-function openBudgetCategorySheet(categoryName = selectedBudgetCategory) {
-  const selected = getCategory(categoryName);
-  if (!selected) return;
-  selectedBudgetCategory = selected.name;
-  lastTrigger = document.activeElement;
-  actionSheetTitle.textContent = selected.name;
-  actionSheetContent.innerHTML = `
-    <section class="action-panel-copy">
-      <p class="settings-copy">Adjust the current category without leaving Budget.</p>
-    </section>
-    <form id="budgetCategorySheetForm" class="action-form">
-      <label>
-        <span>Planned amount</span>
-        <input id="budgetCategoryPlanned" class="money-input" inputmode="decimal" value="${formatMoneyInput(selected.planned)}" aria-label="Planned amount for ${escapeAttribute(selected.name)}">
-      </label>
-      <div class="control-actions">
-        <button class="primary-action small" type="submit">Update</button>
-        <button class="secondary-action" id="budgetCategoryRemove" type="button">Remove</button>
-      </div>
-    </form>
-    <form id="budgetCategoryAddForm" class="action-form">
-      <label>
-        <span>New category</span>
-        <input id="budgetCategoryName" autocomplete="off" placeholder="Emergency">
-      </label>
-      <label>
-        <span>Planned amount</span>
-        <input id="budgetCategoryAmount" class="money-input" inputmode="decimal" placeholder="25,000.00">
-      </label>
-      <button class="secondary-action" type="submit">Add category</button>
-    </form>
-  `;
-  openModalSheet(actionSheet, { focusTarget: () => document.querySelector("#budgetCategoryPlanned") });
-
-  document.querySelector("#budgetCategorySheetForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const updated = updateCategoryPlan(selected.name, document.querySelector("#budgetCategoryPlanned").value);
-    closeActionSheet(false);
-    showToast(`${updated.name} plan updated.`);
-  });
-
-  document.querySelector("#budgetCategoryRemove").addEventListener("click", () => {
-    const removed = removeCategoryByName(selected.name);
-    if (!removed) return;
-    closeActionSheet(false);
-    showToast(`${removed.removedName} removed.`, {
-      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
-    });
-  });
-
-  document.querySelector("#budgetCategoryAddForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const result = addCategoryByName(
-      document.querySelector("#budgetCategoryName").value,
-      document.querySelector("#budgetCategoryAmount").value
-    );
-    if (result.error) {
-      showToast(result.error);
-      return;
-    }
-    closeActionSheet(false);
-    showToast(`${result.name} category added.`);
-  });
-}
-
-function closeActionSheet(restoreFocus = true) {
-  closeModalSheet(actionSheet, {
-    restoreFocus,
-    afterClose: () => {
-      actionBillId = null;
-      actionSheetTitle.textContent = "Quick action";
-      actionSheetContent.innerHTML = "";
-    }
-  });
-}
-
-function closeAllSheets() {
-  if (!sheet.hidden) closeSheet();
-  if (!settingsSheet.hidden) closeSettingsSheet();
-  if (!actionSheet.hidden) closeActionSheet(false);
-  if (!expenseSheet.hidden) closeExpenseSheet();
-  hideBackdropIfIdle();
-}
-
-function activeSheet() {
-  if (!actionSheet.hidden) return actionSheet;
-  if (!expenseSheet.hidden) return expenseSheet;
-  if (!settingsSheet.hidden) return settingsSheet;
-  if (!sheet.hidden) return sheet;
-  return null;
-}
-
-function syncBillCategoryOptions(preferred = billCategory.value) {
-  const fallback = categories[0]?.name || "";
-  billCategory.innerHTML = categories.map((category) => `<option>${escapeHtml(category.name)}</option>`).join("");
-  billCategory.value = categories.some((category) => category.name === preferred) ? preferred : fallback;
-}
-
-function updatePropertyTaxPlanVisibility() {
-  propertyTaxPlanRow.hidden = !isPropertyTaxBill({ name: billName.value, category: billCategory.value });
-}
-
-function toggleThemePreference() {
-  const themes = ["dark", "light", "pastel"];
-  const current = resolvedTheme();
-  const nextTheme = themes[(themes.indexOf(current) + 1) % themes.length];
-  settings.theme = nextTheme;
-  applyTheme();
-  saveState(false);
-  const themeLabels = { dark: "Dark", light: "Light", pastel: "Pastel" };
-  showToast(`${themeLabels[nextTheme] ?? nextTheme} theme applied.`);
-}
-
-function updateProfileTokenPreview(form) {
-  const token = form.querySelector(".onboarding-profile-token");
-  if (!token) return;
-  const initials = form.querySelector("#profileInitials")?.value || profileInitials(form.querySelector("#profileName")?.value);
-  const color = form.querySelector("#profileAvatarColor")?.value || "#5cae9f";
-  token.style.setProperty("--profile-color", color);
-  token.querySelector("span").textContent = initials.slice(0, 2).toUpperCase();
-}
-
-function saveProfileFromForm(form) {
-  const nameInput = form.querySelector("#profileName");
-  const initialsInput = form.querySelector("#profileInitials");
-  const name = nameInput.value.trim();
-  if (!name) {
-    nameInput.focus();
-    showToast("Add a name to create your profile.");
-    return;
-  }
-  const now = nowIso();
-  const wasComplete = hasCompletedOnboarding();
-  settings.profile = normalizeProfile({
-    ...settings.profile,
-    name,
-    initials: initialsInput.value || profileInitials(name),
-    avatarColor: form.querySelector("#profileAvatarColor")?.value || settings.profile?.avatarColor,
-    createdAt: settings.profile?.createdAt || now,
-    updatedAt: now,
-    onboardingComplete: true
-  });
-  settings.cashflow.monthlyStartingBalance = cleanAmount(form.querySelector("#profileStartingBalance")?.value);
-  const onboardingDay = Number(form.querySelector("#profileBudgetStartDay")?.value);
-  settings.cashflow.budgetPeriodStartDay = Number.isFinite(onboardingDay)
-    ? Math.max(1, Math.min(28, Math.round(onboardingDay)))
-    : 25;
-  activeTab = "home";
-  activeBillId = null;
-  onboardingStep = "landing";
-  saveState();
-  if (form.dataset.profileMode === "edit") {
-    closeActionSheet(false);
-    if (!settingsSheet.hidden) renderSettingsContent();
-    showToast("Profile updated.");
-    return;
-  }
-  render();
-  showToast(wasComplete ? "Profile updated." : `Welcome, ${settings.profile.name}.`);
-}
-
-function bindProfileForm(form) {
-  const nameInput = form.querySelector("#profileName");
-  const initialsInput = form.querySelector("#profileInitials");
-  const colorInput = form.querySelector("#profileAvatarColor");
-  let initialsEdited = false;
-  initialsInput.addEventListener("input", () => {
-    initialsEdited = true;
-    initialsInput.value = initialsInput.value.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
-    updateProfileTokenPreview(form);
-  });
-  nameInput.addEventListener("input", () => {
-    if (!initialsEdited) initialsInput.value = profileInitials(nameInput.value);
-    updateProfileTokenPreview(form);
-  });
-  colorInput?.addEventListener("change", () => updateProfileTokenPreview(form));
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    saveProfileFromForm(form);
-  });
-}
-
-function bindOnboardingActions() {
-  document.querySelector("[data-start-onboarding]")?.addEventListener("click", () => {
-    onboardingStep = "profile";
-    render();
-  });
-  document.querySelector("[data-onboarding-back]")?.addEventListener("click", () => {
-    onboardingStep = "landing";
-    render();
-  });
-  const form = document.querySelector("#profileForm");
-  if (form) bindProfileForm(form);
-}
-
-function openProfileSheet() {
-  lastTrigger = document.activeElement;
-  actionSheetTitle.textContent = "Edit profile";
-  actionSheetContent.innerHTML = renderProfileForm({ mode: "edit" });
-  openModalSheet(actionSheet, { focusTarget: () => actionSheet.querySelector("#profileName") });
-  const form = actionSheet.querySelector("#profileForm");
-  if (form) bindProfileForm(form);
-}
-
-function bindScreenActions() {
-  document.querySelectorAll("[data-open-bill-sheet]").forEach((button) => {
-    button.addEventListener("click", () => openSheet());
-  });
-  document.querySelectorAll("[data-open-expense-sheet]").forEach((button) => {
-    button.addEventListener("click", () => openExpenseSheet());
-  });
-  document.querySelectorAll("[data-open-settings]").forEach((button) => {
-    button.addEventListener("click", openSettingsSheet);
-  });
-  document.querySelectorAll("[data-toggle-theme]").forEach((button) => {
-    button.addEventListener("click", toggleThemePreference);
-  });
-  document.querySelectorAll("[data-edit-profile]").forEach((button) => {
-    button.addEventListener("click", openProfileSheet);
-  });
-}
-
-function bindBillOpenButtons() {
-  document.querySelectorAll("[data-open-bill]").forEach((card) => {
-    const open = () => openBillDetail(Number(card.dataset.openBill));
-    card.addEventListener("click", open);
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        open();
-      }
-    });
-  });
-}
-
-function bindBillSecondaryActions() {
-  document.querySelectorAll("[data-edit-bill]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openSheet(Number(button.dataset.editBill));
-    });
-  });
-  document.querySelectorAll("[data-snooze-bill]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openSnoozeSheet(Number(button.dataset.snoozeBill));
-    });
-  });
-}
-
-function bindPaidButtons() {
-  document.querySelectorAll("[data-paid]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      markBillPaid(Number(button.dataset.paid));
-    });
-  });
-}
-
-function exportRows(key) {
-  const billsForMonth = getMonthBills(key);
-  const billRows = billsForMonth.map((bill) => [
-    "Bill",
-    monthLabel(key),
-    bill.name,
-    bill.category,
-    bill.due,
-    bill.amount,
-    recordStatusText(bill),
-    "",
-    "",
-    "",
-    bill.archived ? "Archived from daily triage" : ""
-  ]);
-  const categoryRows = categories.map((category) => [
-    "Category",
-    monthLabel(key),
-    category.name,
-    category.name,
-    "",
-    "",
-    "",
-    category.planned,
-    category.assigned,
-    Math.max(category.planned - category.assigned, 0),
-    "Current category plan snapshot"
-  ]);
-  return [...billRows, ...categoryRows];
-}
-
-function exportCsv(key) {
-  const header = ["Record Type", "Month", "Name", "Category", "Due Date", "Amount JMD", "Status", "Planned JMD", "Assigned JMD", "Remaining JMD", "Notes"];
-  const csv = [header, ...exportRows(key)]
-    .map((row) => row.map(csvCell).join(","))
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `upnextbudgeting-${key}.csv`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  showToast(`${monthLabel(key)} CSV exported.`);
-}
-
-function renderPrintExport(key) {
-  const summary = getMonthSummary(key);
-  const generated = new Intl.DateTimeFormat("en-JM", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  }).format(today);
-
-  printExport.innerHTML = `
-    <div class="print-page">
-      <header class="print-header">
-        <p>UpNextBudgeting</p>
-        <h1>${monthLabel(key)} Monthly Record</h1>
-        <span>Generated ${generated}</span>
-      </header>
-      <section class="print-summary">
-        <article><span>Total due</span><strong>${money.format(summary.total)}</strong></article>
-        <article><span>Paid</span><strong>${money.format(summary.paid)}</strong></article>
-        <article><span>Open</span><strong>${summary.unpaidItems.length}</strong></article>
-        <article><span>Overdue</span><strong>${summary.overdueItems.length}</strong></article>
-      </section>
-      <section>
-        <h2>Bills</h2>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Category</th><th>Due</th><th>Status</th><th>Amount</th></tr>
-          </thead>
-          <tbody>
-            ${summary.items.map((bill) => `
-              <tr>
-                <td>${escapeHtml(bill.name)}</td>
-                <td>${escapeHtml(bill.category)}</td>
-                <td>${dateFormat.format(parseDate(bill.due))}</td>
-                <td>${escapeHtml(recordStatusText(bill))}</td>
-                <td>${money.format(bill.amount)}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="5">No bills recorded for this month.</td></tr>`}
-          </tbody>
-        </table>
-      </section>
-      <section>
-        <h2>Category Plan Snapshot</h2>
-        <table>
-          <thead>
-            <tr><th>Category</th><th>Planned</th><th>Assigned</th><th>Remaining</th></tr>
-          </thead>
-          <tbody>
-            ${categories.map((category) => `
-              <tr>
-                <td>${escapeHtml(category.name)}</td>
-                <td>${money.format(category.planned)}</td>
-                <td>${money.format(category.assigned)}</td>
-                <td>${money.format(Math.max(category.planned - category.assigned, 0))}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </section>
     </div>
+    <div id="activityList">${activityListHtml(period)}</div>
   `;
-}
-
-function exportPdf(key) {
-  renderPrintExport(key);
-  window.print();
-  showToast("PDF print view opened.");
-}
-
-function exportBackup() {
-  const blob = new Blob([JSON.stringify(appState(), null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `upnextbudgeting-backup-${toDateInputValue(today)}.json`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  showToast("Backup exported.");
-}
-
-function applyImportedState(state) {
-  if (!isValidState(state)) throw new Error("Backup file is not a valid UpNextBudgeting backup.");
-  categories = state.categories.map((category, index) => ({
-    name: category.name,
-    color: safeCssColor(category.color, categoryColors[index % categoryColors.length]),
-    planned: cleanAmount(category.planned),
-    assigned: cleanAmount(category.assigned),
-    updatedAt: category.updatedAt || state.savedAt || nowIso(),
-    deletedAt: category.deletedAt || null
-  }));
-  bills = state.bills.map(normalizeBill);
-  settings = { initialized: true, reminderDays: 3, ...(state.settings || {}) };
-  settings.theme = validTheme(settings.theme);
-  settings.profile = normalizeProfile(settings.profile);
-  settings.cashflow = normalizeCashflowSettings(settings.cashflow);
-  removeBackendSettings();
-  expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
-  expenseCategories = normalizeExpenseCategories(state.expenseCategories);
-  selectedBudgetCategory = categories.some((category) => category.name === state.selectedBudgetCategory) ? state.selectedBudgetCategory : categories[0]?.name;
-  selectedExpenseCategory = expenseCategories.includes(state.selectedExpenseCategory) ? state.selectedExpenseCategory : "All";
-  selectedHistoryMonth = state.selectedHistoryMonth || selectedHistoryMonth;
-  visibleCalendarMonth = state.visibleCalendarMonth || visibleCalendarMonth;
-  pendingRecurringBillId = null;
-  activeBillId = null;
-  ensureCategorySafety();
-  applyTheme();
-  syncBillCategoryOptions(selectedBudgetCategory);
-  saveState();
-  render();
-  renderSettingsContent();
-  showToast("Backup restored.");
-}
-
-function snapshotForUndo() {
-  return {
-    bills: bills.map(cloneBill),
-    categories: categories.map(cloneCategory),
-    expenses: expenses.map(cloneExpense),
-    expenseCategories: [...expenseCategories],
-    selectedBudgetCategory,
-    selectedExpenseCategory,
-    selectedHistoryMonth,
-    visibleCalendarMonth,
-    pendingRecurringBillId,
-    activeBillId
-  };
-}
-
-function restoreSnapshot(snapshot, message = "Restored.") {
-  bills = snapshot.bills.map(cloneBill);
-  categories = snapshot.categories.map(cloneCategory);
-  expenses = snapshot.expenses.map(cloneExpense);
-  const restoredBillIds = new Set(bills.map((bill) => billClientId(bill)));
-  const restoredExpenseIds = new Set(expenses.map((expense) => expenseClientId(expense)));
-  const restoredCategoryNames = new Set(categories.map((category) => category.name));
-  syncMeta.deletedBills = syncMeta.deletedBills.filter((item) => !restoredBillIds.has(item.clientId));
-  syncMeta.deletedExpenses = syncMeta.deletedExpenses.filter((item) => !restoredExpenseIds.has(item.clientId));
-  syncMeta.deletedCategories = syncMeta.deletedCategories.filter((item) => !restoredCategoryNames.has(item.name));
-  saveSyncMeta();
-  expenseCategories = [...snapshot.expenseCategories];
-  selectedBudgetCategory = snapshot.selectedBudgetCategory;
-  selectedExpenseCategory = snapshot.selectedExpenseCategory;
-  selectedHistoryMonth = snapshot.selectedHistoryMonth;
-  visibleCalendarMonth = snapshot.visibleCalendarMonth;
-  pendingRecurringBillId = snapshot.pendingRecurringBillId;
-  activeBillId = snapshot.activeBillId;
-  ensureCategorySafety();
-  syncBillCategoryOptions(selectedBudgetCategory);
-  saveState();
-  render();
-  if (!settingsSheet.hidden) renderSettingsContent();
-  showToast(message);
-}
-
-function clearStarterData(mode) {
-  const copy = {
-    bills: "starter bills",
-    categories: "starter categories",
-    both: "starter bills and categories"
-  };
-  if (!confirm(`Clear ${copy[mode]}? Your user-created items will stay.`)) return;
-  const snapshot = snapshotForUndo();
-  if (mode === "bills" || mode === "both") {
-    bills.filter((bill) => starterBillIds.has(bill.id)).forEach((bill) => {
-      syncMeta.deletedBills.push({ ...cloneBill(bill), clientId: billClientId(bill), deletedAt: nowIso() });
-    });
-    bills = bills.filter((bill) => !starterBillIds.has(bill.id));
-    pendingRecurringBillId = pendingRecurringBillId && starterBillIds.has(pendingRecurringBillId) ? null : pendingRecurringBillId;
-    if (activeBillId && starterBillIds.has(activeBillId)) activeBillId = null;
-  }
-  if (mode === "categories" || mode === "both") {
-    categories.filter((category) => starterCategoryNames.has(category.name)).forEach((category) => {
-      syncMeta.deletedCategories.push({ ...cloneCategory(category), deletedAt: nowIso() });
-    });
-    categories = categories.filter((category) => !starterCategoryNames.has(category.name));
-    expenseCategories = expenseCategories.filter((category) => !starterCategoryNames.has(category));
-  }
-  ensureCategorySafety();
-  saveSyncMeta();
-  syncBillCategoryOptions(selectedBudgetCategory);
-  saveState();
-  render();
-  renderSettingsContent();
-  showToast(`Cleared ${copy[mode]}.`, {
-    undo: () => restoreSnapshot(snapshot, "Starter data restored.")
-  });
-}
-
-function setupProfileSettings() {
-  document.querySelector("[data-edit-profile]")?.addEventListener("click", openProfileSheet);
-}
-
-function setupAppearanceControls() {
-  const themePreference = document.querySelector("#themePreference");
-  themePreference.addEventListener("change", () => {
-    settings.theme = validTheme(themePreference.value);
-    // update theme-color meta for pastel
-    applyTheme();
-    saveState(false);
-    showToast(`${themePreference.options[themePreference.selectedIndex].text} theme applied.`);
-  });
-}
-
-function setupCloudSyncControls() {
-  document.querySelector("#syncNow")?.addEventListener("click", () => {
-    syncUpNextState({ reason: "manual" }).then(() => {
-      if (syncMeta.status !== "Sync issue") showToast("Cloud sync checked.");
-    });
-  });
-  document.querySelector("#enableNotifications")?.addEventListener("click", () => {
-    enablePushNotifications()
-      .then(() => {
-        if (syncMeta.pushEnabled) showToast("Notifications enabled.");
-      })
-      .catch((error) => {
-        updateSyncStatus("Push issue", error.message || "Could not enable notifications.");
-        showToast(error.message || "Could not enable notifications.");
-      });
-  });
-}
-
-function setupCashflowControls() {
-  const form = document.querySelector("#cashflowForm");
-  const startingBalance = document.querySelector("#monthlyStartingBalance");
-  const startDay = document.querySelector("#budgetPeriodStartDay");
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    settings.cashflow.monthlyStartingBalance = cleanAmount(startingBalance.value);
-    const day = Number(startDay?.value);
-    settings.cashflow.budgetPeriodStartDay = Number.isFinite(day)
-      ? Math.max(1, Math.min(28, Math.round(day)))
-      : 25;
-    saveState();
-    render();
-    renderSettingsContent();
-    showToast("Cashflow settings updated.");
-  });
-}
-
-function setupMonthlyHistory() {
-  const historyMonth = document.querySelector("#historyMonth");
-  const exportCsvButton = document.querySelector("#exportCsv");
-  const exportPdfButton = document.querySelector("#exportPdf");
-
-  historyMonth.addEventListener("change", () => {
-    selectedHistoryMonth = historyMonth.value;
-    saveState(false);
-    renderSettingsContent();
-  });
-
-  exportCsvButton.addEventListener("click", () => exportCsv(selectedHistoryMonth));
-  exportPdfButton.addEventListener("click", () => exportPdf(selectedHistoryMonth));
-}
-
-function setupReminderSettings() {
-  const reminderForm = document.querySelector("#reminderForm");
-  const reminderDays = document.querySelector("#reminderDays");
-  reminderForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    settings.reminderDays = Math.max(0, Math.min(30, cleanAmount(reminderDays.value)));
-    saveState();
-    render();
-    renderSettingsContent();
-    showToast(`Reminder window set to ${settings.reminderDays} days.`);
-  });
-}
-
-async function updateAppBadge() {
-  const count = getReminderBadgeItems().length;
-  try {
-    if (count && "setAppBadge" in navigator) await navigator.setAppBadge(count);
-    if (!count && "clearAppBadge" in navigator) await navigator.clearAppBadge();
-  } catch (error) {
-    console.warn("Could not update app badge", error);
-  }
-}
-
-async function clearAppBadge() {
-  try {
-    if ("clearAppBadge" in navigator) await navigator.clearAppBadge();
-  } catch (error) {
-    console.warn("Could not clear app badge", error);
-  }
-}
-
-function setupBackupControls() {
-  document.querySelector("#exportBackup").addEventListener("click", exportBackup);
-  document.querySelector("#restoreBackup").addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      try {
-        const state = JSON.parse(String(reader.result));
-        if (!confirm("Restore this backup? Current local data will be replaced.")) return;
-        applyImportedState(state);
-      } catch (error) {
-        showToast(error.message || "Could not restore backup.");
-      } finally {
-        event.target.value = "";
-      }
-    });
-    reader.readAsText(file);
-  });
-}
-
-function setupStarterClearControls() {
-  document.querySelector("#clearStarterBills").addEventListener("click", () => clearStarterData("bills"));
-  document.querySelector("#clearStarterCategories").addEventListener("click", () => clearStarterData("categories"));
-  document.querySelector("#clearStarterAll").addEventListener("click", () => clearStarterData("both"));
-}
-
-function setupArchivedControls() {
-  document.querySelectorAll("[data-restore-bill]").forEach((button) => {
-    button.addEventListener("click", () => restoreArchivedBill(Number(button.dataset.restoreBill)));
-  });
-}
-
-function setupAccessibility() {
-  document.addEventListener("keydown", (event) => {
-    const currentSheet = activeSheet();
-    if (event.key === "Escape") {
-      if (currentSheet) {
-        event.preventDefault();
-        if (currentSheet === actionSheet) closeActionSheet();
-        if (currentSheet === expenseSheet) closeExpenseSheet();
-        if (currentSheet === settingsSheet) closeSettingsSheet();
-        if (currentSheet === sheet) closeSheet();
-        return;
-      }
-      if (activeBillId) {
-        event.preventDefault();
-        closeBillDetail();
-      }
-      return;
-    }
-    if (!currentSheet || event.key !== "Tab") return;
-    const focusable = [...currentSheet.querySelectorAll("button, input, select, textarea, a[href], [tabindex]:not([tabindex='-1'])")]
-      .filter((element) => !element.disabled && !element.hidden && element.offsetParent !== null);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-}
-
-function setupBudgetControls() {
-  const editCategory = document.querySelector("#editCategory");
-  const editPlanned = document.querySelector("#editPlanned");
-  const editCategoryForm = document.querySelector("#editCategoryForm");
-  const addCategoryForm = document.querySelector("#addCategoryForm");
-  const removeCategory = document.querySelector("#removeCategory");
-  const newCategoryName = document.querySelector("#newCategoryName");
-  const newCategoryAmount = document.querySelector("#newCategoryAmount");
-
-  editCategory.addEventListener("change", () => {
-    selectedBudgetCategory = editCategory.value;
-    const selected = getCategory(selectedBudgetCategory);
-    editPlanned.value = formatMoneyInput(selected.planned);
-  });
-
-  editCategoryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const selected = updateCategoryPlan(editCategory.value, editPlanned.value);
-    renderSettingsContent();
-    showToast(`${selected.name} plan updated.`);
-  });
-
-  removeCategory.addEventListener("click", () => {
-    const removed = removeCategoryByName(editCategory.value);
-    if (!removed) return;
-    renderSettingsContent();
-    showToast(`${removed.removedName} removed.`, {
-      undo: () => restoreSnapshot(removed.snapshot, `${removed.removedName} restored.`)
-    });
-  });
-
-  addCategoryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const result = addCategoryByName(newCategoryName.value, newCategoryAmount.value);
-    if (result?.error) {
-      showToast(result.error);
-      return;
-    }
-    renderSettingsContent();
-    showToast(`${result.name} category added.`);
-  });
-}
-
-function addExpenseFromForm({ addAnother = false } = {}) {
-  const expense = normalizeExpense({
-    id: newId(),
-    amount: expenseAmount.value,
-    category: expenseCategory.value,
-    merchant: expenseMerchant.value.trim() || expenseCategory.value,
-    note: expenseMerchant.value.trim(),
-    date: expenseDate.value,
-    paymentSource: expenseSource.value,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  });
-  expenses.push(expense);
-  if (!expenseCategories.includes(expense.category)) expenseCategories.push(expense.category);
-  saveState();
-  render();
-  showToast(`${expense.merchant} added.`, {
-    undo: () => {
-      expenses = expenses.filter((item) => item.id !== expense.id);
-      saveState();
-      render();
-      showToast("Expense removed.");
-    }
-  });
-  if (addAnother) {
-    openExpenseSheet({ keepValues: true });
-    expenseAmount.value = "";
-    expenseMerchant.value = "";
-  } else {
-    closeExpenseSheet();
-  }
-}
-
-function deleteExpense(expenseId) {
-  const expense = expenses.find((item) => item.id === expenseId);
-  if (!expense) return;
-  const snapshot = cloneExpense(expense);
-  const tombstone = { ...snapshot, clientId: expenseClientId(snapshot), deletedAt: nowIso() };
-  syncMeta.deletedExpenses.push(tombstone);
-  saveSyncMeta();
-  expenses = expenses.filter((item) => item.id !== expenseId);
-  saveState();
-  render();
-  showToast(`${snapshot.merchant} removed.`, {
-    undo: () => {
-      expenses.push(snapshot);
-      syncMeta.deletedExpenses = syncMeta.deletedExpenses.filter((item) => item.clientId !== tombstone.clientId);
-      saveSyncMeta();
-      saveState();
-      render();
-      showToast(`${snapshot.merchant} restored.`);
-    }
-  });
-}
-
-function bindExpenseActions() {
-  document.querySelectorAll("[data-delete-expense]").forEach((button) => {
-    button.addEventListener("click", () => deleteExpense(Number(button.dataset.deleteExpense)));
-  });
-}
-
-function setupExpenseForm() {
-  syncExpenseCategoryOptions();
-  expenseForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const addAnother = event.submitter?.dataset.expenseSubmit === "again";
-    addExpenseFromForm({ addAnother });
-  });
-  document.querySelector("#closeExpenseSheet").addEventListener("click", closeExpenseSheet);
-}
-
-function setupForm() {
-  syncBillCategoryOptions();
-  presetRail.innerHTML = presets.map((preset) => `<button class="preset-pill" type="button" data-preset="${escapeAttribute(preset.name)}">${escapeHtml(preset.name)}</button>`).join("");
-
-  presetRail.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-preset]");
-    if (!button) return;
-    const preset = presets.find((item) => item.name === button.dataset.preset);
-    billName.value = preset.name;
-    billAmount.value = formatMoneyInput(preset.amount);
-    billCategory.value = preset.category;
-    billRepeat.value = inferRepeat(preset);
-    if (isPropertyTaxBill(preset)) propertyTaxPlan.value = "full";
-    updatePropertyTaxPlanVisibility();
-  });
-
-  billName.addEventListener("input", updatePropertyTaxPlanVisibility);
-  billCategory.addEventListener("change", updatePropertyTaxPlanVisibility);
-
-  billForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const wasEditing = Boolean(editingBillId);
-    const payload = {
-      name: billName.value.trim(),
-      category: billCategory.value,
-      amount: cleanAmount(billAmount.value),
-      due: billDate.value,
-      paid: editingBillId ? billPaid.checked : false,
-      repeat: billRepeat.value,
-      propertyTaxPlan: propertyTaxPlan.value
-    };
-    if (editingBillId) {
-      const bill = getBillById(editingBillId);
-      if (bill) {
-        const before = cloneBill(bill);
-        bill.name = payload.name;
-        bill.category = payload.category;
-        bill.amount = payload.amount;
-        bill.due = payload.due;
-        bill.repeat = payload.repeat;
-        bill.propertyTaxPlan = payload.propertyTaxPlan;
-        if (!before.paid && payload.paid) {
-          bill.paid = true;
-          bill.completedAt = nowIso();
-          appendActivity(bill, "paid", { note: "Marked paid from edit view." });
-        } else if (before.paid && !payload.paid) {
-          bill.paid = false;
-          bill.completedAt = null;
-          appendActivity(bill, "unpaid", { note: "Marked unpaid from edit view." });
-        } else {
-          bill.paid = payload.paid;
-        }
-        if (
-          before.name !== bill.name ||
-          before.amount !== bill.amount ||
-          before.category !== bill.category ||
-          before.due !== bill.due ||
-          before.repeat !== bill.repeat ||
-          before.propertyTaxPlan !== bill.propertyTaxPlan
-        ) {
-          appendActivity(bill, "edited", { note: "Bill details were updated." });
-        }
-      }
-    } else {
-      bills.push(normalizeBill({
-        id: Date.now(),
-        ...payload,
-        seriesKey: makeSeriesKey(payload),
-        activity: [createActivity("created", { note: "Bill added to the plan." })],
-        completedAt: payload.paid ? nowIso() : null
-      }));
-    }
-    saveState();
-    closeSheet();
-    render();
-    if (!settingsSheet.hidden) renderSettingsContent();
-    showToast(wasEditing ? `${payload.name} updated.` : `${payload.name} added.`);
-  });
-
-  deleteBillButton.addEventListener("click", () => {
-    if (!editingBillId) return;
-    const bill = getBillById(editingBillId);
-    if (!bill || !confirm(`Delete ${bill.name}?`)) return;
-    const deletedBill = cloneBill(bill);
-    const tombstone = { ...deletedBill, clientId: billClientId(deletedBill), deletedAt: nowIso() };
-    const previousPending = pendingRecurringBillId;
-    const previousActive = activeBillId;
-    syncMeta.deletedBills.push(tombstone);
-    saveSyncMeta();
-    bills = bills.filter((item) => item.id !== editingBillId);
-    if (pendingRecurringBillId === editingBillId) pendingRecurringBillId = null;
-    if (activeBillId === editingBillId) activeBillId = null;
-    saveState();
-    closeSheet();
-    render();
-    showToast(`${deletedBill.name} deleted.`, {
-      undo: () => {
-        replaceOrInsertBill(deletedBill);
-        syncMeta.deletedBills = syncMeta.deletedBills.filter((item) => item.clientId !== tombstone.clientId);
-        saveSyncMeta();
-        pendingRecurringBillId = previousPending;
-        activeBillId = previousActive;
-        saveState();
-        render();
-        showToast(`${deletedBill.name} restored.`);
-      }
-    });
-  });
-
-  document.querySelector("#closeSheet").addEventListener("click", closeSheet);
-  document.querySelector("#closeSettingsSheet").addEventListener("click", closeSettingsSheet);
-  document.querySelector("#closeActionSheet").addEventListener("click", () => closeActionSheet());
-  backdrop.addEventListener("click", closeAllSheets);
 }
 
 function render() {
-  document.body.classList.toggle("onboarding-active", !hasCompletedOnboarding());
-  if (!hasCompletedOnboarding()) {
-    activeBillId = null;
+  const onboarding = !hasCompletedOnboarding();
+  document.body.classList.toggle("is-onboarding", onboarding);
+  tabbar.hidden = onboarding;
+  if (onboarding) {
     renderOnboarding();
-    tabs.forEach((tab) => tab.classList.remove("is-active"));
-    if (tabbar) tabbar.hidden = true;
-    updateAppBadge();
     return;
   }
-  if (activeBillId) {
-    renderBillDetail();
-  } else if (activeTab === "spending") {
-    renderSpending();
-  } else if (activeTab === "calendar") {
-    renderCalendar();
-  } else if (activeTab === "insights") {
-    renderInsights();
-  } else {
-    renderHome();
-  }
-  tabs.forEach((tab) => {
-    const selected = !activeBillId && tab.dataset.tab === activeTab;
-    tab.classList.toggle("is-active", selected);
-    tab.setAttribute("aria-selected", selected ? "true" : "false");
+  if (ui.tab === "budget") renderBudget();
+  else if (ui.tab === "bills") renderBills();
+  else if (ui.tab === "activity") renderActivity();
+  else renderHome();
+  tabbar.querySelectorAll(".tab").forEach((tab) => {
+    if (tab.dataset.tab === ui.tab) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
   });
-  if (tabbar) {
-    tabbar.hidden = Boolean(activeBillId);
-    tabbar.dataset.activeTab = activeTab;
-  }
   updateAppBadge();
 }
 
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    activeTab = tab.dataset.tab;
-    activeBillId = null;
+/* ---------- sheets ---------- */
+
+function categoryOptions(selected) {
+  const pick = categoryByName(selected) ? selected : fallbackCategoryName();
+  return categories.map((category) => `<option ${category.name === pick ? "selected" : ""}>${esc(category.name)}</option>`).join("");
+}
+
+function expenseForm(expense = null) {
+  const preferred = expense?.category || ui.lastCategory || (ui.category !== "All" ? ui.category : "");
+  return `
+    <form class="form" data-form="expense" data-id="${esc(expense?.id ?? "")}" novalidate>
+      <label class="field field-amount">
+        <span>Amount</span>
+        <input class="money" name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${esc(expense ? formatMoneyInput(expense.amount) : "")}" ${expense ? "" : "autofocus"} required>
+      </label>
+      <label class="field">
+        <span>Category</span>
+        <select name="category">${categoryOptions(preferred)}</select>
+      </label>
+      <label class="field">
+        <span>Note <em>(optional)</em></span>
+        <input name="note" autocomplete="off" placeholder="e.g. Hi-Lo, taxi, lunch" value="${esc(expense?.note || (expense && expense.merchant !== expense.category ? expense.merchant : ""))}">
+      </label>
+      <label class="field">
+        <span>Date</span>
+        <input name="date" type="date" value="${esc(expense?.date || today)}" required>
+      </label>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary" type="submit">${expense ? "Save changes" : "Add expense"}</button>
+      ${expense ? `<button class="btn btn-danger" data-action="delete-expense" data-id="${esc(expense.id)}" type="button">Delete expense</button>` : ""}
+    </form>
+  `;
+}
+
+function billForm(bill = null) {
+  const history = bill
+    ? bills.filter((item) => item.seriesKey === bill.seriesKey && item.paid && item !== bill && isActiveBill(item)).sort((a, b) => b.due.localeCompare(a.due)).slice(0, 4)
+    : [];
+  return `
+    ${bill ? "" : `
+      <div class="presets" role="group" aria-label="Common bills">
+        ${PRESETS.map((preset, index) => `<button class="chip" data-action="preset" data-index="${index}" type="button">${esc(preset.name)}</button>`).join("")}
+      </div>`}
+    <form class="form" data-form="bill" data-id="${esc(bill?.id ?? "")}" novalidate>
+      <label class="field">
+        <span>Name</span>
+        <input name="name" autocomplete="off" placeholder="e.g. JPS electricity" value="${esc(bill?.name || "")}" required>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Amount</span>
+          <input class="money" name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${esc(bill ? formatMoneyInput(bill.amount) : "")}" required>
+        </label>
+        <label class="field">
+          <span>Due</span>
+          <input name="due" type="date" value="${esc(bill?.due || today)}" required>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>Category</span>
+          <select name="category">${categoryOptions(bill?.category || ui.lastCategory)}</select>
+        </label>
+        <label class="field">
+          <span>Repeats</span>
+          <select name="repeat">
+            ${Object.entries(REPEATS).map(([value, label]) => `<option value="${value}" ${(bill?.repeat || "monthly") === value ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      ${bill ? `
+        <label class="switch">
+          <input type="checkbox" name="paid" ${bill.paid ? "checked" : ""}>
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>Paid</span>
+        </label>` : ""}
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary" type="submit">${bill ? "Save changes" : "Add bill"}</button>
+      ${bill ? `<button class="btn btn-danger" data-action="delete-bill" data-id="${esc(bill.id)}" type="button">Delete bill</button>` : ""}
+    </form>
+    ${history.length ? `
+      <section class="history">
+        <h3>Previous payments</h3>
+        <ul>${history.map((item) => `<li><span>${shortDate(item.due)}</span><span>${money(item.amount)}</span></li>`).join("")}</ul>
+      </section>` : ""}
+  `;
+}
+
+function categoryForm(category = null) {
+  return `
+    <form class="form" data-form="category" data-name="${esc(category?.name || "")}" novalidate>
+      <label class="field">
+        <span>Name</span>
+        <input name="name" autocomplete="off" placeholder="e.g. Eating out" value="${esc(category?.name || "")}" required>
+      </label>
+      <label class="field field-amount">
+        <span>Plan per period</span>
+        <input class="money" name="planned" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${esc(category ? formatMoneyInput(category.planned) : "")}" ${category ? "autofocus" : ""}>
+      </label>
+      <p class="hint">Bills and expenses in this category count against the plan.</p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary" type="submit">${category ? "Save" : "Add category"}</button>
+      ${category && categories.length > 1 ? `<button class="btn btn-danger" data-action="delete-category" data-name="${esc(category.name)}" type="button">Delete category</button>` : ""}
+    </form>
+  `;
+}
+
+function settingsBody() {
+  const theme = validTheme(settings.theme);
+  return `
+    <form class="form settings-group" data-form="budget-settings" novalidate>
+      <h3>Budget</h3>
+      <label class="field">
+        <span>Monthly take-home pay</span>
+        <input class="money" name="income" inputmode="decimal" autocomplete="off" value="${esc(formatMoneyInput(settings.cashflow.monthlyStartingBalance))}" placeholder="0.00">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Payday</span>
+          <select name="payday">
+            ${Array.from({ length: 28 }, (_, i) => i + 1).map((day) => `<option value="${day}" ${day === paydayStart() ? "selected" : ""}>${ordinal(day)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field">
+          <span>Remind me</span>
+          <select name="reminderDays">
+            ${[0, 1, 2, 3, 5, 7, 14].map((d) => `<option value="${d}" ${d === settings.reminderDays ? "selected" : ""}>${d === 0 ? "On the day" : `${d} day${d === 1 ? "" : "s"} before`}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <button class="btn btn-secondary" type="submit">Save</button>
+    </form>
+
+    <section class="settings-group">
+      <h3>Appearance</h3>
+      <div class="segmented" role="group" aria-label="Theme">
+        ${["system", "light", "dark"].map((value) => `<button type="button" data-action="theme" data-theme="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase()}${value.slice(1)}</button>`).join("")}
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h3>Backup & notifications</h3>
+      <p class="setting-line"><span id="syncStatus" title="${esc(syncMeta.lastError || "")}">${esc(syncStatusCopy())}</span><button class="link-btn" data-action="sync-now" type="button">Sync now</button></p>
+      <p class="setting-line"><span id="pushStatus">${syncMeta.pushEnabled ? "Due-bill notifications are on." : "Get a daily heads-up when bills are due."}</span>${syncMeta.pushEnabled ? "" : `<button class="link-btn" data-action="notify" type="button">Turn on</button>`}</p>
+    </section>
+
+    <section class="settings-group">
+      <h3>Data</h3>
+      <div class="stack">
+        <button class="btn btn-secondary" data-action="export-csv" type="button">Export ${periodLabel(viewPeriod())} as CSV</button>
+        <button class="btn btn-secondary" data-action="export-backup" type="button">Download backup</button>
+        <label class="btn btn-secondary file-btn">Restore from backup<input type="file" id="restoreFile" accept="application/json,.json"></label>
+        ${hasSampleData() ? `<button class="btn btn-danger" data-action="remove-sample" type="button">Remove sample data</button>` : ""}
+      </div>
+    </section>
+    <p class="fine">Your data lives on this device and is backed up to a private, anonymous cloud profile.</p>
+  `;
+}
+
+function refreshSettingsStatus() {
+  const el = sheetBody.querySelector("#syncStatus");
+  if (el) el.textContent = syncStatusCopy();
+}
+
+function renderSheet() {
+  const state = ui.sheet;
+  if (!state) return;
+  let title = "";
+  let body = "";
+  if (state.kind === "add") {
+    title = state.mode === "bill" ? "New bill" : "New expense";
+    body = `
+      <div class="segmented" role="group" aria-label="What are you adding?">
+        <button type="button" data-action="add-mode" data-mode="expense" aria-pressed="${state.mode !== "bill"}">Expense</button>
+        <button type="button" data-action="add-mode" data-mode="bill" aria-pressed="${state.mode === "bill"}">Bill</button>
+      </div>
+      ${state.mode === "bill" ? billForm() : expenseForm()}`;
+  } else if (state.kind === "bill") {
+    const bill = billById(state.id);
+    title = bill ? "Edit bill" : "New bill";
+    body = billForm(bill);
+  } else if (state.kind === "expense") {
+    title = "Edit expense";
+    body = expenseForm(expenseById(state.id));
+  } else if (state.kind === "category") {
+    const category = categoryByName(state.name);
+    title = category ? category.name : "New category";
+    body = categoryForm(category);
+  } else if (state.kind === "settings") {
+    title = "Settings";
+    body = settingsBody();
+  }
+  sheetTitle.textContent = title;
+  sheetBody.innerHTML = body;
+}
+
+let sheetCloseTimer = null;
+function openSheet(state) {
+  window.clearTimeout(sheetCloseTimer);
+  sheet.classList.remove("is-closing");
+  ui.sheet = state;
+  renderSheet();
+  if (!sheet.open) sheet.showModal();
+  sheetBody.scrollTop = 0;
+  const auto = sheetBody.querySelector("[autofocus]");
+  if (auto && window.matchMedia("(hover: hover)").matches) auto.focus();
+  else if (!auto) sheet.querySelector(".sheet-head .icon-btn")?.focus();
+}
+
+function closeSheet() {
+  if (!sheet.open) return;
+  ui.sheet = null;
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  sheet.classList.add("is-closing");
+  sheetCloseTimer = window.setTimeout(() => {
+    sheet.classList.remove("is-closing");
+    sheet.close();
+  }, reduced ? 0 : 180);
+}
+
+/* ---------- events ---------- */
+
+function initialTab() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get("tab") || params.get("view") || window.location.hash.replace("#", "")).toLowerCase();
+  const legacy = { spending: "bills", calendar: "bills", insights: "budget", expenses: "activity" };
+  const tab = legacy[requested] || requested;
+  return ["home", "budget", "bills", "activity"].includes(tab) ? tab : "home";
+}
+
+function goto(tab) {
+  if (ui.tab !== tab) ui.offset = 0;
+  ui.tab = tab;
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+const actions = {
+  "add": () => openSheet({ kind: "add", mode: "expense" }),
+  "add-mode": (el) => {
+    ui.sheet = { kind: "add", mode: el.dataset.mode };
+    renderSheet();
+  },
+  "add-bill": () => openSheet({ kind: "bill" }),
+  "close-sheet": () => closeSheet(),
+  "settings": () => openSheet({ kind: "settings" }),
+  "pay": (el) => markPaid(el.dataset.id),
+  "edit-bill": (el) => openSheet({ kind: "bill", id: el.dataset.id }),
+  "edit-expense": (el) => openSheet({ kind: "expense", id: el.dataset.id }),
+  "edit-category": (el) => openSheet({ kind: "category", name: el.dataset.name }),
+  "add-category": () => openSheet({ kind: "category" }),
+  "delete-bill": (el) => deleteBill(el.dataset.id),
+  "delete-expense": (el) => deleteExpense(el.dataset.id),
+  "delete-category": (el) => deleteCategory(el.dataset.name),
+  "period": (el) => {
+    ui.offset = Math.min(MAX_PERIOD_OFFSET, ui.offset + Number(el.dataset.step));
     render();
-  });
+  },
+  "bills-view": (el) => {
+    ui.billsView = el.dataset.view;
+    render();
+  },
+  "preset": (el) => {
+    const preset = PRESETS[Number(el.dataset.index)];
+    const form = sheetBody.querySelector("[data-form=bill]");
+    if (!preset || !form) return;
+    form.elements.name.value = preset.name;
+    form.elements.amount.value = formatMoneyInput(preset.amount);
+    form.elements.category.value = categoryByName(preset.category) ? preset.category : fallbackCategoryName();
+    form.elements.repeat.value = preset.repeat;
+    form.elements.amount.focus();
+    form.elements.amount.select();
+  },
+  "theme": (el) => setTheme(el.dataset.theme),
+  "sync-now": () => syncUpNextState({ reason: "manual" }),
+  "notify": () => {
+    enablePushNotifications()
+      .then(() => {
+        renderSheet();
+        showToast("Notifications on");
+      })
+      .catch((error) => showToast(error.message || "Could not turn on notifications."));
+  },
+  "export-csv": () => exportCsv(),
+  "export-backup": () => exportBackup(),
+  "remove-sample": () => removeSampleData()
+};
+
+const forms = {
+  "onboard": finishOnboarding,
+  "bill": saveBill,
+  "expense": saveExpense,
+  "category": saveCategory,
+  "budget-settings": saveBudgetSettings
+};
+
+document.addEventListener("click", (event) => {
+  const tab = event.target.closest(".tab[data-tab]");
+  if (tab) return goto(tab.dataset.tab);
+  const link = event.target.closest("[data-goto]");
+  if (link) return goto(link.dataset.goto);
+  const el = event.target.closest("[data-action]");
+  if (el && !el.disabled && actions[el.dataset.action]) actions[el.dataset.action](el);
 });
 
-const themePreferenceMedia = window.matchMedia?.("(prefers-color-scheme: light)");
-const handleThemePreferenceChange = () => {
-  if (settings.theme === "system") applyTheme();
-};
-if (themePreferenceMedia?.addEventListener) {
-  themePreferenceMedia.addEventListener("change", handleThemePreferenceChange);
-} else if (themePreferenceMedia?.addListener) {
-  themePreferenceMedia.addListener(handleThemePreferenceChange);
-}
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-form]");
+  if (!form || !forms[form.dataset.form]) return;
+  event.preventDefault();
+  formError(form, "");
+  forms[form.dataset.form](form);
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.id === "activitySearch") {
+    ui.search = event.target.value;
+    document.querySelector("#activityList").innerHTML = activityListHtml(viewPeriod());
+  }
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.id === "activityCategory") {
+    ui.category = event.target.value;
+    document.querySelector("#activityList").innerHTML = activityListHtml(viewPeriod());
+  } else if (event.target.id === "restoreFile" && event.target.files?.[0]) {
+    restoreBackup(event.target.files[0]);
+    event.target.value = "";
+  }
+});
+
+document.addEventListener("focusout", (event) => {
+  if (event.target.matches?.("input.money")) event.target.value = formatMoneyInput(event.target.value);
+});
+
+// Clicking the dimmed area (the dialog element itself, outside the panel) closes.
+sheet.addEventListener("click", (event) => {
+  if (event.target === sheet) closeSheet();
+});
+sheet.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeSheet();
+});
+sheet.addEventListener("close", () => {
+  ui.sheet = null;
+  document.body.append(toastRegion);
+});
+
+// Keep "today" honest for an app left open overnight.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  const now = toDateInputValue(new Date());
+  if (now !== today) {
+    today = now;
+    if (!ui.sheet) render();
+  }
+});
+
+window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", () => {
+  if (validTheme(settings.theme) === "system") applyTheme();
+});
 
 if ("serviceWorker" in navigator) {
   let updateToastShown = false;
-  let reloadingForUpdate = false;
+  let reloading = false;
   const promptUpdate = (worker) => {
     if (!worker || updateToastShown) return;
     updateToastShown = true;
-    showToast("A new version is ready.", {
-      duration: 12000,
-      undoLabel: "Reload",
-      undo: () => worker.postMessage({ type: "SKIP_WAITING" })
-    });
+    showToast("A new version is ready.", { duration: 12000, undoLabel: "Reload", undo: () => worker.postMessage({ type: "SKIP_WAITING" }) });
   };
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloadingForUpdate) return;
-    reloadingForUpdate = true;
+    if (reloading) return;
+    reloading = true;
     window.location.reload();
   });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").then((registration) => {
+      if (!registration) return;
       if (registration.waiting) promptUpdate(registration.waiting);
       registration.addEventListener("updatefound", () => {
         const incoming = registration.installing;
-        if (!incoming) return;
-        incoming.addEventListener("statechange", () => {
-          if (incoming.state === "installed" && navigator.serviceWorker.controller) {
-            promptUpdate(incoming);
-          }
+        incoming?.addEventListener("statechange", () => {
+          if (incoming.state === "installed" && navigator.serviceWorker.controller) promptUpdate(incoming);
         });
       });
-    }).catch((error) => {
-      console.warn("Service worker registration skipped", error);
-    });
+    }).catch((error) => console.warn("Service worker registration skipped", error));
   });
 }
 
 if (!(await resetUpNextBrowserStateIfRequested())) {
   loadState();
-  setupMoneyInputFormatting();
-  setupForm();
-  setupExpenseForm();
-  setupAccessibility();
   render();
+  const params = new URLSearchParams(window.location.search);
+  if (hasCompletedOnboarding() && params.get("add") === "expense") openSheet({ kind: "add", mode: "expense" });
   startSupabaseSync();
 }
