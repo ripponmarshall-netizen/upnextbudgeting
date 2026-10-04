@@ -1,4 +1,4 @@
-const CACHE_NAME = "upnextbudgeting-shell-v31";
+const CACHE_NAME = "upnextbudgeting-shell-v32";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -93,43 +93,4 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(cacheFirst(event.request));
-});
-
-self.addEventListener("push", (event) => {
-  let payload = {
-    title: "Bills coming up soon",
-    body: "Open UpNextBudgeting to review what is due next.",
-    icon: "./assets/icon-192.png",
-    badge: "./assets/icon-192.png",
-    tag: "upnextbudgeting-due-summary",
-    data: { url: "./?tab=home" }
-  };
-  try {
-    if (event.data) payload = { ...payload, ...event.data.json() };
-  } catch {
-    // Keep the default notification copy if the push payload is not JSON.
-  }
-  event.waitUntil(self.registration.showNotification(payload.title, {
-    body: payload.body,
-    icon: payload.icon || "./assets/icon-192.png",
-    badge: payload.badge || "./assets/icon-192.png",
-    tag: payload.tag || "upnextbudgeting-due-summary",
-    renotify: true,
-    data: { url: "./?tab=home", ...(payload.data || {}) }
-  }));
-});
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || "./?tab=home", self.registration.scope).href;
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      const client = clientList.find((item) => item.url.startsWith(self.registration.scope));
-      if (client) {
-        client.navigate(targetUrl);
-        return client.focus();
-      }
-      return clients.openWindow(targetUrl);
-    })
-  );
 });

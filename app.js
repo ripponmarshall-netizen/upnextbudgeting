@@ -20,14 +20,9 @@ import {
 } from "./core.js";
 
 const STORAGE_KEY = "upnextbudgeting:v1";
-const SYNC_KEY = "upnextbudgeting:sync";
+// Keys left behind by the retired Supabase sync; cleared once on load.
+const LEGACY_SYNC_KEYS = ["upnextbudgeting:sync", "upnextbudgeting:supabase-auth"];
 const BADGE_REMINDER_DAYS = 5;
-const SUPABASE_PROJECT_ID = "nmrtjlattlurektpkzzi";
-const SUPABASE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co`;
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tcnRqbGF0dGx1cmVrdHBrenppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2ODAzNDYsImV4cCI6MjA5MTI1NjM0Nn0.qy8n7HQo7qDRTZt2YsmX8a8A_WsYewaG0JCASteBv5w";
-const SUPABASE_CLIENT_SRC = "https://esm.sh/@supabase/supabase-js@2.48.1";
-const VAPID_PUBLIC_KEY = "BH7l15H00yaZzqxZBHORO0CFoM7zWkskDjdTmeyEYORYK5p3QfqySFE_pw_EuzZGIAX3nQwweyxraki-Wx4tLOY";
-const SYNC_DEBOUNCE_MS = 1600;
 const DEFAULT_SOURCES = ["Cash", "Debit card", "Credit card", "Bank transfer"];
 const REPEATS = { none: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
 const MAX_PERIOD_OFFSET = 1;
@@ -37,7 +32,7 @@ async function resetUpNextBrowserStateIfRequested() {
   if (params.get("reset") !== "1") return false;
   try {
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(SYNC_KEY);
+    LEGACY_SYNC_KEYS.forEach((key) => localStorage.removeItem(key));
     sessionStorage.clear();
     if ("caches" in window) {
       const keys = await caches.keys();
@@ -106,13 +101,6 @@ let categories = [];
 let bills = [];
 let expenses = [];
 let settings = defaultSettings();
-let syncMeta = loadSyncMeta();
-let supabaseClient = null;
-let supabaseClientPromise = null;
-let syncTimer = null;
-let syncInFlight = false;
-let syncStarted = false;
-let mutationToken = 0;
 
 const ui = {
   tab: initialTab(),
@@ -124,10 +112,6 @@ const ui = {
   sheet: null
 };
 
-window.addEventListener("storage", (event) => {
-  if (event.key === SYNC_KEY) syncMeta = loadSyncMeta();
-});
-
 /* ---------- formatting ---------- */
 
 const money0 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JMD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -135,7 +119,6 @@ const money2 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JM
 const inputMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dayMonth = new Intl.DateTimeFormat("en-JM", { day: "numeric", month: "short" });
 const weekdayDate = new Intl.DateTimeFormat("en-JM", { weekday: "long", day: "numeric", month: "short" });
-const dateTime = new Intl.DateTimeFormat("en-JM", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 function money(value) {
   const n = roundMoney(value);
@@ -182,7 +165,7 @@ function esc(value) {
     .replace(/'/g, "&#39;");
 }
 
-// Category/avatar colors come from storage, backups, and sync. Only allow
+// Category colors come from storage and imported backups. Only allow
 // plain color shapes so a crafted value cannot break out of a style attribute.
 const CSS_COLOR_RE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\(\s*[\d.,%\s/-]+\s*\))$/;
 function safeCssColor(value, fallback = "#94a3b8") {
@@ -311,8 +294,7 @@ function fallbackCategoryName() {
   return (categoryByName("Other") || categories[0])?.name || "Other";
 }
 
-// Records pointing at a removed category move to the fallback. Touch
-// updatedAt so the reassignment syncs instead of being overwritten.
+// Records pointing at a removed category move to the fallback.
 function ensureCategorySafety() {
   if (!categories.length) categories = [normalizeCategory({ name: "Other", color: "#94a3b8" })];
   const names = new Set(categories.map((category) => category.name));
@@ -410,15 +392,9 @@ function reportQuotaFailure(error) {
   }
 }
 
-function saveState(markDirty = true) {
+function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState()));
-    if (markDirty) {
-      syncMeta.dirty = true;
-      mutationToken += 1;
-      saveSyncMeta();
-      scheduleSync();
-    }
   } catch (error) {
     reportQuotaFailure(error);
   }
@@ -441,414 +417,36 @@ function loadState() {
   applyTheme();
 }
 
-/* ---------- cloud sync (Supabase, anonymous per device) ---------- */
-
-function newDeviceId() {
-  return globalThis.crypto?.randomUUID?.() || `device-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-}
-
-function defaultSyncMeta() {
-  return {
-    deviceId: newDeviceId(),
-    userId: "",
-    status: "Local only",
-    detail: "Cloud sync has not started yet.",
-    dirty: true,
-    syncEnabled: true,
-    pushEnabled: false,
-    pushEndpoint: "",
-    lastSyncAt: "",
-    lastError: "",
-    deletedBills: [],
-    deletedExpenses: [],
-    deletedCategories: []
-  };
-}
-
-function loadSyncMeta() {
-  try {
-    const raw = localStorage.getItem(SYNC_KEY);
-    return { ...defaultSyncMeta(), ...(raw ? JSON.parse(raw) : {}) };
-  } catch {
-    return defaultSyncMeta();
-  }
-}
-
-function saveSyncMeta() {
-  try {
-    localStorage.setItem(SYNC_KEY, JSON.stringify(syncMeta));
-  } catch (error) {
-    reportQuotaFailure(error);
-  }
-}
-
-function updateSyncStatus(status, detail = "", extra = {}) {
-  syncMeta = { ...syncMeta, status, detail, lastError: status === "Sync issue" ? detail : "", ...extra };
-  saveSyncMeta();
-  if (ui.sheet?.kind === "settings") refreshSettingsStatus();
-}
-
-function supportsWebPush() {
-  return Boolean("serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
-}
-
-function syncStatusCopy() {
-  if (!navigator.onLine) return "Offline — changes sync when you reconnect.";
-  if (syncMeta.status === "Sync issue") return "Couldn't reach the backup server. Your data is safe here; it'll retry.";
-  if (syncMeta.status === "Syncing") return "Syncing…";
-  if (syncMeta.lastSyncAt) return `Backed up ${dateTime.format(new Date(syncMeta.lastSyncAt))}`;
-  return "Not backed up yet.";
-}
-
-function scheduleSync(reason = "change") {
-  if (!syncStarted || !navigator.onLine) return;
-  window.clearTimeout(syncTimer);
-  syncTimer = window.setTimeout(() => {
-    syncUpNextState({ reason }).catch((error) => updateSyncStatus("Sync issue", error.message || "Could not sync right now."));
-  }, SYNC_DEBOUNCE_MS);
-}
-
-async function getSupabaseClient() {
-  if (supabaseClient) return supabaseClient;
-  if (!supabaseClientPromise) {
-    supabaseClientPromise = import(SUPABASE_CLIENT_SRC).then(({ createClient }) => {
-      supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: "upnextbudgeting:supabase-auth" }
-      });
-      return supabaseClient;
-    }).catch((error) => {
-      supabaseClientPromise = null;
-      throw error;
-    });
-  }
-  return supabaseClientPromise;
-}
-
-async function ensureSupabaseSession() {
-  const client = await getSupabaseClient();
-  const { data: sessionData, error: sessionError } = await client.auth.getSession();
-  if (sessionError) throw sessionError;
-  let session = sessionData?.session;
-  if (!session) {
-    const { data, error } = await client.auth.signInAnonymously();
-    if (error) throw error;
-    session = data.session;
-  }
-  const userId = session?.user?.id;
-  if (!userId) throw new Error("Supabase did not return an anonymous sync user.");
-  if (syncMeta.userId !== userId) {
-    syncMeta.userId = userId;
-    syncMeta.dirty = true;
-    saveSyncMeta();
-  }
-  return { client, userId };
-}
-
-function toRemoteBill(bill, userId) {
-  const b = normalizeBill(bill);
-  return {
-    user_id: userId,
-    client_id: String(b.id),
-    name: b.name,
-    category: b.category,
-    amount: b.amount,
-    due: b.due,
-    paid: b.paid,
-    repeat: b.repeat,
-    property_tax_plan: b.propertyTaxPlan,
-    series_key: b.seriesKey,
-    archived: b.archived,
-    archived_at: b.archivedAt,
-    completed_at: b.completedAt,
-    activity: b.activity,
-    updated_at: b.updatedAt || nowIso(),
-    deleted_at: b.deletedAt || null
-  };
-}
-
-function toRemoteExpense(expense, userId) {
-  const e = normalizeExpense(expense);
-  return {
-    user_id: userId,
-    client_id: String(e.id),
-    amount: e.amount,
-    category: e.category,
-    merchant: e.merchant,
-    note: e.note,
-    expense_date: e.date,
-    payment_source: e.paymentSource,
-    updated_at: e.updatedAt || nowIso(),
-    deleted_at: e.deletedAt || null
-  };
-}
-
-function toRemoteCategory(category, userId, index = 0) {
-  return {
-    user_id: userId,
-    name: category.name,
-    color: category.color || CATEGORY_COLORS[index % CATEGORY_COLORS.length],
-    planned: parseMoneyInput(category.planned),
-    assigned: parseMoneyInput(category.assigned),
-    sort_order: index,
-    updated_at: category.updatedAt || nowIso(),
-    deleted_at: category.deletedAt || null
-  };
-}
-
-function fromRemoteBill(row) {
-  return normalizeBill({
-    id: Number(row.client_id) || row.client_id,
-    name: row.name,
-    category: row.category,
-    amount: row.amount,
-    due: row.due,
-    paid: row.paid,
-    repeat: row.repeat,
-    propertyTaxPlan: row.property_tax_plan,
-    seriesKey: row.series_key,
-    archived: row.archived,
-    archivedAt: row.archived_at,
-    completedAt: row.completed_at,
-    activity: row.activity,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at
-  });
-}
-
-function fromRemoteExpense(row) {
-  return normalizeExpense({
-    id: Number(row.client_id) || row.client_id,
-    amount: row.amount,
-    category: row.category,
-    merchant: row.merchant,
-    note: row.note,
-    date: row.expense_date,
-    paymentSource: row.payment_source,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at
-  });
-}
-
-function remoteIsNewer(remoteUpdatedAt, localUpdatedAt) {
-  return new Date(remoteUpdatedAt || 0).getTime() > new Date(localUpdatedAt || 0).getTime();
-}
-
-function pruneTombstones(items) {
-  const cutoff = Date.now() - 1000 * 60 * 60 * 24 * 30;
-  return items.filter((item) => new Date(item.deletedAt || 0).getTime() > cutoff).slice(-200);
-}
-
-async function pushLocalChanges(client, userId) {
-  const billRows = bills.map((bill) => toRemoteBill(bill, userId));
-  const expenseRows = expenses.map((expense) => toRemoteExpense(expense, userId));
-  const categoryRows = categories.map((category, index) => toRemoteCategory(category, userId, index));
-  const deletedBillRows = syncMeta.deletedBills.map((item) => ({
-    ...toRemoteBill({ ...item, id: item.clientId, activity: [] }, userId),
-    updated_at: item.deletedAt,
-    deleted_at: item.deletedAt
-  }));
-  const deletedExpenseRows = syncMeta.deletedExpenses.map((item) => ({
-    ...toRemoteExpense({ ...item, id: item.clientId }, userId),
-    updated_at: item.deletedAt,
-    deleted_at: item.deletedAt
-  }));
-  const deletedCategoryRows = syncMeta.deletedCategories.map((item) => ({
-    ...toRemoteCategory(item, userId, 0),
-    updated_at: item.deletedAt,
-    deleted_at: item.deletedAt
-  }));
-
-  if (billRows.length || deletedBillRows.length) {
-    const { error } = await client.from("upnext_bills").upsert([...billRows, ...deletedBillRows], { onConflict: "user_id,client_id" });
-    if (error) throw error;
-  }
-  if (expenseRows.length || deletedExpenseRows.length) {
-    const { error } = await client.from("upnext_expenses").upsert([...expenseRows, ...deletedExpenseRows], { onConflict: "user_id,client_id" });
-    if (error) throw error;
-  }
-  if (categoryRows.length || deletedCategoryRows.length) {
-    // A tombstone and a live row can share a name after delete+re-add; the live row wins.
-    const liveNames = new Set(categoryRows.map((row) => row.name));
-    const rows = [...categoryRows, ...deletedCategoryRows.filter((row) => !liveNames.has(row.name))];
-    const { error } = await client.from("upnext_categories").upsert(rows, { onConflict: "user_id,name" });
-    if (error) throw error;
-  }
-  const { error: settingsError } = await client.from("upnext_settings").upsert({
-    user_id: userId,
-    reminder_days: settings.reminderDays,
-    theme: settings.theme,
-    cashflow: settings.cashflow,
-    updated_at: settings.updatedAt || nowIso()
-  }, { onConflict: "user_id" });
-  if (settingsError) throw settingsError;
-}
-
-function mergeRemote(list, rows, idOf, rowId, fromRemote) {
-  for (const row of rows || []) {
-    const index = list.findIndex((item) => idOf(item) === rowId(row));
-    if (row.deleted_at) {
-      if (index >= 0 && remoteIsNewer(row.deleted_at, list[index].updatedAt)) list.splice(index, 1);
-      continue;
-    }
-    const remote = fromRemote(row);
-    if (index < 0) list.push(remote);
-    else if (remoteIsNewer(remote.updatedAt, list[index].updatedAt)) list[index] = remote;
-  }
-}
-
-async function pullRemoteChanges(client, userId) {
-  const [remoteBills, remoteExpenses, remoteCategories, remoteSettings] = await Promise.all([
-    client.from("upnext_bills").select("*").eq("user_id", userId),
-    client.from("upnext_expenses").select("*").eq("user_id", userId),
-    client.from("upnext_categories").select("*").eq("user_id", userId).order("sort_order", { ascending: true }),
-    client.from("upnext_settings").select("*").eq("user_id", userId).maybeSingle()
-  ]);
-  [remoteBills, remoteExpenses, remoteCategories, remoteSettings].forEach((result) => {
-    if (result.error) throw result.error;
-  });
-  mergeRemote(bills, remoteBills.data, (b) => String(b.id), (r) => r.client_id, fromRemoteBill);
-  mergeRemote(expenses, remoteExpenses.data, (e) => String(e.id), (r) => r.client_id, fromRemoteExpense);
-  mergeRemote(categories, remoteCategories.data, (c) => c.name, (r) => r.name, (row) => normalizeCategory({
-    name: row.name, color: row.color, planned: row.planned, assigned: row.assigned, updatedAt: row.updated_at
-  }));
-  if (remoteSettings.data && remoteIsNewer(remoteSettings.data.updated_at, settings.updatedAt || syncMeta.lastSettingsPullAt)) {
-    settings.reminderDays = Math.max(0, Math.min(30, Number(remoteSettings.data.reminder_days ?? settings.reminderDays)));
-    settings.theme = validTheme(remoteSettings.data.theme);
-    settings.cashflow = normalizeCashflowSettings(remoteSettings.data.cashflow);
-    settings.updatedAt = remoteSettings.data.updated_at;
-    syncMeta.lastSettingsPullAt = remoteSettings.data.updated_at;
-    applyTheme();
-  }
-  ensureCategorySafety();
-}
-
-async function syncUpNextState({ reason = "manual" } = {}) {
-  if (syncInFlight) return;
-  if (!navigator.onLine) {
-    updateSyncStatus("Offline", "Local changes will sync when this device is online.");
-    return;
-  }
-  syncInFlight = true;
-  const tokenAtStart = mutationToken;
-  updateSyncStatus("Syncing", reason);
-  try {
-    const { client, userId } = await ensureSupabaseSession();
-    await pushLocalChanges(client, userId);
-    await pullRemoteChanges(client, userId);
-    syncMeta.deletedBills = pruneTombstones(syncMeta.deletedBills);
-    syncMeta.deletedExpenses = pruneTombstones(syncMeta.deletedExpenses);
-    syncMeta.deletedCategories = pruneTombstones(syncMeta.deletedCategories);
-    // A mutation during the round-trip already scheduled a follow-up sync.
-    if (mutationToken === tokenAtStart) syncMeta.dirty = false;
-    syncMeta.lastSyncAt = nowIso();
-    saveSyncMeta();
-    saveState(false);
-    if (!ui.sheet) render();
-    updateSyncStatus(syncMeta.dirty ? "Pending" : "Synced", "");
-  } catch (error) {
-    syncMeta.dirty = true;
-    saveSyncMeta();
-    updateSyncStatus("Sync issue", error.message || "Cloud sync is unavailable right now.");
-  } finally {
-    syncInFlight = false;
-  }
-}
-
-function urlBase64ToUint8Array(value) {
-  const padding = "=".repeat((4 - value.length % 4) % 4);
-  const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
-}
-
-async function enablePushNotifications() {
-  if (!supportsWebPush()) throw new Error("This browser can't receive push. On iPhone, add the app to your Home Screen first.");
-  if (!window.isSecureContext) throw new Error("Notifications need the app to be served over HTTPS.");
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("Notification permission was not granted.");
-  const { client, userId } = await ensureSupabaseSession();
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-  });
-  if (!subscription.endpoint?.startsWith("https://") || subscription.endpoint.length > 1024) {
-    try { await subscription.unsubscribe(); } catch { /* ignore */ }
-    throw new Error("The browser returned an unexpected push endpoint.");
-  }
-  const { error } = await client.from("upnext_web_push_subscriptions").upsert({
-    user_id: userId,
-    endpoint: subscription.endpoint,
-    subscription: subscription.toJSON(),
-    enabled: true,
-    user_agent: navigator.userAgent,
-    last_seen_at: nowIso(),
-    updated_at: nowIso()
-  }, { onConflict: "user_id,endpoint" });
-  if (error) throw error;
-  syncMeta.pushEnabled = true;
-  syncMeta.pushEndpoint = subscription.endpoint;
-  saveSyncMeta();
-  await pushLocalChanges(client, userId);
-}
-
-function startSupabaseSync() {
-  if (syncStarted) return;
-  syncStarted = true;
-  window.addEventListener("online", () => syncUpNextState({ reason: "online" }));
-  window.addEventListener("offline", () => updateSyncStatus("Offline", ""));
-  if (navigator.onLine) scheduleSync("startup");
-}
-
 /* ---------- mutations ---------- */
 
-function commit({ sync = true } = {}) {
-  saveState(sync);
+function commit() {
+  saveState();
   render();
-}
-
-function tombstoneBill(bill) {
-  syncMeta.deletedBills.push({ ...cloneBill(bill), clientId: String(bill.id), deletedAt: nowIso() });
-  saveSyncMeta();
-}
-
-function tombstoneExpense(expense) {
-  syncMeta.deletedExpenses.push({ ...expense, clientId: String(expense.id), deletedAt: nowIso() });
-  saveSyncMeta();
-}
-
-function forgetTombstone(listKey, clientId) {
-  syncMeta[listKey] = syncMeta[listKey].filter((item) => item.clientId !== String(clientId));
-  saveSyncMeta();
 }
 
 function removeBill(id) {
   const bill = billById(id);
   if (!bill) return null;
-  tombstoneBill(bill);
   bills = bills.filter((item) => item !== bill);
   return bill;
 }
 
 function restoreBill(snapshot) {
-  forgetTombstone("deletedBills", snapshot.id);
   const index = bills.findIndex((item) => String(item.id) === String(snapshot.id));
-  const record = { ...cloneBill(snapshot), updatedAt: nowIso() };
-  if (index >= 0) bills[index] = record;
-  else bills.push(record);
+  if (index >= 0) bills[index] = cloneBill(snapshot);
+  else bills.push(cloneBill(snapshot));
 }
 
 function removeExpense(id) {
   const expense = expenseById(id);
   if (!expense) return null;
-  tombstoneExpense(expense);
   expenses = expenses.filter((item) => item !== expense);
   return expense;
 }
 
 function restoreExpense(snapshot) {
-  forgetTombstone("deletedExpenses", snapshot.id);
   expenses = expenses.filter((item) => String(item.id) !== String(snapshot.id));
-  expenses.push({ ...snapshot, updatedAt: nowIso() });
+  expenses.push({ ...snapshot });
 }
 
 // Paying a recurring bill queues its next occurrence so the plan never
@@ -982,22 +580,14 @@ function snapshotAll() {
   return {
     bills: bills.map(cloneBill),
     expenses: expenses.map((expense) => ({ ...expense })),
-    categories: categories.map((category) => ({ ...category })),
-    tombstones: {
-      deletedBills: [...syncMeta.deletedBills],
-      deletedExpenses: [...syncMeta.deletedExpenses],
-      deletedCategories: [...syncMeta.deletedCategories]
-    }
+    categories: categories.map((category) => ({ ...category }))
   };
 }
 
 function restoreAll(snapshot) {
-  const stamp = nowIso();
-  bills = snapshot.bills.map((bill) => ({ ...bill, updatedAt: stamp }));
-  expenses = snapshot.expenses.map((expense) => ({ ...expense, updatedAt: stamp }));
-  categories = snapshot.categories.map((category) => ({ ...category, updatedAt: stamp }));
-  Object.assign(syncMeta, snapshot.tombstones);
-  saveSyncMeta();
+  bills = snapshot.bills;
+  expenses = snapshot.expenses;
+  categories = snapshot.categories;
   commit();
 }
 
@@ -1013,9 +603,6 @@ function saveCategory(form) {
   const stamp = nowIso();
   if (existing) {
     if (existing.name !== name) {
-      // Remote categories are keyed by name: retire the old row and re-point records.
-      syncMeta.deletedCategories.push({ ...existing, deletedAt: stamp });
-      saveSyncMeta();
       bills.forEach((bill) => { if (bill.category === existing.name) Object.assign(bill, { category: name, updatedAt: stamp }); });
       expenses.forEach((expense) => { if (expense.category === existing.name) Object.assign(expense, { category: name, updatedAt: stamp }); });
     }
@@ -1023,7 +610,6 @@ function saveCategory(form) {
   } else {
     categories.push(normalizeCategory({ name, planned, color: CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length], updatedAt: stamp }));
   }
-  syncMeta.deletedCategories = syncMeta.deletedCategories.filter((item) => item.name !== name);
   closeSheet();
   commit();
   showToast(existing ? `${name} updated` : `${name} added`);
@@ -1034,8 +620,6 @@ function deleteCategory(name) {
   const category = categoryByName(name);
   if (!category || categories.length <= 1) return;
   const snapshot = snapshotAll();
-  syncMeta.deletedCategories.push({ ...category, deletedAt: nowIso() });
-  saveSyncMeta();
   categories = categories.filter((item) => item !== category);
   ensureCategorySafety();
   closeSheet();
@@ -1048,7 +632,6 @@ function saveBudgetSettings(form) {
   settings.cashflow.monthlyStartingBalance = parseMoneyInput(data.income);
   settings.cashflow.budgetPeriodStartDay = clampStartDay(data.payday);
   settings.reminderDays = Math.max(0, Math.min(30, Math.round(Number(data.reminderDays)) || 0));
-  settings.updatedAt = nowIso();
   commit();
   showToast("Budget settings saved");
   return true;
@@ -1061,7 +644,6 @@ function finishOnboarding(form) {
   settings.cashflow.monthlyStartingBalance = amount;
   settings.cashflow.budgetPeriodStartDay = clampStartDay(data.payday);
   settings.profile = { ...settings.profile, onboardingComplete: true, createdAt: settings.profile.createdAt || nowIso() };
-  settings.updatedAt = nowIso();
   if (!categories.length) categories = starterCategories();
   ui.tab = "budget";
   commit();
@@ -1071,7 +653,6 @@ function finishOnboarding(form) {
 
 function setTheme(theme) {
   settings.theme = validTheme(theme);
-  settings.updatedAt = nowIso();
   applyTheme();
   saveState();
   renderSheet();
@@ -1116,6 +697,9 @@ function exportCsv() {
 }
 
 function exportBackup() {
+  settings.lastBackupAt = today;
+  saveState();
+  renderSheet();
   download(`upnext-backup-${today}.json`, "application/json", JSON.stringify(appState(), null, 2));
   showToast("Backup downloaded");
 }
@@ -1130,9 +714,6 @@ function restoreBackup(file) {
       const keepProfile = settings.profile;
       hydrate(state);
       settings.profile = { ...keepProfile, ...settings.profile, onboardingComplete: true };
-      const stamp = nowIso();
-      [...bills, ...expenses, ...categories].forEach((item) => { item.updatedAt = stamp; });
-      settings.updatedAt = stamp;
       applyTheme();
       closeSheet();
       commit();
@@ -1318,7 +899,7 @@ function renderOnboarding() {
     <section class="onboard">
       <img class="onboard-logo" src="assets/icon.svg" alt="" width="56" height="56">
       <h1>Budget from payday to payday.</h1>
-      <p class="onboard-copy">Know what's safe to spend after your bills. Everything stays on your device, with a private cloud backup.</p>
+      <p class="onboard-copy">Know what's safe to spend after your bills. Everything stays private on this device.</p>
       <form class="form" data-form="onboard" novalidate>
         <label class="field">
           <span>Monthly take-home pay</span>
@@ -1664,9 +1245,9 @@ function settingsBody() {
           </select>
         </label>
         <label class="field">
-          <span>Remind me</span>
+          <span>Flag bills due within</span>
           <select name="reminderDays">
-            ${[0, 1, 2, 3, 5, 7, 14].map((d) => `<option value="${d}" ${d === settings.reminderDays ? "selected" : ""}>${d === 0 ? "On the day" : `${d} day${d === 1 ? "" : "s"} before`}</option>`).join("")}
+            ${[0, 1, 2, 3, 5, 7, 14].map((d) => `<option value="${d}" ${d === settings.reminderDays ? "selected" : ""}>${d === 0 ? "Same day" : `${d} day${d === 1 ? "" : "s"}`}</option>`).join("")}
           </select>
         </label>
       </div>
@@ -1681,12 +1262,6 @@ function settingsBody() {
     </section>
 
     <section class="settings-group">
-      <h3>Backup & notifications</h3>
-      <p class="setting-line"><span id="syncStatus" title="${esc(syncMeta.lastError || "")}">${esc(syncStatusCopy())}</span><button class="link-btn" data-action="sync-now" type="button">Sync now</button></p>
-      <p class="setting-line"><span id="pushStatus">${syncMeta.pushEnabled ? "Due-bill notifications are on." : "Get a daily heads-up when bills are due."}</span>${syncMeta.pushEnabled ? "" : `<button class="link-btn" data-action="notify" type="button">Turn on</button>`}</p>
-    </section>
-
-    <section class="settings-group">
       <h3>Data</h3>
       <div class="stack">
         <button class="btn btn-secondary" data-action="export-csv" type="button">Export ${periodLabel(viewPeriod())} as CSV</button>
@@ -1695,13 +1270,8 @@ function settingsBody() {
         ${hasSampleData() ? `<button class="btn btn-danger" data-action="remove-sample" type="button">Remove sample data</button>` : ""}
       </div>
     </section>
-    <p class="fine">Your data lives on this device and is backed up to a private, anonymous cloud profile.</p>
+    <p class="fine">Your data is stored only on this device. ${settings.lastBackupAt ? `Last backup ${shortDate(settings.lastBackupAt)}.` : "Download a backup now and then so you can restore it on a new phone."}</p>
   `;
-}
-
-function refreshSettingsStatus() {
-  const el = sheetBody.querySelector("#syncStatus");
-  if (el) el.textContent = syncStatusCopy();
 }
 
 function renderSheet() {
@@ -1760,6 +1330,19 @@ function closeSheet() {
   }, reduced ? 0 : 180);
 }
 
+// Earlier versions synced to Supabase and could subscribe to daily push.
+// Drop the leftovers so a retired subscription stops receiving notifications.
+async function retireCloudSync() {
+  LEGACY_SYNC_KEYS.forEach((key) => localStorage.removeItem(key));
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration?.();
+    const subscription = await registration?.pushManager?.getSubscription();
+    await subscription?.unsubscribe();
+  } catch {
+    /* best-effort cleanup */
+  }
+}
+
 /* ---------- events ---------- */
 
 function initialTab() {
@@ -1814,15 +1397,6 @@ const actions = {
     form.elements.amount.select();
   },
   "theme": (el) => setTheme(el.dataset.theme),
-  "sync-now": () => syncUpNextState({ reason: "manual" }),
-  "notify": () => {
-    enablePushNotifications()
-      .then(() => {
-        renderSheet();
-        showToast("Notifications on");
-      })
-      .catch((error) => showToast(error.message || "Could not turn on notifications."));
-  },
   "export-csv": () => exportCsv(),
   "export-backup": () => exportBackup(),
   "remove-sample": () => removeSampleData()
@@ -1933,5 +1507,6 @@ if (!(await resetUpNextBrowserStateIfRequested())) {
   render();
   const params = new URLSearchParams(window.location.search);
   if (hasCompletedOnboarding() && params.get("add") === "expense") openSheet({ kind: "add", mode: "expense" });
-  startSupabaseSync();
+  retireCloudSync();
+  navigator.storage?.persist?.().catch(() => {});
 }

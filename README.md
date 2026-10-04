@@ -35,6 +35,6 @@ Settings → Pages → Deploy from a branch → `main` / root.
 
 ## Notes
 
-- Data is stored in `localStorage` and synced to a private, anonymous Supabase profile per device (`supabase/`).
-- CSV export (per period) and JSON backup/restore are in Settings.
-- iPhone push notifications require HTTPS and installing the app to the Home Screen.
+- All data stays in this browser's `localStorage` — nothing is sent to a server. Install the app to your Home Screen so the browser treats storage as persistent (Safari can clear data for sites that aren't installed and go unused for a while).
+- Back up from Settings → Download backup; restore the JSON on any device.
+- CSV export (per period) is in Settings.
