@@ -1,6 +1,7 @@
 import {
   addDays,
   advanceDueDate,
+  billSpentDate,
   categoryBreakdown,
   clampStartDay,
   daysBetween,
@@ -22,7 +23,7 @@ import {
 const STORAGE_KEY = "upnextbudgeting:v1";
 // Keys left behind by the retired Supabase sync; cleared once on load.
 const LEGACY_SYNC_KEYS = ["upnextbudgeting:sync", "upnextbudgeting:supabase-auth"];
-const BADGE_REMINDER_DAYS = 5;
+const APP_VERSION = "3.0";
 const DEFAULT_SOURCES = ["Cash", "Debit card", "Credit card", "Bank transfer"];
 const REPEATS = { none: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
 const MAX_PERIOD_OFFSET = 1;
@@ -90,6 +91,7 @@ const PRESETS = [
 
 const app = document.querySelector("#app");
 const tabbar = document.querySelector("#tabbar");
+const dockBar = tabbar.querySelector(".dock-bar");
 const sheet = document.querySelector("#sheet");
 const sheetTitle = document.querySelector("#sheetTitle");
 const sheetBody = document.querySelector("#sheetBody");
@@ -450,7 +452,27 @@ function restoreExpense(snapshot) {
 }
 
 // Paying a recurring bill queues its next occurrence so the plan never
-// silently drops a monthly bill.
+// silently drops a monthly bill. Returns the new bill, or null.
+function scheduleNext(bill) {
+  if (bill.repeat === "none") return null;
+  const due = advanceDueDate(bill.due, bill.repeat);
+  const exists = activeBills().some((item) => item !== bill && item.seriesKey === bill.seriesKey && item.due === due);
+  if (exists) return null;
+  const next = normalizeBill({
+    id: newId(),
+    name: bill.name,
+    category: bill.category,
+    amount: bill.amount,
+    due,
+    repeat: bill.repeat,
+    propertyTaxPlan: bill.propertyTaxPlan,
+    seriesKey: bill.seriesKey,
+    activity: [{ type: "created", at: nowIso(), note: "Next occurrence of a recurring bill." }]
+  });
+  bills.push(next);
+  return next;
+}
+
 function markPaid(id) {
   const bill = billById(id);
   if (!bill || bill.paid) return;
@@ -458,25 +480,7 @@ function markPaid(id) {
   bill.paid = true;
   bill.completedAt = nowIso();
   appendActivity(bill, "paid");
-  let next = null;
-  if (bill.repeat !== "none") {
-    const due = advanceDueDate(bill.due, bill.repeat);
-    const exists = activeBills().some((item) => item !== bill && item.seriesKey === bill.seriesKey && item.due === due);
-    if (!exists) {
-      next = normalizeBill({
-        id: newId(),
-        name: bill.name,
-        category: bill.category,
-        amount: bill.amount,
-        due,
-        repeat: bill.repeat,
-        propertyTaxPlan: bill.propertyTaxPlan,
-        seriesKey: bill.seriesKey,
-        activity: [{ type: "created", at: nowIso(), note: "Next occurrence of a recurring bill." }]
-      });
-      bills.push(next);
-    }
-  }
+  const next = scheduleNext(bill);
   commit();
   showToast(next ? `${bill.name} paid · next due ${shortDate(next.due)}` : `${bill.name} paid`, {
     undo: () => {
@@ -485,6 +489,24 @@ function markPaid(id) {
       commit();
     }
   });
+}
+
+function payWithFlourish(button) {
+  const id = button.dataset.id;
+  const row = button.closest(".row");
+  if (button.classList.contains("is-paying")) return;
+  if (!row || reducedMotion()) return markPaid(id);
+  button.classList.add("is-paying");
+  button.setAttribute("aria-disabled", "true");
+  window.setTimeout(() => {
+    if (!row.isConnected || !row.animate) return markPaid(id);
+    row.classList.add("is-leaving");
+    const fold = row.animate(
+      [{ height: `${row.offsetHeight}px`, opacity: 1 }, { height: "0px", opacity: 0 }],
+      { duration: 220, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" }
+    );
+    fold.onfinish = () => markPaid(id);
+  }, 380);
 }
 
 function readForm(form) {
@@ -509,6 +531,7 @@ function saveBill(form) {
   if (!data.due) return formError(form, "Pick a due date.");
   const payload = { name, amount, due: data.due, category: data.category, repeat: REPEATS[data.repeat] ? data.repeat : "none" };
   const existing = billById(form.dataset.id);
+  let next = null;
   if (existing) {
     const changed = ["name", "amount", "due", "category", "repeat"].some((key) => existing[key] !== payload[key]);
     Object.assign(existing, payload);
@@ -517,6 +540,9 @@ function saveBill(form) {
       existing.paid = paid;
       existing.completedAt = paid ? nowIso() : null;
       appendActivity(existing, paid ? "paid" : "unpaid");
+      // Ticking "Paid" here must roll a recurring bill forward, the same as
+      // the tick box in a list does.
+      if (paid) next = scheduleNext(existing);
     } else if (changed) {
       appendActivity(existing, "edited");
     }
@@ -530,7 +556,7 @@ function saveBill(form) {
   }
   closeSheet();
   commit();
-  showToast(existing ? `${name} updated` : `${name} added`);
+  showToast(next ? `${name} paid · next due ${shortDate(next.due)}` : existing ? `${name} updated` : `${name} added`);
   return true;
 }
 
@@ -633,6 +659,7 @@ function saveBudgetSettings(form) {
   settings.cashflow.budgetPeriodStartDay = clampStartDay(data.payday);
   settings.reminderDays = Math.max(0, Math.min(30, Math.round(Number(data.reminderDays)) || 0));
   commit();
+  renderSheet();
   showToast("Budget settings saved");
   return true;
 }
@@ -681,8 +708,8 @@ function download(filename, type, content) {
 function csvCell(value) {
   const text = String(value ?? "");
   // Leading =,+,-,@ would be evaluated as a formula by spreadsheet apps.
-  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return /[",\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
 function exportCsv() {
@@ -731,7 +758,7 @@ function applyTheme() {
   const pref = validTheme(settings.theme);
   const resolved = pref === "system" ? (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark") : pref;
   document.documentElement.dataset.theme = resolved;
-  themeColorMeta?.setAttribute("content", resolved === "light" ? "#f5f5f2" : "#0b0c0e");
+  themeColorMeta?.setAttribute("content", resolved === "light" ? "#faf9f7" : "#161513");
 }
 
 function showToast(message, { undo = null, undoLabel = "Undo", duration = 5000 } = {}) {
@@ -766,7 +793,9 @@ function showToast(message, { undo = null, undoLabel = "Undo", duration = 5000 }
 }
 
 async function updateAppBadge() {
-  const count = activeBills().filter((bill) => !bill.paid && daysBetween(today, bill.due) <= BADGE_REMINDER_DAYS).length;
+  // Same window as the "Flag bills due within" setting, so the badge and the
+  // amber due dates agree.
+  const count = activeBills().filter((bill) => !bill.paid && daysBetween(today, bill.due) <= settings.reminderDays).length;
   try {
     if (count && "setAppBadge" in navigator) await navigator.setAppBadge(count);
     if (!count && "clearAppBadge" in navigator) await navigator.clearAppBadge();
@@ -777,27 +806,40 @@ async function updateAppBadge() {
 
 /* ---------- view pieces ---------- */
 
-function topbar(title, eyebrow = "") {
+function pageHead(title, eyebrow = "") {
   return `
-    <header class="topbar">
-      <div>
-        ${eyebrow ? `<p class="eyebrow">${esc(eyebrow)}</p>` : ""}
-        <h1>${esc(title)}</h1>
-      </div>
-      <button class="icon-btn" data-action="settings" type="button" aria-label="Settings">${icons.gear}</button>
+    <header class="page-head">
+      ${eyebrow ? `<p class="label">${esc(eyebrow)}</p>` : ""}
+      <h2>${esc(title)}</h2>
     </header>
   `;
+}
+
+// A segmented control with one ink pill that slides to the chosen option
+// (see slidePills). `key` lets the pill remember where it was across renders.
+function segmented(key, label, buttons) {
+  return `
+    <div class="segmented" role="group" aria-label="${esc(label)}" data-seg="${key}" style="--n:${buttons.length}">
+      <span class="seg-pill" aria-hidden="true"></span>
+      ${buttons.join("")}
+    </div>
+  `;
+}
+
+// A big number that counts to its value (see runCounters).
+function counted(key, value, cls = "") {
+  return `<p class="hero-amount ${cls}" data-count="${key}" data-value="${roundMoney(value)}">${money(value)}</p>`;
 }
 
 function periodSwitch(period) {
   const offsetCopy = ui.offset === 0 ? "This period" : ui.offset === -1 ? "Last period" : ui.offset === 1 ? "Next period" : `${Math.abs(ui.offset)} periods ago`;
   return `
     <div class="period-switch">
-      <button class="icon-btn" data-action="period" data-step="-1" type="button" aria-label="Previous period">${icons.left}</button>
       <div class="period-label" aria-live="polite">
         <strong>${periodLabel(period)}</strong>
         <span>${offsetCopy}</span>
       </div>
+      <button class="icon-btn" data-action="period" data-step="-1" type="button" aria-label="Previous period">${icons.left}</button>
       <button class="icon-btn" data-action="period" data-step="1" type="button" aria-label="Next period" ${ui.offset >= MAX_PERIOD_OFFSET ? "disabled" : ""}>${icons.right}</button>
     </div>
   `;
@@ -812,12 +854,13 @@ function sectionHead(title, action = "", target = "") {
   `;
 }
 
-function meter(parts, total) {
+// `key` lets a bar slide to its new widths after a save (see animateMeters).
+function meter(parts, total, key = "") {
   const segs = parts
     .filter((part) => part.value > 0)
-    .map((part) => `<i class="${part.cls}" style="width:${Math.min(100, (part.value / Math.max(total, 1)) * 100).toFixed(2)}%"></i>`)
+    .map((part) => `<i class="${part.cls}" data-part="${part.cls}" style="width:${Math.min(100, (part.value / Math.max(total, 1)) * 100).toFixed(2)}%"></i>`)
     .join("");
-  return `<div class="meter" aria-hidden="true">${segs}</div>`;
+  return `<div class="meter" aria-hidden="true"${key ? ` data-meter="${esc(key)}"` : ""}>${segs}</div>`;
 }
 
 function billRow(bill) {
@@ -880,7 +923,7 @@ function categoryRow(row, { compact = false } = {}) {
           ${idle ? "" : meter([
             { value: row.spent, cls: over ? "is-over" : "is-spent" },
             { value: row.scheduled, cls: "is-scheduled" }
-          ], base)}
+          ], base, `cat:${row.name}`)}
         </span>
         <span class="row-amount ${status.cls}">${status.text}</span>
       </button>
@@ -897,10 +940,10 @@ function emptyState(title, body, action = "") {
 function renderOnboarding() {
   app.innerHTML = `
     <section class="onboard">
-      <img class="onboard-logo" src="assets/icon.svg" alt="" width="56" height="56">
-      <h1>Budget from payday to payday.</h1>
+      <p class="label">Welcome</p>
+      <h2>Budget from payday to payday.</h2>
       <p class="onboard-copy">Know what's safe to spend after your bills. Everything stays private on this device.</p>
-      <form class="form" data-form="onboard" novalidate>
+      <form class="form card" data-form="onboard" novalidate>
         <label class="field">
           <span>Monthly take-home pay</span>
           <input class="money" name="income" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
@@ -915,6 +958,7 @@ function renderOnboarding() {
         <p class="form-error" role="alert" hidden></p>
         <button class="btn btn-primary" type="submit">Start budgeting</button>
       </form>
+      <p class="onboard-help"><button class="link-btn" data-action="help" type="button">How does UpNext work?</button></p>
     </section>
   `;
 }
@@ -938,17 +982,17 @@ function renderHome() {
   const negative = s.safeToSpend < 0;
 
   app.innerHTML = `
-    ${topbar("Overview", `${periodLabel(period)} · ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} to payday`)}
+    ${pageHead("Overview", `${periodLabel(period)} · ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} to payday`)}
 
-    <section class="card hero" aria-label="Safe to spend">
+    <section class="hero" aria-label="Safe to spend">
       <p class="hero-label">Safe to spend</p>
-      <p class="hero-amount ${negative ? "is-danger" : ""}">${money(s.safeToSpend)}</p>
+      ${counted("home-safe", s.safeToSpend, negative ? "is-danger" : "")}
       <p class="hero-sub">${!s.income
         ? `<button class="link-btn" data-action="settings" type="button">Set your income</button> to see what's safe to spend.`
         : negative
           ? `You're ${money(-s.safeToSpend)} short before payday.`
           : `About ${money(s.perDay)} a day until payday.`}</p>
-      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(s.income, s.spent + s.billsLeft))}
+      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(s.income, s.spent + s.billsLeft), "home")}
       <dl class="stats">
         <div><dt>Income</dt><dd>${money(s.income)}</dd></div>
         <div><dt><i class="key is-spent"></i>Spent</dt><dd>${money(s.spent)}</dd></div>
@@ -986,22 +1030,22 @@ function renderBudget() {
   const unplanned = roundMoney(s.income - totalPlanned);
   const committed = roundMoney(s.spent + s.billsLeft);
   const headline = !s.income
-    ? { label: "Income not set", value: money(0), cls: "" }
+    ? { label: "Income not set", value: 0, cls: "" }
     : unplanned > 0
-      ? { label: "Left to plan", value: money(unplanned), cls: "is-accent" }
+      ? { label: "Left to plan", value: unplanned, cls: "" }
       : unplanned < 0
-        ? { label: "Over-planned by", value: money(-unplanned), cls: "is-danger" }
-        : { label: "Every dollar has a job", value: money(s.income), cls: "is-accent" };
+        ? { label: "Over-planned by", value: -unplanned, cls: "is-danger" }
+        : { label: "Every dollar has a job", value: s.income, cls: "is-ok" };
 
   app.innerHTML = `
-    ${topbar("Budget", "Plan vs. actual")}
+    ${pageHead("Budget", "Plan vs. actual")}
     ${periodSwitch(period)}
 
-    <section class="card hero hero-compact">
+    <section class="hero hero-compact">
       <p class="hero-label">${headline.label}</p>
-      <p class="hero-amount ${headline.cls}">${headline.value}</p>
+      ${counted("budget-headline", headline.value, headline.cls)}
       <p class="hero-sub">${money(totalPlanned)} planned of ${money(s.income)} income · ${money(committed)} spent or due</p>
-      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(totalPlanned, committed))}
+      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(totalPlanned, committed), "budget")}
     </section>
 
     <section class="section">
@@ -1023,7 +1067,7 @@ function renderBills() {
     ["Due before payday", open.filter((bill) => bill.due >= today && bill.due < period.nextStartDate)],
     ["Later", open.filter((bill) => bill.due >= period.nextStartDate)]
   ].filter(([, items]) => items.length);
-  const paid = activeBills().filter((bill) => bill.paid).sort((a, b) => b.due.localeCompare(a.due)).slice(0, 60);
+  const paid = activeBills().filter((bill) => bill.paid).sort((a, b) => billSpentDate(b).localeCompare(billSpentDate(a))).slice(0, 60);
   const totalOpen = sumMoney(open.map((bill) => bill.amount));
 
   const upcomingHtml = groups.length
@@ -1039,11 +1083,11 @@ function renderBills() {
     : `<div class="card section">${emptyState("No paid bills yet", "Bills you mark paid show up here.")}</div>`;
 
   app.innerHTML = `
-    ${topbar("Bills", open.length ? `${open.length} unpaid · ${money(totalOpen)}` : "All caught up")}
-    <div class="segmented" role="group" aria-label="Bill view">
-      <button type="button" data-action="bills-view" data-view="upcoming" aria-pressed="${ui.billsView === "upcoming"}">Upcoming</button>
-      <button type="button" data-action="bills-view" data-view="paid" aria-pressed="${ui.billsView === "paid"}">Paid</button>
-    </div>
+    ${pageHead("Bills", open.length ? `${open.length} unpaid · ${money(totalOpen)}` : "All caught up")}
+    ${segmented("bills-view", "Bill view", [
+      `<button type="button" data-action="bills-view" data-view="upcoming" aria-pressed="${ui.billsView === "upcoming"}">Upcoming</button>`,
+      `<button type="button" data-action="bills-view" data-view="paid" aria-pressed="${ui.billsView === "paid"}">Paid</button>`
+    ])}
     ${ui.billsView === "paid" ? paidHtml : upcomingHtml}
     ${groups.length && ui.billsView === "upcoming" ? `<button class="btn btn-secondary btn-block" data-action="add-bill" type="button">Add a bill</button>` : ""}
   `;
@@ -1083,7 +1127,7 @@ function renderActivity() {
   const period = viewPeriod();
   if (ui.category !== "All" && !categoryByName(ui.category)) ui.category = "All";
   app.innerHTML = `
-    ${topbar("Activity", "Expenses and paid bills")}
+    ${pageHead("Activity", "Expenses and paid bills")}
     ${periodSwitch(period)}
     <div class="filters">
       <label class="search">
@@ -1102,8 +1146,98 @@ function renderActivity() {
   `;
 }
 
+/* ---------- motion ---------- */
+
+function reducedMotion() {
+  return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
+// Run `fn` once the splash has lifted, so nothing plays hidden under it.
+function afterSplash(fn) {
+  if (window.upnextBooting) window.addEventListener("upnext-lifted", fn, { once: true });
+  else fn();
+}
+
+// Big numbers count to their value: from zero when a screen opens, from the
+// last value after a save. The hero card's light sweeps across as they do.
+const countedValues = new Map();
+function runCounters(root, entering) {
+  root.querySelectorAll("[data-count]").forEach((el) => {
+    const key = el.dataset.count;
+    const to = Number(el.dataset.value) || 0;
+    const had = countedValues.has(key);
+    const from = entering ? 0 : had ? countedValues.get(key) : to;
+    countedValues.set(key, to);
+    if (from === to) return;
+    el.closest(".hero")?.insertAdjacentHTML("afterbegin", `<span class="sheen" aria-hidden="true"></span>`);
+    if (reducedMotion()) return;
+    const ms = entering ? 900 : 350;
+    el.textContent = money(Math.round(from));
+    afterSplash(() => {
+      const start = performance.now();
+      const tick = (now) => {
+        if (!el.isConnected) return;
+        const t = Math.min(1, (now - start) / ms);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = t < 1 ? money(Math.round(from + (to - from) * eased)) : money(to);
+        if (t < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  });
+}
+
+// innerHTML replaces every bar on a save, so CSS alone can't animate the
+// change. Start each segment at its last width and let it slide to the new one.
+const meterWidths = new Map();
+function animateMeters(root, entering) {
+  root.querySelectorAll("[data-meter]").forEach((bar) => {
+    const before = meterWidths.get(bar.dataset.meter) || {};
+    const after = {};
+    bar.querySelectorAll("i[data-part]").forEach((seg) => {
+      const to = seg.style.width;
+      after[seg.dataset.part] = to;
+      const from = before[seg.dataset.part];
+      if (entering || reducedMotion() || from === undefined || from === to) return;
+      seg.style.transition = "none";
+      seg.style.width = from;
+      void seg.offsetWidth;
+      seg.style.transition = "";
+      seg.style.width = to;
+    });
+    meterWidths.set(bar.dataset.meter, after);
+  });
+}
+
+// Segmented controls: start the pill where it last was, then let it slide.
+const pillIndex = new Map();
+function slidePills(root) {
+  root.querySelectorAll(".segmented[data-seg]").forEach((group) => {
+    const buttons = [...group.querySelectorAll("button")];
+    const index = Math.max(0, buttons.findIndex((button) => button.getAttribute("aria-pressed") === "true"));
+    const pill = group.querySelector(".seg-pill");
+    const before = pillIndex.get(group.dataset.seg);
+    pillIndex.set(group.dataset.seg, index);
+    if (pill && before !== undefined && before !== index && !reducedMotion()) {
+      group.style.setProperty("--i", before);
+      pill.style.transition = "none";
+      void pill.offsetWidth;
+      pill.style.transition = "";
+    }
+    group.style.setProperty("--i", index);
+  });
+}
+
+const TAB_COLUMNS = { home: 0, budget: 1, bills: 3, activity: 4 };
+let lastScreen = null;
+
 function render() {
   const onboarding = !hasCompletedOnboarding();
+  // Entrances play when a screen opens, not on every save.
+  const screen = onboarding ? "onboard" : ui.tab;
+  const entering = screen !== lastScreen;
+  lastScreen = screen;
+  app.classList.toggle("is-entering", entering && !onboarding);
   document.body.classList.toggle("is-onboarding", onboarding);
   tabbar.hidden = onboarding;
   if (onboarding) {
@@ -1118,6 +1252,13 @@ function render() {
     if (tab.dataset.tab === ui.tab) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
   });
+  dockBar.style.setProperty("--i", TAB_COLUMNS[ui.tab] ?? 0);
+  app.querySelectorAll(".list").forEach((list) => {
+    [...list.children].forEach((row, index) => row.style.setProperty("--row", Math.min(index, 8)));
+  });
+  slidePills(app);
+  animateMeters(app, entering);
+  runCounters(app, entering);
   updateAppBadge();
 }
 
@@ -1247,7 +1388,7 @@ function settingsBody() {
         <label class="field">
           <span>Flag bills due within</span>
           <select name="reminderDays">
-            ${[0, 1, 2, 3, 5, 7, 14].map((d) => `<option value="${d}" ${d === settings.reminderDays ? "selected" : ""}>${d === 0 ? "Same day" : `${d} day${d === 1 ? "" : "s"}`}</option>`).join("")}
+            ${[...new Set([0, 1, 2, 3, 5, 7, 14, settings.reminderDays])].sort((a, b) => a - b).map((d) => `<option value="${d}" ${d === settings.reminderDays ? "selected" : ""}>${d === 0 ? "Same day" : `${d} day${d === 1 ? "" : "s"}`}</option>`).join("")}
           </select>
         </label>
       </div>
@@ -1256,9 +1397,7 @@ function settingsBody() {
 
     <section class="settings-group">
       <h3>Appearance</h3>
-      <div class="segmented" role="group" aria-label="Theme">
-        ${["system", "light", "dark"].map((value) => `<button type="button" data-action="theme" data-theme="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase()}${value.slice(1)}</button>`).join("")}
-      </div>
+      ${segmented("theme", "Theme", ["system", "light", "dark"].map((value) => `<button type="button" data-action="theme" data-theme="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase()}${value.slice(1)}</button>`))}
     </section>
 
     <section class="settings-group">
@@ -1270,7 +1409,82 @@ function settingsBody() {
         ${hasSampleData() ? `<button class="btn btn-danger" data-action="remove-sample" type="button">Remove sample data</button>` : ""}
       </div>
     </section>
+    <section class="settings-group">
+      <h3>Help</h3>
+      <button class="btn btn-secondary" data-action="help" type="button">About &amp; how to use UpNext</button>
+    </section>
     <p class="fine">Your data is stored only on this device. ${settings.lastBackupAt ? `Last backup ${shortDate(settings.lastBackupAt)}.` : "Download a backup now and then so you can restore it on a new phone."}</p>
+  `;
+}
+
+function aboutBody() {
+  return `
+    <div class="about-head">
+      <img src="assets/icon.svg" alt="" width="56" height="56">
+      <div>
+        <strong>UpNext Budgeting</strong>
+        <span class="label">Version ${APP_VERSION} · payday to payday</span>
+      </div>
+    </div>
+
+    <section class="card about-card">
+      <h3>What it does</h3>
+      <div class="prose">
+        <p>UpNext answers one question first: <strong>how much can I safely spend before payday?</strong> It keeps your pay, bills, category plans and spending in one budget period, from payday to the day before the next one, so every screen agrees.</p>
+      </div>
+    </section>
+
+    <section class="card about-card">
+      <h3>Get started in five steps</h3>
+      <ol class="steps prose">
+        <li><span>Set your <strong>take-home pay</strong> and <strong>payday</strong> in Settings (the gear, top right).</span></li>
+        <li><span>Add your <strong>bills</strong> once with + → Bill: rent, JPS, NWC, phone, loans. Choose <strong>Monthly</strong> and each one rolls forward when you tick it paid.</span></li>
+        <li><span>On <strong>Budget</strong>, tap each category and give it a plan for the period. Keep going until it says <strong>Every dollar has a job</strong>.</span></li>
+        <li><span>Log spending with <strong>+</strong> as it happens: amount, category, done.</span></li>
+        <li><span>Check <strong>Home</strong> before you spend. When a bill goes out, tick its box.</span></li>
+      </ol>
+    </section>
+
+    <section class="card about-card">
+      <h3>The screens</h3>
+      <dl class="guide prose">
+        <div class="guide-row"><dt>Home</dt><dd>Safe to spend, about how much a day until payday, bills due in the next two weeks, the categories closest to their limit, and recent spending.</dd></div>
+        <div class="guide-row"><dt>Budget</dt><dd>Plan vs. actual for each category. Blue is spent, purple is bills still due, red is over plan. Use the arrows to look at last period or plan the next one.</dd></div>
+        <div class="guide-row"><dt>+</dt><dd>Add an expense or a bill. Common Jamaican bills are one tap away.</dd></div>
+        <div class="guide-row"><dt>Bills</dt><dd>Overdue, due before payday, and later. Tick to mark paid (Undo appears for a few seconds); Paid shows what's gone out.</dd></div>
+        <div class="guide-row"><dt>Activity</dt><dd>Every expense and paid bill in the period. Search, filter by category, tap to edit or delete.</dd></div>
+        <div class="guide-row"><dt>Settings</dt><dd>Pay and payday, when bills turn amber, theme, CSV export, backup and restore.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card about-card">
+      <h3>How the numbers work</h3>
+      <div class="prose">
+        <p class="formula mono">Safe to spend = pay − spent − unpaid bills</p>
+        <p><strong>Spent</strong> is your expenses plus bills marked paid this period. <strong>Unpaid bills</strong> are the ones due before payday, plus any that are overdue, because that money is still owed.</p>
+        <p>A bill paid early or on time counts on its due date. A bill paid late counts on the day you paid it, so paying an overdue bill never makes Safe to spend jump up.</p>
+        <p>The daily figure is Safe to spend divided by the days left until payday, today included.</p>
+      </div>
+    </section>
+
+    <section class="card about-card">
+      <h3>Tips</h3>
+      <div class="prose">
+        <p><strong>Install it.</strong> In Safari, tap Share → Add to Home Screen. It opens like an app, works offline, and Safari is less likely to clear its data.</p>
+        <p><strong>Back up monthly.</strong> Settings → Download backup saves a file you can restore on any phone.</p>
+        <p><strong>Paid at month-end?</strong> Choose the 28th as payday so every month has the same period.</p>
+        <p><strong>Made a mistake?</strong> Tap any row to edit or delete it.</p>
+      </div>
+    </section>
+
+    <section class="card about-card">
+      <h3>Your data and disclaimers</h3>
+      <div class="prose">
+        <p><strong>Private.</strong> Everything is stored on this device only. No account, no server, no tracking.</p>
+        <p><strong>Estimates.</strong> UpNext is a planning tool, not financial advice. Check against your bank statements.</p>
+        <p><strong>AI assistance.</strong> Built with help from Claude, an AI assistant made by Anthropic. Designed and checked by R. Marshall.</p>
+      </div>
+    </section>
   `;
 }
 
@@ -1282,10 +1496,10 @@ function renderSheet() {
   if (state.kind === "add") {
     title = state.mode === "bill" ? "New bill" : "New expense";
     body = `
-      <div class="segmented" role="group" aria-label="What are you adding?">
-        <button type="button" data-action="add-mode" data-mode="expense" aria-pressed="${state.mode !== "bill"}">Expense</button>
-        <button type="button" data-action="add-mode" data-mode="bill" aria-pressed="${state.mode === "bill"}">Bill</button>
-      </div>
+      ${segmented("add-mode", "What are you adding?", [
+        `<button type="button" data-action="add-mode" data-mode="expense" aria-pressed="${state.mode !== "bill"}">Expense</button>`,
+        `<button type="button" data-action="add-mode" data-mode="bill" aria-pressed="${state.mode === "bill"}">Bill</button>`
+      ])}
       ${state.mode === "bill" ? billForm() : expenseForm()}`;
   } else if (state.kind === "bill") {
     const bill = billById(state.id);
@@ -1301,15 +1515,31 @@ function renderSheet() {
   } else if (state.kind === "settings") {
     title = "Settings";
     body = settingsBody();
+  } else if (state.kind === "about") {
+    title = "About & help";
+    body = aboutBody();
   }
   sheetTitle.textContent = title;
   sheetBody.innerHTML = body;
+  slidePills(sheetBody);
+}
+
+// Swap what an open sheet shows (Expense ↔ Bill, Settings → About) with the
+// new content stepping in from the right.
+function stepSheet(state) {
+  ui.sheet = state;
+  renderSheet();
+  sheetBody.scrollTop = 0;
+  sheetBody.classList.remove("is-stepping");
+  void sheetBody.offsetWidth;
+  sheetBody.classList.add("is-stepping");
 }
 
 let sheetCloseTimer = null;
 function openSheet(state) {
   window.clearTimeout(sheetCloseTimer);
   sheet.classList.remove("is-closing");
+  sheetBody.classList.remove("is-stepping");
   ui.sheet = state;
   renderSheet();
   if (!sheet.open) sheet.showModal();
@@ -1363,13 +1593,14 @@ function goto(tab) {
 const actions = {
   "add": () => openSheet({ kind: "add", mode: "expense" }),
   "add-mode": (el) => {
-    ui.sheet = { kind: "add", mode: el.dataset.mode };
-    renderSheet();
+    if (ui.sheet?.mode === el.dataset.mode) return;
+    stepSheet({ kind: "add", mode: el.dataset.mode });
   },
+  "help": () => (sheet.open ? stepSheet({ kind: "about" }) : openSheet({ kind: "about" })),
   "add-bill": () => openSheet({ kind: "bill" }),
   "close-sheet": () => closeSheet(),
   "settings": () => openSheet({ kind: "settings" }),
-  "pay": (el) => markPaid(el.dataset.id),
+  "pay": (el) => payWithFlourish(el),
   "edit-bill": (el) => openSheet({ kind: "bill", id: el.dataset.id }),
   "edit-expense": (el) => openSheet({ kind: "expense", id: el.dataset.id }),
   "edit-category": (el) => openSheet({ kind: "category", name: el.dataset.name }),
@@ -1430,6 +1661,7 @@ document.addEventListener("submit", (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.id === "activitySearch") {
     ui.search = event.target.value;
+    app.classList.remove("is-entering");
     document.querySelector("#activityList").innerHTML = activityListHtml(viewPeriod());
   }
 });
@@ -1437,6 +1669,7 @@ document.addEventListener("input", (event) => {
 document.addEventListener("change", (event) => {
   if (event.target.id === "activityCategory") {
     ui.category = event.target.value;
+    app.classList.remove("is-entering");
     document.querySelector("#activityList").innerHTML = activityListHtml(viewPeriod());
   } else if (event.target.id === "restoreFile" && event.target.files?.[0]) {
     restoreBackup(event.target.files[0]);
@@ -1505,6 +1738,7 @@ if ("serviceWorker" in navigator) {
 if (!(await resetUpNextBrowserStateIfRequested())) {
   loadState();
   render();
+  window.upnextSplashDone?.();
   const params = new URLSearchParams(window.location.search);
   if (hasCompletedOnboarding() && params.get("add") === "expense") openSheet({ kind: "add", mode: "expense" });
   retireCloudSync();

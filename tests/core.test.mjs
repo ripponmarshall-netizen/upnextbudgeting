@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   advanceDueDate,
+  billSpentDate,
   categoryBreakdown,
   getBudgetPeriod,
   newId,
@@ -112,4 +113,24 @@ test("newId stays a safe, unique integer", () => {
   const ids = Array.from({ length: 500 }, () => newId(now));
   assert.ok(ids.every(Number.isSafeInteger));
   assert.equal(new Set(ids).size, ids.length);
+});
+
+test("paying an overdue bill late does not raise safe to spend", () => {
+  const today = "2026-10-04";
+  const period = getBudgetPeriod(25, today); // Sep 25 – Oct 24
+  const overdue = bill({ id: 1, due: "2026-09-20", amount: 20000 }); // previous period
+  const before = periodSummary({ income: 100000, period, today, bills: [overdue], expenses: [] });
+  assert.equal(before.safeToSpend, 80000);
+  // Paid today (local time), after its own period ended.
+  const paid = { ...overdue, paid: true, completedAt: new Date(2026, 9, 4, 20, 30).toISOString() };
+  const after = periodSummary({ income: 100000, period, today, bills: [paid], expenses: [] });
+  assert.equal(after.safeToSpend, 80000);
+  assert.equal(after.spent, 20000);
+  assert.deepEqual(transactionsFor({ bills: [paid], expenses: [], period }).map((t) => t.date), ["2026-10-04"]);
+});
+
+test("a bill paid early or on time still counts on its due date", () => {
+  assert.equal(billSpentDate(bill({ due: "2026-10-20", paid: true, completedAt: "2026-10-02T12:00:00" })), "2026-10-20");
+  assert.equal(billSpentDate(bill({ due: "2026-10-20", paid: true, completedAt: "2026-10-22T12:00:00" })), "2026-10-22");
+  assert.equal(billSpentDate(bill({ due: "2026-10-20", paid: true, completedAt: null })), "2026-10-20");
 });

@@ -99,6 +99,21 @@ export function isActiveBill(bill) {
   return !bill.archived && !bill.deletedAt;
 }
 
+// The day a paid bill's money counts as spent. Paid early or on time, that's
+// its due date (the period that planned for it). Paid late, it's the day it
+// was actually paid: an overdue bill is carried into the current period while
+// unpaid, so it must land there once paid too, or paying it would push
+// "safe to spend" up by the bill's amount.
+export function billSpentDate(bill) {
+  const paidAt = bill.completedAt ? new Date(bill.completedAt) : null;
+  const paidOn = paidAt && !Number.isNaN(paidAt.getTime()) ? toDateInputValue(paidAt) : "";
+  return paidOn > bill.due ? paidOn : bill.due;
+}
+
+function isPaidIn(bill, period) {
+  return bill.paid && isActiveBill(bill) && inPeriod(billSpentDate(bill), period);
+}
+
 // Unpaid bills a period still has to cover. The period containing today also
 // carries overdue bills from earlier periods, since that money is still owed.
 export function openBillsFor(bills, period, today) {
@@ -112,7 +127,7 @@ export function openBillsFor(bills, period, today) {
 
 export function periodSummary({ bills, expenses, income, period, today }) {
   const periodExpenses = expenses.filter((e) => !e.deletedAt && inPeriod(e.date, period));
-  const paidBills = bills.filter((b) => b.paid && isActiveBill(b) && inPeriod(b.due, period));
+  const paidBills = bills.filter((b) => isPaidIn(b, period));
   const open = openBillsFor(bills, period, today);
   const spentExpenses = sumMoney(periodExpenses.map((e) => e.amount));
   const spentBills = sumMoney(paidBills.map((b) => b.amount));
@@ -142,7 +157,7 @@ export function categoryBreakdown({ categories, bills, expenses, period, today }
   const rows = categories.map((category) => {
     const spent = sumMoney([
       ...expenses.filter((e) => !e.deletedAt && e.category === category.name && inPeriod(e.date, period)).map((e) => e.amount),
-      ...bills.filter((b) => b.paid && isActiveBill(b) && b.category === category.name && inPeriod(b.due, period)).map((b) => b.amount)
+      ...bills.filter((b) => b.category === category.name && isPaidIn(b, period)).map((b) => b.amount)
     ]);
     const scheduled = sumMoney(open.filter((b) => b.category === category.name).map((b) => b.amount));
     const planned = roundMoney(category.planned);
@@ -165,8 +180,8 @@ export function transactionsFor({ bills, expenses, period }) {
       .filter((e) => !e.deletedAt && inPeriod(e.date, period))
       .map((e) => ({ kind: "expense", id: e.id, name: e.merchant, category: e.category, amount: e.amount, date: e.date, createdAt: e.createdAt || "" })),
     ...bills
-      .filter((b) => b.paid && isActiveBill(b) && inPeriod(b.due, period))
-      .map((b) => ({ kind: "bill", id: b.id, name: b.name, category: b.category, amount: b.amount, date: b.due, createdAt: b.completedAt || "" }))
+      .filter((b) => isPaidIn(b, period))
+      .map((b) => ({ kind: "bill", id: b.id, name: b.name, category: b.category, amount: b.amount, date: billSpentDate(b), createdAt: b.completedAt || "" }))
   ];
   return items.sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }

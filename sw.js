@@ -1,23 +1,31 @@
-const CACHE_NAME = "upnextbudgeting-shell-v32";
+const CACHE_NAME = "upnextbudgeting-shell-v33";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./styles.css?v=2",
-  "./app.js",
-  "./app.js?v=2",
+  "./styles.css?v=3",
+  "./boot.js?v=3",
+  "./app.js?v=3",
   "./core.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/apple-touch-icon.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
-  "./assets/icon-maskable-512.png"
+  "./assets/icon-maskable-512.png",
+  "./assets/fonts/Geist.woff2",
+  "./assets/fonts/GeistMono.woff2"
 ];
+// Past this, a slow connection falls back to the cached copy rather than
+// leaving the app on a blank screen.
+const NETWORK_TIMEOUT_MS = 3500;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
+    caches.open(CACHE_NAME).then((cache) =>
+      // "reload" skips the HTTP cache, so a deploy can't precache a stale file
+      // next to fresh ones.
+      cache.addAll(SHELL_ASSETS.map((url) => new Request(url, { cache: "reload" })))
+    )
   );
 });
 
@@ -39,14 +47,30 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-async function networkFirst(request) {
+// Network first for the page and its code. app.js imports core.js without a
+// version, so serving either one stale while the other is fresh could pair
+// mismatched modules; going to the network for both keeps them in step, and
+// the cache covers offline and slow loads.
+async function networkFirst(request, fallbackUrl) {
   const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
+  const network = fetch(request).then((response) => {
     if (response.ok) cache.put(request, response.clone());
     return response;
+  });
+  network.catch(() => {});
+  const timeout = new Promise((resolve) => setTimeout(resolve, NETWORK_TIMEOUT_MS));
+  try {
+    const first = await Promise.race([network, timeout]);
+    if (first) return first;
   } catch {
-    return (await cache.match(request)) || cache.match("./index.html");
+    /* offline: fall through to the cache */
+  }
+  const cached = (await cache.match(request)) || (fallbackUrl && (await cache.match(fallbackUrl)));
+  if (cached) return cached;
+  try {
+    return await network;
+  } catch {
+    return new Response("", { status: 504, statusText: "Offline" });
   }
 }
 
@@ -61,34 +85,17 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
-  const networkResponse = await fetch(request)
-    .then((response) => {
-      if (response && response.ok) cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => null);
-  if (cached) return cached;
-  if (networkResponse) return networkResponse;
-  // Offline with no cache hit — surface a real HTTP-like response so the
-  // caller can branch on .ok / status instead of crashing on Response.error().
-  return new Response("", { status: 504, statusText: "Offline" });
-}
-
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== "GET") return;
 
   if (event.request.mode === "navigate") {
-    event.respondWith(networkFirst(event.request));
+    event.respondWith(networkFirst(event.request, "./index.html"));
     return;
   }
 
-  // App code/styles must update on deploy without bumping CACHE_NAME.
   if (/\.(?:js|css|webmanifest)$/.test(url.pathname)) {
-    event.respondWith(staleWhileRevalidate(event.request));
+    event.respondWith(networkFirst(event.request));
     return;
   }
 
