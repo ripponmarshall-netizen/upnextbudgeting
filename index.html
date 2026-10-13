@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'self'; object-src 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#0b0c0e">
+    <meta name="theme-color" content="#161513">
     <meta name="description" content="A payday-to-payday budget for bills, spending, and what is safe to spend.">
     <meta name="application-name" content="UpNextBudgeting">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,31 +16,65 @@
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css?v=2">
+    <link rel="preload" href="assets/fonts/Geist.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="styles.css?v=3">
+    <script src="boot.js?v=3"></script>
   </head>
   <body>
+    <!-- Loading screen: the logo draws in, then flies into the header. See boot.js. -->
+    <div id="splash" class="splash" role="status" aria-busy="true">
+      <div class="splash-brand" aria-hidden="true">
+        <span class="splash-glow"></span>
+        <svg viewBox="0 0 512 512">
+          <rect width="512" height="512" rx="112" fill="#0b0b0c" stroke="none"/>
+          <rect class="splash-bar splash-bar-1" x="96" y="120" width="320" height="64" rx="20" fill="#f4f4f5" stroke="none"/>
+          <rect class="splash-bar splash-bar-2" x="96" y="224" width="320" height="64" rx="20" fill="#f4f4f5" fill-opacity="0.45" stroke="none"/>
+          <rect class="splash-bar splash-bar-3" x="96" y="328" width="190" height="64" rx="20" fill="#f4f4f5" fill-opacity="0.2" stroke="none"/>
+          <circle class="splash-dot" cx="370" cy="360" r="42" fill="#e0a43c" stroke="none"/>
+        </svg>
+      </div>
+      <div class="splash-title">UpNext Budgeting</div>
+      <div class="splash-sub" id="splashSub"></div>
+    </div>
+
+    <header class="appbar">
+      <div class="appbar-inner">
+        <img class="appbar-logo" data-splash-target="logo" src="assets/icon.svg" alt="" width="28" height="28">
+        <h1 class="appbar-title" data-splash-target="title">UpNext Budgeting</h1>
+        <button class="icon-btn" data-action="help" type="button" aria-label="About and help">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.1-2.4 3.6"/><path d="M12 17.2h.01" stroke-width="2.4"/></svg>
+        </button>
+        <button class="icon-btn" data-action="settings" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
     <main id="app" class="screen"></main>
 
-    <nav class="tabbar" id="tabbar" aria-label="Primary">
-      <button class="tab" data-tab="home" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20h-5.5v-5.5h-5V20H4z"/></svg>
-        <span>Home</span>
-      </button>
-      <button class="tab" data-tab="budget" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 3.8A8.5 8.5 0 0 1 20.2 9H15z"/></svg>
-        <span>Budget</span>
-      </button>
-      <button class="tab-add" data-action="add" type="button" aria-label="Add expense or bill">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-      <button class="tab" data-tab="bills" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/></svg>
-        <span>Bills</span>
-      </button>
-      <button class="tab" data-tab="activity" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        <span>Activity</span>
-      </button>
+    <nav class="dock" id="tabbar" aria-label="Primary">
+      <div class="dock-bar">
+        <span class="dock-pill" aria-hidden="true"></span>
+        <button class="tab" data-tab="home" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20h-5.5v-5.5h-5V20H4z"/></svg>
+          <span>Home</span>
+        </button>
+        <button class="tab" data-tab="budget" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 3.8A8.5 8.5 0 0 1 20.2 9H15z"/></svg>
+          <span>Budget</span>
+        </button>
+        <button class="tab-add" data-action="add" type="button" aria-label="Add expense or bill">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button class="tab" data-tab="bills" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/></svg>
+          <span>Bills</span>
+        </button>
+        <button class="tab" data-tab="activity" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          <span>Activity</span>
+        </button>
+      </div>
     </nav>
 
     <dialog id="sheet" class="sheet" aria-labelledby="sheetTitle">
@@ -57,6 +91,6 @@
 
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
-    <script src="app.js?v=2" type="module"></script>
+    <script src="app.js?v=3" type="module"></script>
   </body>
 </html>
