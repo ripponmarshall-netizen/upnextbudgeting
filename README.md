@@ -38,7 +38,7 @@ At the bottom of Home (also Settings → Data). It builds a prompt from this per
 
 ## Design
 
-Shares the Night Shift Calculator's design language: warm neutral surfaces with one warm accent (light and dark), Geist and Geist Mono (self-hosted in `assets/fonts`, SIL OFL), a floating dock with a gliding highlight, spring sheets and toasts, cards and rows that rise in when a screen opens, numbers that count to their value with a light sweep on the hero card, sliding segmented controls, a tick box that pops and draws its tick before the row folds away, and a splash where the logo draws itself and flies into the header. Everything respects the OS "reduce motion" setting.
+Navy and forest green, inspired by modern Caribbean fintech landing pages: deep navy with soft light blooms and glass cards in dark mode, cool off-white with large white cards in light mode. Headlines are tight and forest green with a sage second line; figures are large and light, with a small J$ and cents. Category plans fill ten capsule bars (dark for spent, light for bills still due, red when over), and Home has a dotted payday tracker. Tabs are underlined, buttons are pills, and eyebrows are set in Geist Mono. It keeps the floating dock with a gliding highlight, spring sheets and toasts, rows that rise in, numbers that count to their value, the self-drawing splash, and respects the OS "reduce motion" setting. Fonts are Geist and Geist Mono, self-hosted in `assets/fonts` (SIL OFL).
 
 `boot.js` runs before first paint (theme + splash); the CSP blocks inline scripts, so it is a file.
 

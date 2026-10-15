@@ -129,15 +129,24 @@ const ui = {
 
 /* ---------- formatting ---------- */
 
-const money0 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JMD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
-const money2 = new Intl.NumberFormat("en-JM", { style: "currency", currency: "JMD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Amounts read "J$12,845", the way Jamaican banks and shops write them.
+const money0 = new Intl.NumberFormat("en-JM", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const money2 = new Intl.NumberFormat("en-JM", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const inputMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dayMonth = new Intl.DateTimeFormat("en-JM", { day: "numeric", month: "short" });
 const weekdayDate = new Intl.DateTimeFormat("en-JM", { weekday: "long", day: "numeric", month: "short" });
 
 function money(value) {
   const n = roundMoney(value);
-  return (Number.isInteger(n) ? money0 : money2).format(n);
+  const abs = Math.abs(n);
+  return `${n < 0 ? "−" : ""}J$${(Number.isInteger(abs) ? money0 : money2).format(abs)}`;
+}
+
+// The big figure: a small J$, the dollars, then small cents.
+function heroMoney(value) {
+  const n = roundMoney(value);
+  const [whole, cents] = money2.format(Math.abs(n)).split(".");
+  return `${n < 0 ? "−" : ""}<span class="cur">J$</span>${whole}<span class="cents">.${cents}</span>`;
 }
 
 function formatMoneyInput(value) {
@@ -1059,7 +1068,7 @@ function applyTheme() {
   const pref = validTheme(settings.theme);
   const resolved = pref === "system" ? (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark") : pref;
   document.documentElement.dataset.theme = resolved;
-  themeColorMeta?.setAttribute("content", resolved === "light" ? "#faf9f7" : "#161513");
+  themeColorMeta?.setAttribute("content", resolved === "light" ? "#f5f7f8" : "#06121f");
 }
 
 function showToast(message, { undo = null, undoLabel = "Undo", duration = 5000 } = {}) {
@@ -1129,7 +1138,7 @@ function segmented(key, label, buttons) {
 
 // A big number that counts to its value (see runCounters).
 function counted(key, value, cls = "") {
-  return `<p class="hero-amount ${cls}" data-count="${key}" data-value="${roundMoney(value)}">${money(value)}</p>`;
+  return `<p class="hero-amount ${cls}" data-count="${key}" data-value="${roundMoney(value)}">${heroMoney(value)}</p>`;
 }
 
 function periodSwitch(period) {
@@ -1162,6 +1171,31 @@ function meter(parts, total, key = "") {
     .map((part) => `<i class="${part.cls}" data-part="${part.cls}" style="width:${Math.min(100, (part.value / Math.max(total, 1)) * 100).toFixed(2)}%"></i>`)
     .join("");
   return `<div class="meter" aria-hidden="true"${key ? ` data-meter="${esc(key)}"` : ""}>${segs}</div>`;
+}
+
+// Ten capsules that fill from the bottom: dark for spent, light for bills
+// still due. All red once the plan is blown.
+function pills(spent, scheduled, base, over) {
+  const total = Math.max(base, 1);
+  const a = (spent / total) * 100;
+  const b = ((spent + scheduled) / total) * 100;
+  const fill = (share, k) => Math.max(0, Math.min(100, (share - k * 10) * 10)).toFixed(1);
+  const cells = Array.from({ length: 10 }, (_, k) => `<i style="--a:${over ? 100 : fill(a, k)}%;--b:${over ? 100 : fill(b, k)}%;--k:${k}"></i>`).join("");
+  return `<span class="pills${over ? " is-over" : ""}" aria-hidden="true">${cells}</span>`;
+}
+
+// One dot per day from payday to the day before the next, today ringed.
+function tracker(period) {
+  const total = daysBetween(period.startDate, period.endDate) + 1;
+  const day = Math.min(total, Math.max(1, daysBetween(period.startDate, today) + 1));
+  const left = total - day + 1;
+  const dots = Array.from({ length: total }, (_, k) => `<i class="${k + 1 < day ? "is-past" : k + 1 === day ? "is-today" : ""}" style="--k:${k}"></i>`).join("");
+  return `
+    <div class="tracker">
+      <div class="tracker-head"><strong>Day ${day} of ${total}</strong><span>${left === 1 ? "Last day" : `${left} days left`}</span></div>
+      <div class="track" aria-hidden="true">${dots}</div>
+    </div>
+  `;
 }
 
 function billRow(bill) {
@@ -1267,27 +1301,28 @@ function categoryStatus(row) {
   return { text: `${money(row.remaining)} left`, cls: "" };
 }
 
-function categoryRow(row, { compact = false } = {}) {
+// `daysLeft` (current period only) adds "J$970 a day" under what's left.
+function categoryRow(row, { compact = false, daysLeft = 0 } = {}) {
   const status = categoryStatus(row);
   const idle = !row.planned && !row.spent && !row.scheduled;
   const base = Math.max(row.planned, row.spent + row.scheduled);
   const detail = idle
     ? "Tap to set a plan"
-    : [`${money(row.spent)} spent`, row.scheduled ? `${money(row.scheduled)} due` : "", row.planned ? `of ${money(row.planned)}` : ""].filter(Boolean).join(" · ");
+    : compact
+      ? `${money(row.spent + row.scheduled)} of ${money(row.planned)}`
+      : [`${money(row.spent)} spent${row.planned ? ` of ${money(row.planned)}` : ""}`, row.scheduled ? `${money(row.scheduled)} due` : ""].filter(Boolean).join(" · ");
   const over = row.planned > 0 && row.remaining < 0;
+  const perDay = daysLeft > 0 && row.planned > 0 && row.remaining > 0 ? `<small>${money(Math.floor(row.remaining / daysLeft))} a day</small>` : "";
   return `
     <li class="row">
       <button class="row-main cat-row" data-action="edit-category" data-name="${esc(row.name)}" type="button">
         <span class="dot" style="--c:${safeCssColor(row.color)}" aria-hidden="true"></span>
         <span class="row-text">
           <span class="row-title">${esc(row.name)}</span>
-          ${compact ? "" : `<span class="row-sub">${detail}</span>`}
-          ${idle ? "" : meter([
-            { value: row.spent, cls: over ? "is-over" : "is-spent" },
-            { value: row.scheduled, cls: "is-scheduled" }
-          ], base, `cat:${row.name}`)}
+          ${idle ? "" : pills(row.spent, row.scheduled, base, over)}
+          <span class="row-sub">${detail}</span>
         </span>
-        <span class="row-amount ${status.cls}">${status.text}</span>
+        <span class="row-amount ${status.cls}">${status.text}${perDay}</span>
       </button>
     </li>
   `;
@@ -1303,8 +1338,8 @@ function renderOnboarding() {
   app.innerHTML = `
     <section class="onboard">
       <p class="label">Welcome</p>
-      <h2>Budget from payday to payday.</h2>
-      <p class="onboard-copy">Know what's safe to spend after your bills. Everything stays private on this device.</p>
+      <h2>Payday to payday.<span class="tone-2">Know what's safe to spend.</span></h2>
+      <p class="onboard-copy">Your bills come off the top, then you see what's left for each day until payday. Everything stays private on this device.</p>
       <form class="form card" data-form="onboard" novalidate>
         <label class="field">
           <span>Monthly take-home pay</span>
@@ -1353,12 +1388,12 @@ function renderHome() {
         ? `<button class="link-btn" data-action="settings" type="button">Set your income</button> to see what's safe to spend.`
         : negative
           ? `You're ${money(-s.safeToSpend)} short before payday.`
-          : `About ${money(s.perDay)} a day until payday.`}</p>
-      ${meter([{ value: s.spent, cls: "is-spent" }, { value: s.billsLeft, cls: "is-scheduled" }], Math.max(s.income, s.spent + s.billsLeft), "home")}
+          : `About ${money(Math.floor(s.perDay))} a day until payday.`}</p>
+      ${tracker(period)}
       <dl class="stats">
         <div><dt>Income</dt><dd>${money(s.income)}</dd></div>
-        <div><dt><i class="key is-spent"></i>Spent</dt><dd>${money(s.spent)}</dd></div>
-        <div><dt><i class="key is-scheduled"></i>Bills left</dt><dd>${money(s.billsLeft)}</dd></div>
+        <div><dt>Spent</dt><dd>${money(s.spent)}</dd></div>
+        <div><dt>Bills left</dt><dd>${money(s.billsLeft)}</dd></div>
       </dl>
     </section>
 
@@ -1374,7 +1409,7 @@ function renderHome() {
     <section class="section">
       ${sectionHead("Budget", watched.length ? "See all" : "", "budget")}
       ${watched.length
-        ? `<ul class="list card">${watched.map((row) => categoryRow(row, { compact: true })).join("")}</ul>`
+        ? `<ul class="list card">${watched.map((row) => categoryRow(row, { compact: true, daysLeft: s.daysLeft })).join("")}</ul>`
         : `<div class="card">${emptyState("No plan yet", "Decide how much each category gets this period.", `<button class="btn btn-secondary" data-goto="budget" type="button">Plan your budget</button>`)}</div>`}
     </section>
 
@@ -1419,7 +1454,7 @@ function renderBudget() {
         <h2>Categories</h2>
         <span class="legend"><i class="key is-spent"></i>Spent <i class="key is-scheduled"></i>Due</span>
       </div>
-      <ul class="list card">${rows.map((row) => categoryRow(row)).join("")}</ul>
+      <ul class="list card">${rows.map((row) => categoryRow(row, { daysLeft: s.daysLeft })).join("")}</ul>
       <button class="btn btn-secondary btn-block" data-action="add-category" type="button">Add category</button>
     </section>
   `;
@@ -1538,14 +1573,14 @@ function runCounters(root, entering) {
     el.closest(".hero")?.insertAdjacentHTML("afterbegin", `<span class="sheen" aria-hidden="true"></span>`);
     if (reducedMotion()) return;
     const ms = entering ? 900 : 350;
-    el.textContent = money(Math.round(from));
+    el.innerHTML = heroMoney(Math.round(from));
     afterSplash(() => {
       const start = performance.now();
       const tick = (now) => {
         if (!el.isConnected) return;
         const t = Math.min(1, (now - start) / ms);
         const eased = 1 - Math.pow(1 - t, 3);
-        el.textContent = t < 1 ? money(Math.round(from + (to - from) * eased)) : money(to);
+        el.innerHTML = heroMoney(t < 1 ? Math.round(from + (to - from) * eased) : to);
         if (t < 1) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);

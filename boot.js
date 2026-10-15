@@ -14,7 +14,7 @@
       ? pref
       : window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     root.dataset.theme = theme;
-    if (themeMeta) themeMeta.setAttribute("content", theme === "light" ? "#faf9f7" : "#161513");
+    if (themeMeta) themeMeta.setAttribute("content", theme === "light" ? "#f5f7f8" : "#06121f");
   } catch (e) {}
 
   var start = Date.now();
