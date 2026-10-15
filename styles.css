@@ -875,7 +875,8 @@ body.is-onboarding .screen {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-width: 0;
   height: 46px;
@@ -903,13 +904,27 @@ select {
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: none;
   border-color: var(--accent);
   background: var(--bg-1);
 }
 
-.field input::placeholder {
+.field textarea {
+  height: auto;
+  padding: 11px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.prompt-text {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px !important; /* read-mostly: iOS zoom on focus is acceptable here */
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
   color: var(--ink-faint);
 }
 
@@ -1092,6 +1107,117 @@ input[type="date"] {
 .file-btn:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ---------- bank alerts & ask Claude ---------- */
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.dot-alert {
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+/* Quiet × beside an alert row; same footprint as the bill tick box. */
+.dismiss-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: 4px 12px 4px 0;
+  border-radius: 10px;
+  color: var(--ink-faint);
+  flex: none;
+  position: relative;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.dismiss-btn::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.dismiss-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+}
+
+@media (hover: hover) {
+  .dismiss-btn:hover {
+    background: var(--bg-2);
+    color: var(--ink);
+  }
+}
+
+.ask-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: -4px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--accent);
+  flex: none;
+}
+
+.ask-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.row-chevron svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-faint);
+}
+
+.notice {
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, currentColor 35%, transparent);
+  background: color-mix(in oklab, currentColor 9%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.alert-snippet {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--ink-dim);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sheet-alt {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13.5px;
 }
 
 /* ---------- onboarding ---------- */

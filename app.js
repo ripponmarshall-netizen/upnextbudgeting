@@ -19,11 +19,18 @@ import {
   toDateInputValue,
   transactionsFor
 } from "./core.js";
+import { guessCategory, ingestAlerts, parseBankAlert, textId } from "./alerts.js";
 
 const STORAGE_KEY = "upnextbudgeting:v1";
+// The Gmail bridge URL and key live apart from the budget so backups never
+// carry them.
+const BRIDGE_KEY = "upnextbudgeting:gmail-bridge";
+const BRIDGE_URL_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec$/;
+const BRIDGE_SCRIPT = "integrations/gmail-bridge.gs";
+const AUTO_SYNC_MS = 30 * 60 * 1000;
 // Keys left behind by the retired Supabase sync; cleared once on load.
 const LEGACY_SYNC_KEYS = ["upnextbudgeting:sync", "upnextbudgeting:supabase-auth"];
-const APP_VERSION = "3.0";
+const APP_VERSION = "3.1";
 const DEFAULT_SOURCES = ["Cash", "Debit card", "Credit card", "Bank transfer"];
 const REPEATS = { none: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
 const MAX_PERIOD_OFFSET = 1;
@@ -33,6 +40,7 @@ async function resetUpNextBrowserStateIfRequested() {
   if (params.get("reset") !== "1") return false;
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(BRIDGE_KEY);
     LEGACY_SYNC_KEYS.forEach((key) => localStorage.removeItem(key));
     sessionStorage.clear();
     if ("caches" in window) {
@@ -56,7 +64,9 @@ const icons = {
   check: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`,
   left: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`,
   right: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`,
-  repeat: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg>`
+  repeat: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`,
+  spark: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.8 10.2 20.5 12 13.8 13.8 12 20.5 10.2 13.8 3.5 12 10.2 10.2z"/></svg>`
 };
 
 // New profiles start with empty plans: the user decides where income goes.
@@ -103,6 +113,8 @@ let categories = [];
 let bills = [];
 let expenses = [];
 let settings = defaultSettings();
+let alerts = emptyAlerts();
+let syncing = false;
 
 const ui = {
   tab: initialTab(),
@@ -111,6 +123,7 @@ const ui = {
   search: "",
   category: "All",
   lastCategory: "",
+  claudeFocus: "review",
   sheet: null
 };
 
@@ -254,10 +267,35 @@ function normalizeExpense(expense) {
     note: expense.note || "",
     date: expense.date || today,
     paymentSource: expense.paymentSource || settings.cashflow.paymentSources[0] || "Cash",
+    source: expense.source === "alert" ? "alert" : "",
     createdAt,
     updatedAt: expense.updatedAt || createdAt,
     deletedAt: expense.deletedAt || null
   };
+}
+
+function emptyAlerts() {
+  return { pending: [], seen: [], lastSyncAt: null };
+}
+
+// Alerts waiting for review, plus ids already handled so a sync never
+// offers the same email twice.
+function normalizeAlerts(source) {
+  if (!source || typeof source !== "object") return emptyAlerts();
+  const pending = (Array.isArray(source.pending) ? source.pending : [])
+    .filter((alert) => alert && typeof alert.id === "string" && parseMoneyInput(alert.amount) > 0)
+    .map((alert) => ({
+      id: alert.id,
+      bank: String(alert.bank || ""),
+      merchant: String(alert.merchant || ""),
+      amount: parseMoneyInput(alert.amount),
+      currency: alert.currency === "USD" ? "USD" : "JMD",
+      kind: "debit",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(alert.date) ? alert.date : "",
+      snippet: String(alert.snippet || "").slice(0, 280)
+    }));
+  const seen = (Array.isArray(source.seen) ? source.seen : []).filter((id) => typeof id === "string").slice(-1500);
+  return { pending, seen, lastSyncAt: typeof source.lastSyncAt === "string" ? source.lastSyncAt : null };
 }
 
 function normalizeCategory(category, index = 0, savedAt = nowIso()) {
@@ -355,6 +393,7 @@ function appState() {
     bills,
     categories,
     expenses,
+    alerts,
     expenseCategories: categories.map((category) => category.name),
     settings,
     metadata: { starterDataLoaded: true }
@@ -381,6 +420,7 @@ function hydrate(state) {
   categories = state.categories.map((category, index) => normalizeCategory(category, index, state.savedAt));
   bills = state.bills.map(normalizeBill);
   expenses = Array.isArray(state.expenses) ? state.expenses.map(normalizeExpense) : [];
+  alerts = normalizeAlerts(state.alerts);
   ensureCategorySafety();
 }
 
@@ -578,19 +618,280 @@ function saveExpense(form) {
   const payload = { amount, category: data.category, merchant: note || data.category, note, date: data.date };
   ui.lastCategory = data.category;
   const existing = expenseById(form.dataset.id);
+  const alertId = existing ? "" : String(data.alertId || "");
+  const alertsBefore = alertId ? snapshotAlerts() : null;
   let created = null;
   if (existing) {
     Object.assign(existing, payload, { updatedAt: nowIso() });
   } else {
-    created = normalizeExpense({ id: newId(), ...payload, createdAt: nowIso() });
+    created = normalizeExpense({ id: newId(), ...payload, source: alertId ? "alert" : "", createdAt: nowIso() });
     expenses.push(created);
+    if (alertId) resolveAlert(alertId);
   }
   closeSheet();
   commit();
   showToast(existing ? "Expense updated" : `${money(amount)} · ${payload.merchant}`, created ? {
-    undo: () => { removeExpense(created.id); commit(); }
+    undo: () => {
+      removeExpense(created.id);
+      if (alertsBefore) alerts = alertsBefore;
+      commit();
+    }
   } : {});
   return true;
+}
+
+/* ---------- bank alerts ---------- */
+
+function snapshotAlerts() {
+  return { pending: alerts.pending.map((alert) => ({ ...alert })), seen: [...alerts.seen], lastSyncAt: alerts.lastSyncAt };
+}
+
+function alertById(id) {
+  return alerts.pending.find((alert) => alert.id === String(id));
+}
+
+// Handled (added or ignored): leave the queue, never come back.
+function resolveAlert(id) {
+  alerts.pending = alerts.pending.filter((alert) => alert.id !== id);
+  if (!alerts.seen.includes(id)) alerts.seen = [...alerts.seen, id].slice(-1500);
+}
+
+function ignoreAlert(id) {
+  const alert = alertById(id);
+  if (!alert) return;
+  const before = snapshotAlerts();
+  resolveAlert(alert.id);
+  if (ui.sheet) closeSheet();
+  commit();
+  showToast(`Ignored ${alert.merchant || "alert"}`, { undo: () => { alerts = before; commit(); } });
+}
+
+function draftFromAlert(alert) {
+  return {
+    alertId: alert.id,
+    amount: alert.currency === "JMD" ? alert.amount : 0,
+    foreign: alert.currency === "JMD" ? null : { currency: alert.currency, amount: alert.amount },
+    merchant: alert.merchant,
+    category: guessCategory(alert.merchant, expenses),
+    date: alert.date && alert.date <= today ? alert.date : today,
+    bank: alert.bank,
+    snippet: alert.snippet
+  };
+}
+
+function readPastedAlert(form) {
+  const text = String(readForm(form).text || "").trim();
+  if (!text) return formError(form, "Paste the alert text first.");
+  const id = textId(text);
+  if (alerts.seen.includes(id)) return formError(form, "You've already added or ignored this alert.");
+  const alert = parseBankAlert({ id, date: nowIso(), body: text });
+  if (!alert) return formError(form, "Couldn't find an amount in that text.");
+  if (alert.kind === "credit") return formError(form, "That looks like money coming in, not spending.");
+  stepSheet({ kind: "alert", draft: draftFromAlert(alert) });
+  return true;
+}
+
+function loadBridge() {
+  try {
+    const value = JSON.parse(localStorage.getItem(BRIDGE_KEY) || "null");
+    return value && BRIDGE_URL_RE.test(value.url) && value.key ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBridge(form) {
+  const data = readForm(form);
+  const url = String(data.url || "").trim();
+  const key = String(data.key || "").trim();
+  if (!BRIDGE_URL_RE.test(url)) return formError(form, "Paste the Web app URL from Apps Script. It ends in /exec.");
+  if (!key) return formError(form, "Paste the key the setup function printed.");
+  try {
+    localStorage.setItem(BRIDGE_KEY, JSON.stringify({ url, key }));
+  } catch (error) {
+    reportQuotaFailure(error);
+    return false;
+  }
+  renderSheet();
+  syncAlerts();
+  return true;
+}
+
+function disconnectBridge() {
+  localStorage.removeItem(BRIDGE_KEY);
+  renderSheet();
+  render();
+  showToast("Gmail disconnected. Queued alerts stay until you clear them.");
+}
+
+// Start from the current period on the first sync; afterwards overlap the
+// last sync by a few days (ids stop duplicates) to catch late-arriving mail.
+function syncSince() {
+  const last = alerts.lastSyncAt ? Date.parse(alerts.lastSyncAt) : NaN;
+  if (Number.isFinite(last)) return last - 3 * 86400000;
+  return parseDate(currentPeriod().startDate).getTime() - 86400000;
+}
+
+async function syncAlerts({ quiet = false } = {}) {
+  const bridge = loadBridge();
+  if (!bridge || syncing) return;
+  syncing = true;
+  render();
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 20000);
+  try {
+    const url = new URL(bridge.url);
+    url.searchParams.set("key", bridge.key);
+    url.searchParams.set("since", String(syncSince()));
+    const response = await fetch(url, { signal: controller.signal, cache: "no-store", credentials: "omit" });
+    if (!response.ok) throw new Error(`The Gmail script answered ${response.status}.`);
+    const data = await response.json();
+    if (data?.error === "unauthorised") throw new Error("The key doesn't match the script. Run setup again and paste the new key.");
+    if (!Array.isArray(data?.messages)) throw new Error("The Gmail script sent something unexpected.");
+    const { pending, seen, counts } = ingestAlerts(alerts, data.messages);
+    alerts = { pending, seen, lastSyncAt: nowIso() };
+    saveState();
+    if (counts.added) showToast(`${counts.added} new bank alert${counts.added === 1 ? "" : "s"} to review`);
+    else if (!quiet) showToast("No new spending alerts");
+  } catch (error) {
+    if (!quiet) {
+      // A redirect to Google's sign-in page fails CORS and surfaces as a TypeError.
+      const message = error.name === "AbortError"
+        ? "Gmail took too long. Try again."
+        : error instanceof TypeError
+          ? "Couldn't reach the script. Check the URL and that access is set to Anyone."
+          : error.message;
+      showToast(message, { duration: 8000 });
+    }
+  } finally {
+    window.clearTimeout(timer);
+    syncing = false;
+    render();
+  }
+}
+
+function maybeAutoSync() {
+  if (!loadBridge() || !hasCompletedOnboarding()) return;
+  const last = alerts.lastSyncAt ? Date.parse(alerts.lastSyncAt) : 0;
+  if (Date.now() - last > AUTO_SYNC_MS) syncAlerts({ quiet: true });
+}
+
+/* ---------- ask Claude ---------- */
+
+const CLAUDE_FOCUS = {
+  review: {
+    label: "Review",
+    asks: [
+      "Where is my spending drifting from plan this period, and what is driving it?",
+      "Which two or three changes would free up the most money before payday?",
+      "Flag anything that looks unusual, duplicated, or worth checking against my bank statement."
+    ]
+  },
+  cut: {
+    label: "Cut back",
+    asks: [
+      "Which categories and merchants cost me the most, and how much of that is optional?",
+      "List repeat spending or subscriptions I could cancel or reduce, with the saving per month.",
+      "Give me a realistic limit for each category for the rest of this period."
+    ]
+  },
+  plan: {
+    label: "Next period",
+    asks: [
+      "Suggest a plan per category for next period that adds up to my take-home pay and covers every bill first.",
+      "Point out categories where my plan doesn't match what I actually spend.",
+      "Suggest how much I could move to savings each period, and where it would come from."
+    ]
+  }
+};
+
+const PROMPT_TX_LIMIT = 150;
+
+function claudePrompt(focusKey) {
+  const focus = CLAUDE_FOCUS[focusKey] || CLAUDE_FOCUS.review;
+  const period = currentPeriod();
+  const last = shiftPeriod(period, -1, paydayStart());
+  const s = periodSummary({ bills, expenses, income: income(), period, today });
+  const { rows, totalPlanned } = categoryBreakdown({ categories, bills, expenses, period, today });
+  const lastSpent = new Map(categoryBreakdown({ categories, bills, expenses, period: last, today }).rows.map((row) => [row.name, row.spent]));
+  const open = sortOpenBills(openBillsFor(bills, period, today));
+  const txs = transactionsFor({ bills, expenses, period });
+  const active = rows.filter((row) => row.planned || row.spent || row.scheduled || lastSpent.get(row.name));
+  return [
+    "Help me with my personal budget. I live in Jamaica and all amounts are JMD. I budget payday to payday: each period runs from payday to the day before the next one.",
+    "",
+    `## This period: ${periodLabel(period)} (today is ${shortDate(today)}, ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} to payday)`,
+    `- Take-home pay: ${money(s.income)}`,
+    `- Spent so far: ${money(s.spent)} (expenses ${money(s.spentExpenses)}, bills paid ${money(s.spentBills)})`,
+    `- Unpaid bills still due, including overdue: ${money(s.billsLeft)}`,
+    `- Safe to spend until payday: ${money(s.safeToSpend)} (about ${money(s.perDay)} a day)`,
+    `- Planned across categories: ${money(totalPlanned)}`,
+    "",
+    "## Categories: plan | spent | bills still due | left | spent last period",
+    ...(active.length
+      ? active.map((row) => `- ${row.name}: ${money(row.planned)} | ${money(row.spent)} | ${money(row.scheduled)} | ${money(row.remaining)} | ${money(lastSpent.get(row.name) || 0)}`)
+      : ["- No plans or spending yet"]),
+    "",
+    "## Unpaid bills",
+    ...(open.length
+      ? open.map((bill) => `- ${bill.due} ${bill.name} (${bill.category}, ${REPEATS[bill.repeat].toLowerCase()}): ${money(bill.amount)}`)
+      : ["- None"]),
+    "",
+    `## Transactions this period (${txs.length}): date | name | category | amount`,
+    ...txs.slice(0, PROMPT_TX_LIMIT).map((tx) => `- ${tx.date} | ${tx.name} | ${tx.category}${tx.kind === "bill" ? " (bill)" : ""} | ${money(tx.amount)}`),
+    ...(txs.length > PROMPT_TX_LIMIT ? [`- …and ${txs.length - PROMPT_TX_LIMIT} more not shown`] : []),
+    ...(txs.length ? [] : ["- None yet"]),
+    "",
+    "## What I'd like",
+    ...focus.asks.map((ask, index) => `${index + 1}. ${ask}`),
+    "",
+    "Use my numbers and be specific. Say what you're assuming and ask me if something is unclear. This is budgeting help, not investment advice."
+  ].join("\n");
+}
+
+// Clipboard writes must happen inside the tap on iOS, so callers pass text
+// they already have rather than awaiting a fetch first.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = Object.assign(document.createElement("textarea"), { value: text, readOnly: true });
+    area.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+    (sheet.open ? sheet : document.body).append(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+}
+
+async function copyClaudePrompt() {
+  const text = sheetBody.querySelector("#claudePrompt")?.value || claudePrompt(ui.claudeFocus);
+  const ok = await copyText(text);
+  showToast(ok ? "Copied. Paste it into Claude." : "Couldn't copy. Select the text and copy it yourself.", { duration: 6000 });
+}
+
+let bridgeScriptText = "";
+function prefetchBridgeScript() {
+  if (bridgeScriptText) return;
+  fetch(BRIDGE_SCRIPT).then((response) => (response.ok ? response.text() : "")).then((text) => { bridgeScriptText = text; }).catch(() => {});
+}
+
+async function copyBridgeScript() {
+  if (!bridgeScriptText) {
+    prefetchBridgeScript();
+    showToast("Still loading the script. Tap again in a moment.");
+    return;
+  }
+  const ok = await copyText(bridgeScriptText);
+  showToast(ok ? "Script copied. Paste it into a new project at script.google.com." : "Couldn't copy the script.", { duration: 7000 });
 }
 
 function deleteExpense(id) {
@@ -897,6 +1198,67 @@ function txRow(tx) {
   `;
 }
 
+function alertAmount(alert) {
+  return alert.currency === "JMD" ? money(alert.amount) : `US$${alert.amount.toFixed(2)}`;
+}
+
+function alertRow(alert) {
+  const name = alert.merchant || "Unknown merchant";
+  const sub = [alert.bank, alert.date ? shortDate(alert.date) : "", alert.currency === "JMD" ? "Tap to add" : "Convert to JMD"].filter(Boolean).join(" · ");
+  return `
+    <li class="row">
+      <button class="row-main" data-action="review-alert" data-id="${esc(alert.id)}" type="button">
+        <span class="dot dot-alert" aria-hidden="true"></span>
+        <span class="row-text">
+          <span class="row-title">${esc(name)}</span>
+          <span class="row-sub">${esc(sub)}</span>
+        </span>
+        <span class="row-amount ${alert.currency === "JMD" ? "" : "is-warning"}">${esc(alertAmount(alert))}</span>
+      </button>
+      <button class="dismiss-btn" data-action="ignore-alert" data-id="${esc(alert.id)}" type="button" aria-label="Ignore alert from ${esc(name)}">${icons.close}</button>
+    </li>
+  `;
+}
+
+function alertsSection() {
+  const connected = Boolean(loadBridge());
+  if (!alerts.pending.length && !connected) return "";
+  const shown = alerts.pending.slice(0, 8);
+  const more = alerts.pending.length - shown.length;
+  const checked = alerts.lastSyncAt ? `Last checked ${shortDate(toDateInputValue(new Date(alerts.lastSyncAt)))}` : "Not checked yet";
+  return `
+    <section class="section">
+      <div class="section-head">
+        <h2>Bank alerts${alerts.pending.length ? ` <span class="count">${alerts.pending.length}</span>` : ""}</h2>
+        ${connected ? `<button class="link-btn" data-action="sync-alerts" type="button" ${syncing ? "disabled" : ""}>${syncing ? "Checking…" : "Check Gmail"}</button>` : ""}
+      </div>
+      ${shown.length
+        ? `<ul class="list card">${shown.map(alertRow).join("")}</ul>${more > 0 ? `<p class="list-summary">${more} more after these</p>` : ""}`
+        : `<div class="card">${emptyState("You're up to date", `${checked}. New alerts wait here for you to confirm.`)}</div>`}
+    </section>
+  `;
+}
+
+function askClaudeSection() {
+  return `
+    <section class="section">
+      ${sectionHead("Ask Claude")}
+      <ul class="list card">
+        <li class="row">
+          <button class="row-main" data-action="ask-claude" type="button">
+            <span class="ask-icon" aria-hidden="true">${icons.spark}</span>
+            <span class="row-text">
+              <span class="row-title">Get a second opinion on this period</span>
+              <span class="row-sub">Copies a ready-made prompt with your numbers</span>
+            </span>
+            <span class="row-chevron" aria-hidden="true">${icons.right}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
+  `;
+}
+
 function categoryStatus(row) {
   const committed = roundMoney(row.spent + row.scheduled);
   if (!row.planned && !committed) return { text: "No plan", cls: "is-muted" };
@@ -1000,6 +1362,8 @@ function renderHome() {
       </dl>
     </section>
 
+    ${alertsSection()}
+
     <section class="section">
       ${sectionHead("Upcoming bills", "All bills", "bills")}
       ${upcoming.length
@@ -1020,6 +1384,8 @@ function renderHome() {
         ? `<ul class="list card">${recent.map(txRow).join("")}</ul>`
         : `<div class="card">${emptyState("No spending yet this period", "Tap + to log an expense in a few seconds.")}</div>`}
     </section>
+
+    ${askClaudeSection()}
   `;
 }
 
@@ -1269,13 +1635,18 @@ function categoryOptions(selected) {
   return categories.map((category) => `<option ${category.name === pick ? "selected" : ""}>${esc(category.name)}</option>`).join("");
 }
 
-function expenseForm(expense = null) {
-  const preferred = expense?.category || ui.lastCategory || (ui.category !== "All" ? ui.category : "");
+// `draft` pre-fills a new expense from a bank alert (see draftFromAlert).
+function expenseForm(expense = null, draft = null) {
+  const preferred = expense?.category || draft?.category || ui.lastCategory || (ui.category !== "All" ? ui.category : "");
+  const amount = expense ? formatMoneyInput(expense.amount) : draft?.amount ? formatMoneyInput(draft.amount) : "";
+  const note = expense?.note || (expense && expense.merchant !== expense.category ? expense.merchant : "") || draft?.merchant || "";
   return `
     <form class="form" data-form="expense" data-id="${esc(expense?.id ?? "")}" novalidate>
+      ${draft ? `<input type="hidden" name="alertId" value="${esc(draft.alertId)}">` : ""}
+      ${draft?.foreign ? `<p class="notice is-warning">This alert is ${esc(draft.foreign.currency === "USD" ? "US" : "")}$${esc(draft.foreign.amount.toFixed(2))}. Enter what it cost in JMD; your statement shows the rate the bank used.</p>` : ""}
       <label class="field field-amount">
         <span>Amount</span>
-        <input class="money" name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${esc(expense ? formatMoneyInput(expense.amount) : "")}" ${expense ? "" : "autofocus"} required>
+        <input class="money" name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${esc(amount)}" ${expense || (draft && amount) ? "" : "autofocus"} required>
       </label>
       <label class="field">
         <span>Category</span>
@@ -1283,16 +1654,54 @@ function expenseForm(expense = null) {
       </label>
       <label class="field">
         <span>Note <em>(optional)</em></span>
-        <input name="note" autocomplete="off" placeholder="e.g. Hi-Lo, taxi, lunch" value="${esc(expense?.note || (expense && expense.merchant !== expense.category ? expense.merchant : ""))}">
+        <input name="note" autocomplete="off" placeholder="e.g. Hi-Lo, taxi, lunch" value="${esc(note)}">
       </label>
       <label class="field">
         <span>Date</span>
-        <input name="date" type="date" value="${esc(expense?.date || today)}" required>
+        <input name="date" type="date" value="${esc(expense?.date || draft?.date || today)}" required>
       </label>
       <p class="form-error" role="alert" hidden></p>
       <button class="btn btn-primary" type="submit">${expense ? "Save changes" : "Add expense"}</button>
       ${expense ? `<button class="btn btn-danger" data-action="delete-expense" data-id="${esc(expense.id)}" type="button">Delete expense</button>` : ""}
+      ${draft && alertById(draft.alertId) ? `<button class="btn btn-danger" data-action="ignore-alert" data-id="${esc(draft.alertId)}" type="button">Ignore this alert</button>` : ""}
     </form>
+    ${expense || draft ? "" : `<p class="sheet-alt"><button class="link-btn" data-action="paste-alert" type="button">Paste a bank alert instead</button></p>`}
+    ${draft?.snippet ? `
+      <section class="history">
+        <h3>${esc(draft.bank ? `${draft.bank} alert` : "Alert text")}</h3>
+        <p class="alert-snippet">${esc(draft.snippet)}</p>
+      </section>` : ""}
+  `;
+}
+
+function pasteAlertForm() {
+  return `
+    <form class="form" data-form="paste-alert" novalidate>
+      <label class="field">
+        <span>Alert text</span>
+        <textarea name="text" rows="6" autocomplete="off" spellcheck="false" placeholder="Paste the SMS or email from your bank" autofocus></textarea>
+      </label>
+      <p class="hint">UpNext reads the amount, the merchant and the bank, then lets you check them before anything is added.</p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary" type="submit">Read alert</button>
+    </form>
+  `;
+}
+
+function claudeBody() {
+  const focus = CLAUDE_FOCUS[ui.claudeFocus] ? ui.claudeFocus : "review";
+  return `
+    ${segmented("claude-focus", "What should Claude focus on?", Object.entries(CLAUDE_FOCUS).map(([key, item]) =>
+      `<button type="button" data-action="claude-focus" data-focus="${key}" aria-pressed="${focus === key}">${esc(item.label)}</button>`))}
+    <div class="form">
+      <p class="hint">Copies this period's pay, plans, bills and transactions, merchant names included, as a prompt. Nothing leaves your phone until you paste it. Edit it first if you like.</p>
+      <label class="field">
+        <span>Prompt</span>
+        <textarea id="claudePrompt" class="prompt-text" rows="12" spellcheck="false">${esc(claudePrompt(focus))}</textarea>
+      </label>
+      <button class="btn btn-primary" data-action="copy-claude" type="button">Copy prompt</button>
+      <a class="btn btn-secondary" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Open Claude</a>
+    </div>
   `;
 }
 
@@ -1371,6 +1780,7 @@ function categoryForm(category = null) {
 
 function settingsBody() {
   const theme = validTheme(settings.theme);
+  const bridge = loadBridge();
   return `
     <form class="form settings-group" data-form="budget-settings" novalidate>
       <h3>Budget</h3>
@@ -1395,6 +1805,25 @@ function settingsBody() {
       <button class="btn btn-secondary" type="submit">Save</button>
     </form>
 
+    <form class="form settings-group" data-form="bridge" novalidate>
+      <h3>Bank alerts from Gmail</h3>
+      <p class="hint">Connect your own Google Apps Script to bring in bank alert emails you label <strong>upnext-alerts</strong>. Alerts wait on Home for you to confirm. Copy the script below, then follow the steps at the top of it.</p>
+      <label class="field">
+        <span>Web app URL</span>
+        <input name="url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(bridge?.url || "")}">
+      </label>
+      <label class="field">
+        <span>Key</span>
+        <input name="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="From the setup function" value="${esc(bridge?.key || "")}">
+      </label>
+      <p class="form-error" role="alert" hidden></p>
+      <div class="stack">
+        <button class="btn btn-secondary" type="submit">${bridge ? "Save and check now" : "Connect"}</button>
+        <button class="btn btn-secondary" data-action="copy-bridge" type="button">Copy setup script</button>
+        ${bridge ? `<button class="btn btn-danger" data-action="disconnect-bridge" type="button">Disconnect Gmail</button>` : ""}
+      </div>
+    </form>
+
     <section class="settings-group">
       <h3>Appearance</h3>
       ${segmented("theme", "Theme", ["system", "light", "dark"].map((value) => `<button type="button" data-action="theme" data-theme="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase()}${value.slice(1)}</button>`))}
@@ -1403,6 +1832,7 @@ function settingsBody() {
     <section class="settings-group">
       <h3>Data</h3>
       <div class="stack">
+        <button class="btn btn-secondary" data-action="ask-claude" type="button">Ask Claude about this period</button>
         <button class="btn btn-secondary" data-action="export-csv" type="button">Export ${periodLabel(viewPeriod())} as CSV</button>
         <button class="btn btn-secondary" data-action="export-backup" type="button">Download backup</button>
         <label class="btn btn-secondary file-btn">Restore from backup<input type="file" id="restoreFile" accept="application/json,.json"></label>
@@ -1453,7 +1883,9 @@ function aboutBody() {
         <div class="guide-row"><dt>+</dt><dd>Add an expense or a bill. Common Jamaican bills are one tap away.</dd></div>
         <div class="guide-row"><dt>Bills</dt><dd>Overdue, due before payday, and later. Tick to mark paid (Undo appears for a few seconds); Paid shows what's gone out.</dd></div>
         <div class="guide-row"><dt>Activity</dt><dd>Every expense and paid bill in the period. Search, filter by category, tap to edit or delete.</dd></div>
-        <div class="guide-row"><dt>Settings</dt><dd>Pay and payday, when bills turn amber, theme, CSV export, backup and restore.</dd></div>
+        <div class="guide-row"><dt>Bank alerts</dt><dd>Paste a bank SMS or email from + → Paste a bank alert, or connect Gmail in Settings. Alerts wait on Home: tap one to check the amount and category, or × to ignore it. Deposits are skipped.</dd></div>
+        <div class="guide-row"><dt>Ask Claude</dt><dd>At the bottom of Home. Copies a prompt with this period's numbers for you to paste into Claude. Pick Review, Cut back or Next period.</dd></div>
+        <div class="guide-row"><dt>Settings</dt><dd>Pay and payday, when bills turn amber, Gmail alerts, theme, CSV export, backup and restore.</dd></div>
       </dl>
     </section>
 
@@ -1480,7 +1912,7 @@ function aboutBody() {
     <section class="card about-card">
       <h3>Your data and disclaimers</h3>
       <div class="prose">
-        <p><strong>Private.</strong> Everything is stored on this device only. No account, no server, no tracking.</p>
+        <p><strong>Private.</strong> Everything is stored on this device only. No account, no server, no tracking. If you connect Gmail, the app talks only to your own Apps Script, and only alerts you label are read.</p>
         <p><strong>Estimates.</strong> UpNext is a planning tool, not financial advice. Check against your bank statements.</p>
         <p><strong>AI assistance.</strong> Built with help from Claude, an AI assistant made by Anthropic. Designed and checked by R. Marshall.</p>
       </div>
@@ -1508,6 +1940,15 @@ function renderSheet() {
   } else if (state.kind === "expense") {
     title = "Edit expense";
     body = expenseForm(expenseById(state.id));
+  } else if (state.kind === "alert") {
+    title = "Add from alert";
+    body = expenseForm(null, state.draft);
+  } else if (state.kind === "paste-alert") {
+    title = "Paste a bank alert";
+    body = pasteAlertForm();
+  } else if (state.kind === "claude") {
+    title = "Ask Claude";
+    body = claudeBody();
   } else if (state.kind === "category") {
     const category = categoryByName(state.name);
     title = category ? category.name : "New category";
@@ -1515,6 +1956,7 @@ function renderSheet() {
   } else if (state.kind === "settings") {
     title = "Settings";
     body = settingsBody();
+    prefetchBridgeScript();
   } else if (state.kind === "about") {
     title = "About & help";
     body = aboutBody();
@@ -1630,7 +2072,23 @@ const actions = {
   "theme": (el) => setTheme(el.dataset.theme),
   "export-csv": () => exportCsv(),
   "export-backup": () => exportBackup(),
-  "remove-sample": () => removeSampleData()
+  "remove-sample": () => removeSampleData(),
+  "review-alert": (el) => {
+    const alert = alertById(el.dataset.id);
+    if (alert) openSheet({ kind: "alert", draft: draftFromAlert(alert) });
+  },
+  "ignore-alert": (el) => ignoreAlert(el.dataset.id),
+  "paste-alert": () => stepSheet({ kind: "paste-alert" }),
+  "sync-alerts": () => syncAlerts(),
+  "copy-bridge": () => copyBridgeScript(),
+  "disconnect-bridge": () => disconnectBridge(),
+  "ask-claude": () => (sheet.open ? stepSheet({ kind: "claude" }) : openSheet({ kind: "claude" })),
+  "claude-focus": (el) => {
+    if (ui.claudeFocus === el.dataset.focus) return;
+    ui.claudeFocus = el.dataset.focus;
+    renderSheet();
+  },
+  "copy-claude": () => copyClaudePrompt()
 };
 
 const forms = {
@@ -1638,7 +2096,9 @@ const forms = {
   "bill": saveBill,
   "expense": saveExpense,
   "category": saveCategory,
-  "budget-settings": saveBudgetSettings
+  "budget-settings": saveBudgetSettings,
+  "paste-alert": readPastedAlert,
+  "bridge": saveBridge
 };
 
 document.addEventListener("click", (event) => {
@@ -1702,6 +2162,7 @@ document.addEventListener("visibilitychange", () => {
     today = now;
     if (!ui.sheet) render();
   }
+  maybeAutoSync();
 });
 
 window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", () => {
@@ -1742,5 +2203,6 @@ if (!(await resetUpNextBrowserStateIfRequested())) {
   const params = new URLSearchParams(window.location.search);
   if (hasCompletedOnboarding() && params.get("add") === "expense") openSheet({ kind: "add", mode: "expense" });
   retireCloudSync();
+  maybeAutoSync();
   navigator.storage?.persist?.().catch(() => {});
 }
