@@ -1,11 +1,12 @@
-const CACHE_NAME = "upnextbudgeting-shell-v33";
+const CACHE_NAME = "upnextbudgeting-shell-v34";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=3",
-  "./boot.js?v=3",
-  "./app.js?v=3",
+  "./styles.css?v=4",
+  "./boot.js?v=4",
+  "./app.js?v=4",
   "./core.js",
+  "./alerts.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/apple-touch-icon.png",
@@ -94,7 +95,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (/\.(?:js|css|webmanifest)$/.test(url.pathname)) {
+  if (/\.(?:js|css|webmanifest|gs)$/.test(url.pathname)) {
     event.respondWith(networkFirst(event.request));
     return;
   }

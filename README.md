@@ -13,6 +13,21 @@ A minimal, mobile-first PWA that budgets from payday to payday. It answers one q
 
 Tabs: **Home** (safe to spend, upcoming bills, budget watchlist, recent) · **Budget** (plan vs. actual) · **+** (add expense or bill) · **Bills** (overdue / before payday / later, paid) · **Activity** (search, filter, edit transactions). Settings live behind the gear icon; **About & help** (the ? icon) explains every screen and the math in the app itself.
 
+## Bank alerts
+
+UpNext can turn bank alert texts and emails (NCB, Scotiabank, First Global, JN, CIBC Caribbean, JMMB, VM) into expenses. Nothing is added on its own: each alert waits on Home until you confirm the amount and category, or tap × to ignore it. Deposits are skipped, and US$ charges ask you for the JMD amount.
+
+- **Paste:** + → *Paste a bank alert instead*, paste the SMS or email text, check, add.
+- **Gmail:** Settings → *Bank alerts from Gmail* → *Copy setup script*, then follow the steps at the top of [`integrations/gmail-bridge.gs`](integrations/gmail-bridge.gs). In short: a Gmail filter labels your alerts `upnext-alerts`, a Google Apps Script in your own account serves them, and you paste its Web app URL and key into Settings. UpNext checks on open (at most every 30 minutes) and when you tap *Check Gmail*.
+
+The URL and key are stored on this device only, apart from the budget, so backups never contain them. Anyone holding both can read the labelled alerts; run `setup` again to issue a new key.
+
+Parsing is pattern-based (`alerts.js`) and was written without real alert samples, so expect misses. Add redacted real alerts to `tests/alerts.test.mjs` as they turn up.
+
+## Ask Claude
+
+At the bottom of Home (also Settings → Data). It builds a prompt from this period's pay, category plans, last period's spending, unpaid bills and transactions, with a focus of *Review*, *Cut back* or *Next period*. You can edit it, then *Copy prompt* and *Open Claude* to paste it. Merchant names are included; nothing leaves the phone until you paste.
+
 ## Getting started
 
 1. Enter your monthly take-home pay and payday.
@@ -23,7 +38,7 @@ Tabs: **Home** (safe to spend, upcoming bills, budget watchlist, recent) · **Bu
 
 ## Design
 
-Shares the Night Shift Calculator's design language: warm neutral surfaces with one warm accent (light and dark), Geist and Geist Mono (self-hosted in `assets/fonts`, SIL OFL), a floating dock with a gliding highlight, spring sheets and toasts, cards and rows that rise in when a screen opens, numbers that count to their value with a light sweep on the hero card, sliding segmented controls, a tick box that pops and draws its tick before the row folds away, and a splash where the logo draws itself and flies into the header. Everything respects the OS "reduce motion" setting.
+Navy and forest green, inspired by modern Caribbean fintech landing pages: deep navy with soft light blooms and glass cards in dark mode, cool off-white with large white cards in light mode. Headlines are tight and forest green with a sage second line; figures are large and light, with a small J$ and cents. Category plans fill ten capsule bars (dark for spent, light for bills still due, red when over), and Home has a dotted payday tracker. Tabs are underlined, buttons are pills, and eyebrows are set in Geist Mono. It keeps the floating dock with a gliding highlight, spring sheets and toasts, rows that rise in, numbers that count to their value, the self-drawing splash, and respects the OS "reduce motion" setting. Fonts are Geist and Geist Mono, self-hosted in `assets/fonts` (SIL OFL).
 
 `boot.js` runs before first paint (theme + splash); the CSP blocks inline scripts, so it is a file.
 
